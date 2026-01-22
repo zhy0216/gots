@@ -6,6 +6,16 @@ import (
 	"strings"
 )
 
+// Built-in function IDs
+const (
+	BUILTIN_PRINTLN = iota
+	BUILTIN_PRINT
+	BUILTIN_LEN
+	BUILTIN_PUSH
+	BUILTIN_POP
+	BUILTIN_TYPEOF
+)
+
 // OpCode represents a VM instruction opcode.
 type OpCode byte
 

@@ -349,9 +349,10 @@ func NewObjClosure(fn *ObjFunction) *ObjClosure {
 
 // ObjUpvalue represents a captured variable.
 type ObjUpvalue struct {
-	Location *Value     // Points to stack slot or Closed
-	Closed   Value      // Holds value after variable goes out of scope
-	Next     *ObjUpvalue // Linked list of open upvalues
+	Location   *Value      // Points to stack slot or Closed
+	Closed     Value       // Holds value after variable goes out of scope
+	Next       *ObjUpvalue // Linked list of open upvalues
+	stackIndex int         // Stack index (for tracking in open upvalue list)
 }
 
 func (u *ObjUpvalue) Type() ObjectType { return OBJ_UPVALUE }

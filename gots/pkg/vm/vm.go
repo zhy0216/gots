@@ -11,41 +11,106 @@ import (
 )
 
 const (
-	STACK_MAX = 256
+	STACK_MAX  = 256
+	FRAMES_MAX = 64
 )
+
+// CallFrame represents a function call frame.
+type CallFrame struct {
+	closure  *ObjClosure
+	ip       int   // Instruction pointer (offset into closure.Function.Chunk.Code)
+	slotBase int   // Index in the stack where this frame's locals start
+}
 
 // VM is the virtual machine that executes bytecode.
 type VM struct {
-	chunk      *bytecode.Chunk
-	ip         int              // Instruction pointer
+	frames     [FRAMES_MAX]CallFrame
+	frameCount int
 	stack      []Value          // Value stack
 	sp         int              // Stack pointer (points to next free slot)
 	globals    map[string]Value // Global variables
 	output     io.Writer
 	lastPopped Value            // Last value popped (for testing)
+
+	// Open upvalue linked list (sorted by stack slot, from top to bottom)
+	openUpvalues *ObjUpvalue
 }
 
 // New creates a new VM with the given bytecode chunk.
+// This creates a script-level function from the chunk.
 func New(chunk *bytecode.Chunk) *VM {
-	return &VM{
-		chunk:   chunk,
-		ip:      0,
+	// Create a script function from the chunk
+	fn := &ObjFunction{
+		Name:  "",
+		Arity: 0,
+		Chunk: chunk,
+	}
+	closure := NewObjClosure(fn)
+
+	vm := &VM{
 		stack:   make([]Value, STACK_MAX),
 		sp:      0,
 		globals: make(map[string]Value),
 		output:  os.Stdout,
 	}
+
+	// Push the closure as the first stack slot (slot 0 for the script)
+	vm.push(ObjectValue(closure))
+
+	// Set up the initial call frame
+	vm.frames[0] = CallFrame{
+		closure:  closure,
+		ip:       0,
+		slotBase: 0,
+	}
+	vm.frameCount = 1
+
+	return vm
+}
+
+// NewWithClosure creates a new VM with a closure.
+func NewWithClosure(closure *ObjClosure) *VM {
+	vm := &VM{
+		stack:   make([]Value, STACK_MAX),
+		sp:      0,
+		globals: make(map[string]Value),
+		output:  os.Stdout,
+	}
+
+	// Push the closure as the first stack slot
+	vm.push(ObjectValue(closure))
+
+	// Set up the initial call frame
+	vm.frames[0] = CallFrame{
+		closure:  closure,
+		ip:       0,
+		slotBase: 0,
+	}
+	vm.frameCount = 1
+
+	return vm
+}
+
+// frame returns the current call frame.
+func (vm *VM) frame() *CallFrame {
+	return &vm.frames[vm.frameCount-1]
+}
+
+// chunk returns the current function's bytecode chunk.
+func (vm *VM) chunk() *bytecode.Chunk {
+	return vm.frame().closure.Function.Chunk
 }
 
 // Run executes the bytecode.
 func (vm *VM) Run() error {
 	for {
+		frame := vm.frame()
 		op := bytecode.OpCode(vm.readByte())
 
 		switch op {
 		case bytecode.OP_CONSTANT:
 			idx := vm.readU16()
-			constant := vm.chunk.Constants[idx]
+			constant := vm.chunk().Constants[idx]
 			vm.push(vm.anyToValue(constant))
 
 		case bytecode.OP_NULL:
@@ -165,9 +230,17 @@ func (vm *VM) Run() error {
 		case bytecode.OP_POP:
 			vm.lastPopped = vm.pop()
 
+		case bytecode.OP_GET_LOCAL:
+			slot := vm.readByte()
+			vm.push(vm.stack[frame.slotBase+int(slot)])
+
+		case bytecode.OP_SET_LOCAL:
+			slot := vm.readByte()
+			vm.stack[frame.slotBase+int(slot)] = vm.peek(0)
+
 		case bytecode.OP_GET_GLOBAL:
 			nameIdx := vm.readU16()
-			name := vm.chunk.Constants[nameIdx].(string)
+			name := vm.chunk().Constants[nameIdx].(string)
 			val, exists := vm.globals[name]
 			if !exists {
 				return fmt.Errorf("undefined variable: %s", name)
@@ -176,28 +249,95 @@ func (vm *VM) Run() error {
 
 		case bytecode.OP_SET_GLOBAL:
 			nameIdx := vm.readU16()
-			name := vm.chunk.Constants[nameIdx].(string)
+			name := vm.chunk().Constants[nameIdx].(string)
 			vm.globals[name] = vm.peek(0)
+
+		case bytecode.OP_GET_UPVALUE:
+			slot := vm.readByte()
+			upvalue := frame.closure.Upvalues[slot]
+			vm.push(*upvalue.Location)
+
+		case bytecode.OP_SET_UPVALUE:
+			slot := vm.readByte()
+			upvalue := frame.closure.Upvalues[slot]
+			*upvalue.Location = vm.peek(0)
+
+		case bytecode.OP_CLOSE_UPVALUE:
+			vm.closeUpvalues(vm.sp - 1)
+			vm.pop()
 
 		case bytecode.OP_JUMP:
 			offset := vm.readU16()
-			vm.ip += int(offset)
+			frame.ip += int(offset)
 
 		case bytecode.OP_JUMP_BACK:
 			offset := vm.readU16()
-			vm.ip -= int(offset)
+			frame.ip -= int(offset)
 
 		case bytecode.OP_JUMP_IF_FALSE:
 			offset := vm.readU16()
 			if !IsTruthy(vm.peek(0)) {
-				vm.ip += int(offset)
+				frame.ip += int(offset)
 			}
 
 		case bytecode.OP_JUMP_IF_TRUE:
 			offset := vm.readU16()
 			if IsTruthy(vm.peek(0)) {
-				vm.ip += int(offset)
+				frame.ip += int(offset)
 			}
+
+		case bytecode.OP_CLOSURE:
+			fnIdx := vm.readU16()
+			// The compiler stores *compiler.ObjFunction, convert to *vm.ObjFunction
+			compilerFn := vm.chunk().Constants[fnIdx].(*compiler.ObjFunction)
+			fn := &ObjFunction{
+				Name:         compilerFn.Name,
+				Arity:        compilerFn.Arity,
+				UpvalueCount: compilerFn.UpvalueCount,
+				Chunk:        compilerFn.Chunk,
+			}
+			closure := NewObjClosure(fn)
+
+			// Read upvalue descriptors
+			for i := 0; i < fn.UpvalueCount; i++ {
+				isLocal := vm.readByte() == 1
+				index := vm.readByte()
+				if isLocal {
+					// Capture local from the enclosing function
+					closure.Upvalues[i] = vm.captureUpvalue(frame.slotBase + int(index))
+				} else {
+					// Capture upvalue from the enclosing function
+					closure.Upvalues[i] = frame.closure.Upvalues[index]
+				}
+			}
+
+			vm.push(ObjectValue(closure))
+
+		case bytecode.OP_CALL:
+			argCount := int(vm.readByte())
+			if err := vm.callValue(vm.peek(argCount), argCount); err != nil {
+				return err
+			}
+
+		case bytecode.OP_RETURN:
+			result := vm.pop()
+
+			// Close any open upvalues in this frame
+			vm.closeUpvalues(frame.slotBase)
+
+			// Pop the frame
+			vm.frameCount--
+			if vm.frameCount == 0 {
+				// We're returning from the script
+				vm.pop() // Pop the script closure
+				return nil
+			}
+
+			// Discard the called function and its locals
+			vm.sp = frame.slotBase
+
+			// Push the return value
+			vm.push(result)
 
 		case bytecode.OP_BUILTIN:
 			builtinID := vm.readByte()
@@ -206,18 +346,92 @@ func (vm *VM) Run() error {
 				return err
 			}
 
-		case bytecode.OP_RETURN:
-			return nil
-
 		default:
 			return fmt.Errorf("unknown opcode: %v", op)
 		}
 	}
 }
 
+// callValue calls a value as a function.
+func (vm *VM) callValue(callee Value, argCount int) error {
+	if callee.IsClosure() {
+		return vm.call(callee.AsClosure(), argCount)
+	}
+	return fmt.Errorf("can only call functions")
+}
+
+// call invokes a closure with the given arguments.
+func (vm *VM) call(closure *ObjClosure, argCount int) error {
+	if argCount != closure.Function.Arity {
+		return fmt.Errorf("expected %d arguments but got %d", closure.Function.Arity, argCount)
+	}
+
+	if vm.frameCount >= FRAMES_MAX {
+		return fmt.Errorf("stack overflow")
+	}
+
+	frame := &vm.frames[vm.frameCount]
+	vm.frameCount++
+
+	frame.closure = closure
+	frame.ip = 0
+	// The slot base is where the function sits on the stack
+	// (args are above the function slot)
+	frame.slotBase = vm.sp - argCount - 1
+
+	return nil
+}
+
+// captureUpvalue creates or reuses an upvalue for the given stack slot.
+func (vm *VM) captureUpvalue(stackIndex int) *ObjUpvalue {
+	// Look for an existing open upvalue for this slot
+	var prevUpvalue *ObjUpvalue
+	upvalue := vm.openUpvalues
+
+	// Walk the list to find the right position (sorted by slot, descending)
+	for upvalue != nil && upvalue.stackIndex > stackIndex {
+		prevUpvalue = upvalue
+		upvalue = upvalue.Next
+	}
+
+	// If we found an upvalue for this slot, reuse it
+	if upvalue != nil && upvalue.stackIndex == stackIndex {
+		return upvalue
+	}
+
+	// Create a new upvalue
+	newUpvalue := NewObjUpvalue(&vm.stack[stackIndex])
+	newUpvalue.stackIndex = stackIndex
+	newUpvalue.Next = upvalue
+
+	// Insert into the linked list
+	if prevUpvalue == nil {
+		vm.openUpvalues = newUpvalue
+	} else {
+		prevUpvalue.Next = newUpvalue
+	}
+
+	return newUpvalue
+}
+
+// closeUpvalues closes all upvalues that refer to stack slots at or above the given index.
+func (vm *VM) closeUpvalues(lastSlot int) {
+	for vm.openUpvalues != nil && vm.openUpvalues.stackIndex >= lastSlot {
+		upvalue := vm.openUpvalues
+
+		// Copy the value from the stack to the upvalue's Closed field
+		upvalue.Closed = *upvalue.Location
+		// Point Location at the Closed field
+		upvalue.Location = &upvalue.Closed
+
+		// Remove from the open list
+		vm.openUpvalues = upvalue.Next
+	}
+}
+
 func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 	switch builtinID {
-	case compiler.BUILTIN_PRINTLN:
+	case bytecode.BUILTIN_PRINTLN:
 		if argCount != 1 {
 			return fmt.Errorf("println expects 1 argument, got %d", argCount)
 		}
@@ -225,7 +439,7 @@ func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 		fmt.Fprintln(vm.output, val.String())
 		return nil
 
-	case compiler.BUILTIN_PRINT:
+	case bytecode.BUILTIN_PRINT:
 		if argCount != 1 {
 			return fmt.Errorf("print expects 1 argument, got %d", argCount)
 		}
@@ -233,7 +447,7 @@ func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 		fmt.Fprint(vm.output, val.String())
 		return nil
 
-	case compiler.BUILTIN_LEN:
+	case bytecode.BUILTIN_LEN:
 		if argCount != 1 {
 			return fmt.Errorf("len expects 1 argument, got %d", argCount)
 		}
@@ -247,7 +461,7 @@ func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 		}
 		return nil
 
-	case compiler.BUILTIN_TYPEOF:
+	case bytecode.BUILTIN_TYPEOF:
 		if argCount != 1 {
 			return fmt.Errorf("typeof expects 1 argument, got %d", argCount)
 		}
@@ -296,6 +510,19 @@ func (vm *VM) anyToValue(v any) Value {
 		return ObjectValue(NewObjString(val))
 	case nil:
 		return NullValue()
+	case *ObjFunction:
+		// Functions are stored as ObjFunction in constants
+		// but are wrapped in closures at runtime
+		return ObjectValue(val)
+	case *compiler.ObjFunction:
+		// The compiler stores its own ObjFunction type, convert it
+		fn := &ObjFunction{
+			Name:         val.Name,
+			Arity:        val.Arity,
+			UpvalueCount: val.UpvalueCount,
+			Chunk:        val.Chunk,
+		}
+		return ObjectValue(fn)
 	default:
 		// This shouldn't happen if the compiler is correct
 		panic(fmt.Sprintf("unexpected constant type: %T", v))
@@ -303,14 +530,16 @@ func (vm *VM) anyToValue(v any) Value {
 }
 
 func (vm *VM) readByte() byte {
-	b := vm.chunk.Code[vm.ip]
-	vm.ip++
+	frame := vm.frame()
+	b := frame.closure.Function.Chunk.Code[frame.ip]
+	frame.ip++
 	return b
 }
 
 func (vm *VM) readU16() uint16 {
-	val := bytecode.ReadU16(vm.chunk.Code, vm.ip)
-	vm.ip += 2
+	frame := vm.frame()
+	val := bytecode.ReadU16(frame.closure.Function.Chunk.Code, frame.ip)
+	frame.ip += 2
 	return val
 }
 

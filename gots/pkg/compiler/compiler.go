@@ -9,28 +9,104 @@ import (
 	"github.com/pocketlang/gots/pkg/token"
 )
 
-// Built-in function IDs
+// FunctionType indicates what type of function is being compiled.
+type FunctionType int
+
 const (
-	BUILTIN_PRINTLN = iota
-	BUILTIN_PRINT
-	BUILTIN_LEN
-	BUILTIN_PUSH
-	BUILTIN_POP
-	BUILTIN_TYPEOF
+	TYPE_SCRIPT   FunctionType = iota // Top-level script
+	TYPE_FUNCTION                     // Regular function
+	TYPE_METHOD                       // Class method
 )
+
+// Local represents a local variable in the current scope.
+type Local struct {
+	Name     string
+	Depth    int  // Scope depth (0 = global)
+	IsCaptured bool // Whether this local is captured by a closure
+}
+
+// Upvalue represents a captured variable from an enclosing scope.
+type Upvalue struct {
+	Index   int  // Index in enclosing function's locals or upvalues
+	IsLocal bool // true if capturing from immediately enclosing scope
+}
+
+// ObjFunction represents a compiled function.
+type ObjFunction struct {
+	Name         string
+	Arity        int
+	UpvalueCount int
+	Chunk        *bytecode.Chunk
+}
+
+// CompilerState holds the state for compiling a single function.
+type CompilerState struct {
+	function  *ObjFunction
+	funcType  FunctionType
+	locals    []Local
+	upvalues  []Upvalue
+	scopeDepth int
+	enclosing *CompilerState // Parent compiler for nested functions
+}
 
 // Compiler compiles AST to bytecode.
 type Compiler struct {
-	chunk   *bytecode.Chunk
+	current *CompilerState
 	globals map[string]int // Maps global variable names to constant pool indices
 }
 
 // New creates a new compiler.
 func New() *Compiler {
-	return &Compiler{
-		chunk:   bytecode.NewChunk(),
+	c := &Compiler{
 		globals: make(map[string]int),
 	}
+	c.initCompilerState(TYPE_SCRIPT, "")
+	return c
+}
+
+// initCompilerState initializes a new compiler state for a function.
+func (c *Compiler) initCompilerState(funcType FunctionType, name string) {
+	state := &CompilerState{
+		function: &ObjFunction{
+			Name:  name,
+			Arity: 0,
+			Chunk: bytecode.NewChunk(),
+		},
+		funcType:   funcType,
+		locals:     make([]Local, 0, 256),
+		upvalues:   make([]Upvalue, 0),
+		scopeDepth: 0,
+		enclosing:  c.current,
+	}
+	c.current = state
+
+	// Reserve slot 0 for the function itself (or "this" for methods)
+	// This is needed because parameters start at slot 1
+	local := Local{
+		Name:       "", // Empty name so it can't be referenced
+		Depth:      0,
+		IsCaptured: false,
+	}
+	c.current.locals = append(c.current.locals, local)
+}
+
+// chunk returns the current chunk being compiled.
+func (c *Compiler) chunk() *bytecode.Chunk {
+	return c.current.function.Chunk
+}
+
+// endCompiler finishes compilation and returns the compiled function.
+func (c *Compiler) endCompiler() *ObjFunction {
+	c.emitReturn()
+	fn := c.current.function
+	fn.UpvalueCount = len(c.current.upvalues)
+
+	// Restore enclosing compiler state
+	if c.current.enclosing != nil {
+		c.current = c.current.enclosing
+	}
+
+	return fn
 }
 
 // Compile compiles a program to bytecode.
@@ -41,10 +117,169 @@ func (c *Compiler) Compile(program *ast.Program) (*bytecode.Chunk, error) {
 		}
 	}
 
-	// Emit return at end
-	c.emitByte(byte(bytecode.OP_RETURN), 0)
+	fn := c.endCompiler()
+	return fn.Chunk, nil
+}
 
-	return c.chunk, nil
+// CompileFunction compiles a program and returns the function object.
+func (c *Compiler) CompileFunction(program *ast.Program) (*ObjFunction, error) {
+	for _, stmt := range program.Statements {
+		if err := c.compileStatement(stmt); err != nil {
+			return nil, err
+		}
+	}
+
+	return c.endCompiler(), nil
+}
+
+// Scope management
+
+// beginScope starts a new lexical scope.
+func (c *Compiler) beginScope() {
+	c.current.scopeDepth++
+}
+
+// endScope ends the current lexical scope.
+func (c *Compiler) endScope(line int) {
+	c.current.scopeDepth--
+
+	// Pop all locals in the scope
+	for len(c.current.locals) > 0 &&
+		c.current.locals[len(c.current.locals)-1].Depth > c.current.scopeDepth {
+
+		local := c.current.locals[len(c.current.locals)-1]
+		if local.IsCaptured {
+			c.emitByte(byte(bytecode.OP_CLOSE_UPVALUE), line)
+		} else {
+			c.emitByte(byte(bytecode.OP_POP), line)
+		}
+		c.current.locals = c.current.locals[:len(c.current.locals)-1]
+	}
+}
+
+// Local variable management
+
+// addLocal adds a local variable to the current scope.
+func (c *Compiler) addLocal(name string) error {
+	if len(c.current.locals) >= 256 {
+		return fmt.Errorf("too many local variables in function")
+	}
+
+	local := Local{
+		Name:       name,
+		Depth:      -1, // Mark as uninitialized (for detecting use before initialization)
+		IsCaptured: false,
+	}
+	c.current.locals = append(c.current.locals, local)
+	return nil
+}
+
+// markInitialized marks the most recent local as initialized.
+func (c *Compiler) markInitialized() {
+	if c.current.scopeDepth == 0 {
+		return // Global variables don't need this
+	}
+	c.current.locals[len(c.current.locals)-1].Depth = c.current.scopeDepth
+}
+
+// resolveLocal resolves a local variable by name, returns -1 if not found.
+func (c *Compiler) resolveLocal(name string) int {
+	for i := len(c.current.locals) - 1; i >= 0; i-- {
+		local := &c.current.locals[i]
+		if local.Name == name {
+			if local.Depth == -1 {
+				// Variable is being used in its own initializer
+				return -2 // Special value to signal error
+			}
+			return i
+		}
+	}
+	return -1 // Not a local variable
+}
+
+// resolveUpvalue resolves an upvalue (captured variable from enclosing scope).
+func (c *Compiler) resolveUpvalue(name string) int {
+	if c.current.enclosing == nil {
+		return -1 // No enclosing scope
+	}
+
+	// Try to find as a local in the immediately enclosing scope
+	enclosing := c.current.enclosing
+	localIdx := c.resolveLocalIn(enclosing, name)
+	if localIdx != -1 {
+		enclosing.locals[localIdx].IsCaptured = true
+		return c.addUpvalue(localIdx, true)
+	}
+
+	// Try to find as an upvalue in the enclosing scope
+	upvalueIdx := c.resolveUpvalueIn(enclosing, name)
+	if upvalueIdx != -1 {
+		return c.addUpvalue(upvalueIdx, false)
+	}
+
+	return -1
+}
+
+// resolveLocalIn resolves a local variable in a specific compiler state.
+func (c *Compiler) resolveLocalIn(state *CompilerState, name string) int {
+	for i := len(state.locals) - 1; i >= 0; i-- {
+		local := &state.locals[i]
+		if local.Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// resolveUpvalueIn resolves an upvalue in a specific compiler state.
+func (c *Compiler) resolveUpvalueIn(state *CompilerState, name string) int {
+	if state.enclosing == nil {
+		return -1
+	}
+
+	// Check if it's a local in the enclosing scope
+	enclosing := state.enclosing
+	localIdx := c.resolveLocalIn(enclosing, name)
+	if localIdx != -1 {
+		enclosing.locals[localIdx].IsCaptured = true
+		return c.addUpvalueIn(state, localIdx, true)
+	}
+
+	// Check if it's an upvalue in the enclosing scope
+	upvalueIdx := c.resolveUpvalueIn(enclosing, name)
+	if upvalueIdx != -1 {
+		return c.addUpvalueIn(state, upvalueIdx, false)
+	}
+
+	return -1
+}
+
+// addUpvalue adds an upvalue to the current function.
+func (c *Compiler) addUpvalue(index int, isLocal bool) int {
+	return c.addUpvalueIn(c.current, index, isLocal)
+}
+
+// addUpvalueIn adds an upvalue to a specific compiler state.
+func (c *Compiler) addUpvalueIn(state *CompilerState, index int, isLocal bool) int {
+	// Check if we already have this upvalue
+	for i, uv := range state.upvalues {
+		if uv.Index == index && uv.IsLocal == isLocal {
+			return i
+		}
+	}
+
+	if len(state.upvalues) >= 256 {
+		panic("too many closure variables in function")
+	}
+
+	state.upvalues = append(state.upvalues, Upvalue{Index: index, IsLocal: isLocal})
+	return len(state.upvalues) - 1
+}
+
+// emitReturn emits a return instruction.
+func (c *Compiler) emitReturn() {
+	c.emitByte(byte(bytecode.OP_NULL), 0) // Return null by default
+	c.emitByte(byte(bytecode.OP_RETURN), 0)
 }
 
 func (c *Compiler) compileStatement(stmt ast.Statement) error {
@@ -62,6 +297,12 @@ func (c *Compiler) compileStatement(stmt ast.Statement) error {
 	case *ast.VarDecl:
 		return c.compileVarDecl(s)
 
+	case *ast.FuncDecl:
+		return c.compileFuncDecl(s)
+
+	case *ast.ReturnStmt:
+		return c.compileReturnStmt(s)
+
 	case *ast.IfStmt:
 		return c.compileIfStmt(s)
 
@@ -77,6 +318,25 @@ func (c *Compiler) compileStatement(stmt ast.Statement) error {
 }
 
 func (c *Compiler) compileVarDecl(v *ast.VarDecl) error {
+	// If we're in local scope, declare as local
+	if c.current.scopeDepth > 0 {
+		// Check for redeclaration in same scope
+		for i := len(c.current.locals) - 1; i >= 0; i-- {
+			local := &c.current.locals[i]
+			if local.Depth != -1 && local.Depth < c.current.scopeDepth {
+				break
+			}
+			if local.Name == v.Name {
+				return fmt.Errorf("variable '%s' already declared in this scope", v.Name)
+			}
+		}
+
+		// Add local variable (but don't mark as initialized yet)
+		if err := c.addLocal(v.Name); err != nil {
+			return err
+		}
+	}
+
 	// Compile the initializer value
 	if v.Value != nil {
 		if err := c.compileExpression(v.Value); err != nil {
@@ -87,34 +347,132 @@ func (c *Compiler) compileVarDecl(v *ast.VarDecl) error {
 		c.emitByte(byte(bytecode.OP_NULL), v.Token.Line)
 	}
 
-	// Add variable name to constant pool and track it
-	nameIdx := c.addGlobalVariable(v.Name)
-
-	// Emit OP_SET_GLOBAL to define the variable
-	c.emitByte(byte(bytecode.OP_SET_GLOBAL), v.Token.Line)
-	c.emitU16(uint16(nameIdx), v.Token.Line)
-
-	// Pop the value (variable declarations are statements, not expressions)
-	c.emitByte(byte(bytecode.OP_POP), v.Token.Line)
+	if c.current.scopeDepth > 0 {
+		// Local variable - just mark as initialized (value is already on stack)
+		c.markInitialized()
+	} else {
+		// Global variable
+		nameIdx := c.addGlobalVariable(v.Name)
+		c.emitByte(byte(bytecode.OP_SET_GLOBAL), v.Token.Line)
+		c.emitU16(uint16(nameIdx), v.Token.Line)
+		// Pop the value (global variable declarations are statements)
+		c.emitByte(byte(bytecode.OP_POP), v.Token.Line)
+	}
 
 	return nil
 }
 
-func (c *Compiler) addGlobalVariable(name string) int {
-	// Check if variable already exists
-	if idx, exists := c.globals[name]; exists {
-		return idx
+func (c *Compiler) compileFuncDecl(f *ast.FuncDecl) error {
+	// Declare the function name (as a global or local)
+	if c.current.scopeDepth > 0 {
+		if err := c.addLocal(f.Name); err != nil {
+			return err
+		}
 	}
 
-	// Add name to constant pool
-	idx := c.chunk.AddConstant(name)
-	c.globals[name] = idx
+	// Compile the function body
+	if err := c.compileFunction(f.Name, f.Params, f.Body, TYPE_FUNCTION); err != nil {
+		return err
+	}
+
+	if c.current.scopeDepth > 0 {
+		// Local function - just mark as initialized
+		c.markInitialized()
+	} else {
+		// Global function
+		nameIdx := c.addGlobalVariable(f.Name)
+		c.emitByte(byte(bytecode.OP_SET_GLOBAL), f.Token.Line)
+		c.emitU16(uint16(nameIdx), f.Token.Line)
+		c.emitByte(byte(bytecode.OP_POP), f.Token.Line)
+	}
+
+	return nil
+}
+
+func (c *Compiler) compileFunction(name string, params []*ast.Parameter, body *ast.Block, funcType FunctionType) error {
+	// Start a new compiler state for this function
+	c.initCompilerState(funcType, name)
+	c.beginScope()
+
+	// Bind parameters as local variables
+	c.current.function.Arity = len(params)
+	for _, param := range params {
+		if err := c.addLocal(param.Name); err != nil {
+			return err
+		}
+		c.markInitialized()
+	}
+
+	// Compile the function body
+	for _, stmt := range body.Statements {
+		if err := c.compileStatement(stmt); err != nil {
+			return err
+		}
+	}
+
+	// Save the upvalues before ending the compiler (we need them for OP_CLOSURE)
+	upvalues := c.current.upvalues
+
+	// End the function (this restores the enclosing state)
+	fn := c.endCompiler()
+
+	// Emit closure instruction in the enclosing function
+	fnIdx := c.chunk().AddConstant(fn)
+	c.emitByte(byte(bytecode.OP_CLOSURE), body.Token.Line)
+	c.emitU16(uint16(fnIdx), body.Token.Line)
+
+	// Emit upvalue descriptors (from the compiled function, not current state)
+	for i := 0; i < fn.UpvalueCount; i++ {
+		uv := upvalues[i]
+		if uv.IsLocal {
+			c.emitByte(1, body.Token.Line)
+		} else {
+			c.emitByte(0, body.Token.Line)
+		}
+		c.emitByte(byte(uv.Index), body.Token.Line)
+	}
+
+	return nil
+}
+
+func (c *Compiler) compileReturnStmt(r *ast.ReturnStmt) error {
+	if c.current.funcType == TYPE_SCRIPT {
+		return fmt.Errorf("cannot return from top-level code")
+	}
+
+	if r.Value != nil {
+		if err := c.compileExpression(r.Value); err != nil {
+			return err
+		}
+	} else {
+		c.emitByte(byte(bytecode.OP_NULL), r.Token.Line)
+	}
+
+	c.emitByte(byte(bytecode.OP_RETURN), r.Token.Line)
+	return nil
+}
+
+func (c *Compiler) addGlobalVariable(name string) int {
+	// Always add the name to the CURRENT chunk's constant pool
+	// (each function has its own chunk with its own constants)
+	idx := c.chunk().AddConstant(name)
+
+	// Only track in globals map at script level
+	if c.current.funcType == TYPE_SCRIPT {
+		c.globals[name] = idx
+	}
 	return idx
 }
 
 func (c *Compiler) getGlobalVariable(name string) (int, bool) {
-	idx, exists := c.globals[name]
-	return idx, exists
+	// Check if this global was defined (at script level)
+	_, exists := c.globals[name]
+	if !exists {
+		return -1, false
+	}
+	// Add the name to the current chunk's constants and return that index
+	idx := c.chunk().AddConstant(name)
+	return idx, true
 }
 
 func (c *Compiler) compileIfStmt(i *ast.IfStmt) error {
@@ -159,11 +517,13 @@ func (c *Compiler) compileIfStmt(i *ast.IfStmt) error {
 }
 
 func (c *Compiler) compileBlock(b *ast.Block) error {
+	c.beginScope()
 	for _, stmt := range b.Statements {
 		if err := c.compileStatement(stmt); err != nil {
 			return err
 		}
 	}
+	c.endScope(b.Token.Line)
 	return nil
 }
 
@@ -171,7 +531,7 @@ func (c *Compiler) compileWhileStmt(w *ast.WhileStmt) error {
 	line := w.Token.Line
 
 	// Remember start of loop (for jumping back)
-	loopStart := c.chunk.Count()
+	loopStart := c.chunk().Count()
 
 	// Compile the condition
 	if err := c.compileExpression(w.Condition); err != nil {
@@ -184,10 +544,14 @@ func (c *Compiler) compileWhileStmt(w *ast.WhileStmt) error {
 	// Pop the condition value (true case - entering loop body)
 	c.emitByte(byte(bytecode.OP_POP), line)
 
-	// Compile the body
-	if err := c.compileBlock(w.Body); err != nil {
-		return err
+	// Compile the body (with scope)
+	c.beginScope()
+	for _, stmt := range w.Body.Statements {
+		if err := c.compileStatement(stmt); err != nil {
+			return err
+		}
 	}
+	c.endScope(line)
 
 	// Emit jump back to loop start
 	c.emitLoop(loopStart, line)
@@ -206,7 +570,7 @@ func (c *Compiler) emitLoop(loopStart int, line int) {
 	c.emitByte(byte(bytecode.OP_JUMP_BACK), line)
 
 	// Calculate offset (from current position to loop start)
-	offset := c.chunk.Count() - loopStart + 2 // +2 for the offset bytes we're about to emit
+	offset := c.chunk().Count() - loopStart + 2 // +2 for the offset bytes we're about to emit
 
 	if offset > 65535 {
 		panic("loop body too large")
@@ -221,30 +585,31 @@ func (c *Compiler) emitJump(op bytecode.OpCode, line int) int {
 	c.emitByte(byte(op), line)
 	c.emitByte(0xff, line) // Placeholder high byte
 	c.emitByte(0xff, line) // Placeholder low byte
-	return c.chunk.Count() - 2 // Return position of the offset bytes
+	return c.chunk().Count() - 2 // Return position of the offset bytes
 }
 
 // patchJump patches a previously emitted jump to jump to the current position
 func (c *Compiler) patchJump(offset int) {
 	// Calculate the jump distance (from after the jump instruction to current position)
-	jump := c.chunk.Count() - offset - 2 // -2 because offset points to the high byte
+	jump := c.chunk().Count() - offset - 2 // -2 because offset points to the high byte
 
 	if jump > 65535 {
 		panic("jump too large")
 	}
 
-	c.chunk.Code[offset] = byte(jump >> 8)
-	c.chunk.Code[offset+1] = byte(jump)
+	c.chunk().Code[offset] = byte(jump >> 8)
+	c.chunk().Code[offset+1] = byte(jump)
 }
 
 // lastWasBuiltin checks if the last emitted opcode was OP_BUILTIN
 func (c *Compiler) lastWasBuiltin() bool {
-	if len(c.chunk.Code) < 3 {
+	code := c.chunk().Code
+	if len(code) < 3 {
 		return false
 	}
 	// OP_BUILTIN is followed by 2 bytes (builtin_id, arg_count)
 	// So we check 3 positions back
-	return bytecode.OpCode(c.chunk.Code[len(c.chunk.Code)-3]) == bytecode.OP_BUILTIN
+	return bytecode.OpCode(code[len(code)-3]) == bytecode.OP_BUILTIN
 }
 
 func (c *Compiler) compileExpression(expr ast.Expression) error {
@@ -277,24 +642,55 @@ func (c *Compiler) compileExpression(expr ast.Expression) error {
 	case *ast.AssignExpr:
 		return c.compileAssignment(e)
 
+	case *ast.FunctionExpr:
+		return c.compileFunctionExpr(e)
+
 	default:
 		return fmt.Errorf("unknown expression type: %T", expr)
 	}
 }
 
+func (c *Compiler) compileFunctionExpr(f *ast.FunctionExpr) error {
+	return c.compileFunction("", f.Params, f.Body, TYPE_FUNCTION)
+}
+
 func (c *Compiler) compileIdentifier(id *ast.Identifier) error {
-	// Look up the variable
-	idx, exists := c.getGlobalVariable(id.Name)
-	if !exists {
-		return fmt.Errorf("undefined variable: %s", id.Name)
+	line := id.Token.Line
+
+	// Try local variable first
+	localIdx := c.resolveLocal(id.Name)
+	if localIdx == -2 {
+		return fmt.Errorf("cannot read local variable in its own initializer: %s", id.Name)
+	}
+	if localIdx != -1 {
+		c.emitByte(byte(bytecode.OP_GET_LOCAL), line)
+		c.emitByte(byte(localIdx), line)
+		return nil
 	}
 
-	c.emitByte(byte(bytecode.OP_GET_GLOBAL), id.Token.Line)
-	c.emitU16(uint16(idx), id.Token.Line)
+	// Try upvalue (captured variable)
+	upvalueIdx := c.resolveUpvalue(id.Name)
+	if upvalueIdx != -1 {
+		c.emitByte(byte(bytecode.OP_GET_UPVALUE), line)
+		c.emitByte(byte(upvalueIdx), line)
+		return nil
+	}
+
+	// Must be a global variable
+	idx, exists := c.getGlobalVariable(id.Name)
+	if !exists {
+		// For globals, we add them lazily (they might be defined later)
+		idx = c.addGlobalVariable(id.Name)
+	}
+
+	c.emitByte(byte(bytecode.OP_GET_GLOBAL), line)
+	c.emitU16(uint16(idx), line)
 	return nil
 }
 
 func (c *Compiler) compileAssignment(a *ast.AssignExpr) error {
+	line := a.Token.Line
+
 	// Compile the value
 	if err := c.compileExpression(a.Value); err != nil {
 		return err
@@ -303,13 +699,30 @@ func (c *Compiler) compileAssignment(a *ast.AssignExpr) error {
 	// Get the target variable
 	switch target := a.Target.(type) {
 	case *ast.Identifier:
-		idx, exists := c.getGlobalVariable(target.Name)
-		if !exists {
-			return fmt.Errorf("undefined variable: %s", target.Name)
+		// Try local first
+		localIdx := c.resolveLocal(target.Name)
+		if localIdx != -1 && localIdx != -2 {
+			c.emitByte(byte(bytecode.OP_SET_LOCAL), line)
+			c.emitByte(byte(localIdx), line)
+			return nil
 		}
 
-		c.emitByte(byte(bytecode.OP_SET_GLOBAL), a.Token.Line)
-		c.emitU16(uint16(idx), a.Token.Line)
+		// Try upvalue
+		upvalueIdx := c.resolveUpvalue(target.Name)
+		if upvalueIdx != -1 {
+			c.emitByte(byte(bytecode.OP_SET_UPVALUE), line)
+			c.emitByte(byte(upvalueIdx), line)
+			return nil
+		}
+
+		// Must be global
+		idx, exists := c.getGlobalVariable(target.Name)
+		if !exists {
+			idx = c.addGlobalVariable(target.Name)
+		}
+
+		c.emitByte(byte(bytecode.OP_SET_GLOBAL), line)
+		c.emitU16(uint16(idx), line)
 		return nil
 
 	default:
@@ -318,14 +731,14 @@ func (c *Compiler) compileAssignment(a *ast.AssignExpr) error {
 }
 
 func (c *Compiler) compileNumber(n *ast.NumberLiteral) error {
-	idx := c.chunk.AddConstant(n.Value)
+	idx := c.chunk().AddConstant(n.Value)
 	c.emitByte(byte(bytecode.OP_CONSTANT), n.Token.Line)
 	c.emitU16(uint16(idx), n.Token.Line)
 	return nil
 }
 
 func (c *Compiler) compileString(s *ast.StringLiteral) error {
-	idx := c.chunk.AddConstant(s.Value)
+	idx := c.chunk().AddConstant(s.Value)
 	c.emitByte(byte(bytecode.OP_CONSTANT), s.Token.Line)
 	c.emitU16(uint16(idx), s.Token.Line)
 	return nil
@@ -411,6 +824,8 @@ func (c *Compiler) compileUnary(u *ast.UnaryExpr) error {
 }
 
 func (c *Compiler) compileCall(call *ast.CallExpr) error {
+	line := call.Token.Line
+
 	// Check if it's a built-in function
 	if ident, ok := call.Function.(*ast.Identifier); ok {
 		builtinID, isBuiltin := builtinFunctions[ident.Name]
@@ -419,17 +834,37 @@ func (c *Compiler) compileCall(call *ast.CallExpr) error {
 		}
 	}
 
-	// Regular function call - will be implemented later
-	return fmt.Errorf("user function calls not yet implemented")
+	// Compile the function expression (callee)
+	if err := c.compileExpression(call.Function); err != nil {
+		return err
+	}
+
+	// Compile the arguments
+	for _, arg := range call.Arguments {
+		if err := c.compileExpression(arg); err != nil {
+			return err
+		}
+	}
+
+	// Emit the call instruction
+	argCount := len(call.Arguments)
+	if argCount > 255 {
+		return fmt.Errorf("cannot have more than 255 arguments")
+	}
+
+	c.emitByte(byte(bytecode.OP_CALL), line)
+	c.emitByte(byte(argCount), line)
+
+	return nil
 }
 
 var builtinFunctions = map[string]int{
-	"println": BUILTIN_PRINTLN,
-	"print":   BUILTIN_PRINT,
-	"len":     BUILTIN_LEN,
-	"push":    BUILTIN_PUSH,
-	"pop":     BUILTIN_POP,
-	"typeof":  BUILTIN_TYPEOF,
+	"println": bytecode.BUILTIN_PRINTLN,
+	"print":   bytecode.BUILTIN_PRINT,
+	"len":     bytecode.BUILTIN_LEN,
+	"push":    bytecode.BUILTIN_PUSH,
+	"pop":     bytecode.BUILTIN_POP,
+	"typeof":  bytecode.BUILTIN_TYPEOF,
 }
 
 func (c *Compiler) compileBuiltinCall(call *ast.CallExpr, builtinID int) error {
@@ -459,11 +894,11 @@ func isStringExpr(expr ast.Expression) bool {
 // Bytecode emission helpers
 
 func (c *Compiler) emitByte(b byte, line int) {
-	c.chunk.Write(b, line)
+	c.chunk().Write(b, line)
 }
 
 func (c *Compiler) emitU16(v uint16, line int) {
-	c.chunk.WriteU16(v, line)
+	c.chunk().WriteU16(v, line)
 }
 
 func (c *Compiler) emitBytes(line int, bytes ...byte) {

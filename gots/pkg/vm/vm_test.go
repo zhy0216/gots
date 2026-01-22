@@ -401,3 +401,332 @@ func compileAndCreateVM(t *testing.T, source string) *VM {
 	vm := New(chunk)
 	return vm
 }
+
+// ============================================================
+// Functions Tests
+// ============================================================
+
+func TestVMSimpleFunction(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `
+		function greet(): void {
+			println(42);
+		}
+		greet();
+	`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	if output != "42\n" {
+		t.Errorf("expected '42\\n', got %q", output)
+	}
+}
+
+func TestVMFunctionWithReturn(t *testing.T) {
+	vm := runVM(t, `
+		function add(a: number, b: number): number {
+			return a + b;
+		}
+		add(3, 4);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 7 {
+		t.Errorf("expected 7, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMFunctionWithMultipleParameters(t *testing.T) {
+	vm := runVM(t, `
+		function sum3(a: number, b: number, c: number): number {
+			return a + b + c;
+		}
+		sum3(10, 20, 30);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 60 {
+		t.Errorf("expected 60, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMFunctionLocalVariables(t *testing.T) {
+	vm := runVM(t, `
+		function compute(x: number): number {
+			let y: number = x * 2;
+			let z: number = y + 10;
+			return z;
+		}
+		compute(5);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 20 {
+		t.Errorf("expected 20 (5*2+10), got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMRecursiveFunction(t *testing.T) {
+	vm := runVM(t, `
+		function factorial(n: number): number {
+			if (n <= 1) {
+				return 1;
+			}
+			return n * factorial(n - 1);
+		}
+		factorial(5);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 120 {
+		t.Errorf("expected 120 (5!), got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMFibonacci(t *testing.T) {
+	vm := runVM(t, `
+		function fib(n: number): number {
+			if (n < 2) {
+				return n;
+			}
+			return fib(n - 1) + fib(n - 2);
+		}
+		fib(10);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 55 {
+		t.Errorf("expected 55 (fib(10)), got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMNestedFunctionCalls(t *testing.T) {
+	vm := runVM(t, `
+		function double(x: number): number {
+			return x * 2;
+		}
+		function quadruple(x: number): number {
+			return double(double(x));
+		}
+		quadruple(5);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 20 {
+		t.Errorf("expected 20, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMFunctionExpression(t *testing.T) {
+	vm := runVM(t, `
+		let square: Function = function(x: number): number {
+			return x * x;
+		};
+		square(7);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 49 {
+		t.Errorf("expected 49, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+// ============================================================
+// Closures Tests
+// ============================================================
+
+func TestVMClosureSimple(t *testing.T) {
+	vm := runVM(t, `
+		function makeAdder(x: number): number {
+			return function(y: number): number {
+				return x + y;
+			};
+		}
+		let add5: Function = makeAdder(5);
+		add5(10);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 15 {
+		t.Errorf("expected 15, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMClosureCounter(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `
+		function makeCounter(): number {
+			let count: number = 0;
+			return function(): number {
+				count = count + 1;
+				return count;
+			};
+		}
+		let counter: Function = makeCounter();
+		println(counter());
+		println(counter());
+		println(counter());
+	`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	expected := "1\n2\n3\n"
+	if output != expected {
+		t.Errorf("expected %q, got %q", expected, output)
+	}
+}
+
+func TestVMClosureMultipleInstances(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `
+		function makeCounter(): number {
+			let count: number = 0;
+			return function(): number {
+				count = count + 1;
+				return count;
+			};
+		}
+		let c1: Function = makeCounter();
+		let c2: Function = makeCounter();
+		println(c1());
+		println(c1());
+		println(c2());
+		println(c1());
+		println(c2());
+	`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	expected := "1\n2\n1\n3\n2\n"
+	if output != expected {
+		t.Errorf("expected %q, got %q", expected, output)
+	}
+}
+
+func TestVMClosureNestedCapture(t *testing.T) {
+	vm := runVM(t, `
+		function outer(a: number): number {
+			let b: number = 10;
+			function middle(): number {
+				let c: number = 100;
+				return function(): number {
+					return a + b + c;
+				};
+			}
+			return middle();
+		}
+		let f: Function = outer(1);
+		f();
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 111 {
+		t.Errorf("expected 111 (1+10+100), got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMClosureCapturesParameter(t *testing.T) {
+	vm := runVM(t, `
+		function multiplier(factor: number): number {
+			return function(x: number): number {
+				return x * factor;
+			};
+		}
+		let triple: Function = multiplier(3);
+		triple(7);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 21 {
+		t.Errorf("expected 21, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMClosureModifiesEnclosedVariable(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `
+		function createAccumulator(): number {
+			let total: number = 0;
+			return function(x: number): number {
+				total = total + x;
+				return total;
+			};
+		}
+		let acc: Function = createAccumulator();
+		println(acc(5));
+		println(acc(10));
+		println(acc(3));
+	`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	expected := "5\n15\n18\n"
+	if output != expected {
+		t.Errorf("expected %q, got %q", expected, output)
+	}
+}
+
+// ============================================================
+// Local Variables in Blocks Tests
+// ============================================================
+
+func TestVMLocalVariablesInBlock(t *testing.T) {
+	vm := runVM(t, `
+		let x: number = 10;
+		{
+			let x: number = 20;
+			x;
+		}
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 20 {
+		t.Errorf("expected 20 (inner x), got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMLocalVariableShadowing(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `
+		let x: number = 10;
+		println(x);
+		{
+			let x: number = 20;
+			println(x);
+		}
+		println(x);
+	`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	expected := "10\n20\n10\n"
+	if output != expected {
+		t.Errorf("expected %q, got %q", expected, output)
+	}
+}
