@@ -272,6 +272,121 @@ func TestCompileReturn(t *testing.T) {
 	}
 }
 
+func TestCompileGlobalVariable(t *testing.T) {
+	input := `let x: number = 42;`
+	chunk := compileSource(t, input)
+
+	// Should have: OP_CONSTANT (42), OP_SET_GLOBAL
+	foundSetGlobal := false
+	for i := 0; i < len(chunk.Code); i++ {
+		if bytecode.OpCode(chunk.Code[i]) == bytecode.OP_SET_GLOBAL {
+			foundSetGlobal = true
+			break
+		}
+	}
+	if !foundSetGlobal {
+		t.Error("expected OP_SET_GLOBAL in bytecode")
+	}
+}
+
+func TestCompileGlobalVariableAccess(t *testing.T) {
+	input := `let x: number = 42; x;`
+	chunk := compileSource(t, input)
+
+	// Should have OP_GET_GLOBAL when accessing x
+	foundGetGlobal := false
+	for i := 0; i < len(chunk.Code); i++ {
+		if bytecode.OpCode(chunk.Code[i]) == bytecode.OP_GET_GLOBAL {
+			foundGetGlobal = true
+			break
+		}
+	}
+	if !foundGetGlobal {
+		t.Error("expected OP_GET_GLOBAL in bytecode")
+	}
+}
+
+func TestCompileGlobalVariableAssignment(t *testing.T) {
+	input := `let x: number = 1; x = 2;`
+	chunk := compileSource(t, input)
+
+	// Should have two OP_SET_GLOBAL (declaration and assignment)
+	setGlobalCount := 0
+	for i := 0; i < len(chunk.Code); i++ {
+		if bytecode.OpCode(chunk.Code[i]) == bytecode.OP_SET_GLOBAL {
+			setGlobalCount++
+		}
+	}
+	if setGlobalCount < 2 {
+		t.Errorf("expected at least 2 OP_SET_GLOBAL, got %d", setGlobalCount)
+	}
+}
+
+func TestCompileIfStatement(t *testing.T) {
+	input := `if (true) { println(1); }`
+	chunk := compileSource(t, input)
+
+	// Should have OP_JUMP_IF_FALSE for the condition
+	found := false
+	for i := 0; i < len(chunk.Code); i++ {
+		if bytecode.OpCode(chunk.Code[i]) == bytecode.OP_JUMP_IF_FALSE {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected OP_JUMP_IF_FALSE in bytecode")
+	}
+}
+
+func TestCompileIfElseStatement(t *testing.T) {
+	input := `if (false) { println(1); } else { println(2); }`
+	chunk := compileSource(t, input)
+
+	// Should have OP_JUMP_IF_FALSE and OP_JUMP
+	foundJumpIfFalse := false
+	foundJump := false
+	for i := 0; i < len(chunk.Code); i++ {
+		op := bytecode.OpCode(chunk.Code[i])
+		if op == bytecode.OP_JUMP_IF_FALSE {
+			foundJumpIfFalse = true
+		}
+		if op == bytecode.OP_JUMP {
+			foundJump = true
+		}
+	}
+	if !foundJumpIfFalse {
+		t.Error("expected OP_JUMP_IF_FALSE in bytecode")
+	}
+	if !foundJump {
+		t.Error("expected OP_JUMP in bytecode for else branch")
+	}
+}
+
+func TestCompileWhileStatement(t *testing.T) {
+	input := `let x: number = 0; while (x < 3) { x = x + 1; }`
+	chunk := compileSource(t, input)
+
+	// Should have OP_JUMP_IF_FALSE and OP_JUMP_BACK
+	foundJumpIfFalse := false
+	foundJumpBack := false
+	for i := 0; i < len(chunk.Code); i++ {
+		op := bytecode.OpCode(chunk.Code[i])
+		if op == bytecode.OP_JUMP_IF_FALSE {
+			foundJumpIfFalse = true
+		}
+		if op == bytecode.OP_JUMP_BACK {
+			foundJumpBack = true
+		}
+	}
+	if !foundJumpIfFalse {
+		t.Error("expected OP_JUMP_IF_FALSE in bytecode")
+	}
+	if !foundJumpBack {
+		t.Error("expected OP_JUMP_BACK in bytecode for loop")
+	}
+}
+
 // Helper functions
 
 func compileSource(t *testing.T, source string) *bytecode.Chunk {

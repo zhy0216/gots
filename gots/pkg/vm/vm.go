@@ -17,21 +17,23 @@ const (
 // VM is the virtual machine that executes bytecode.
 type VM struct {
 	chunk      *bytecode.Chunk
-	ip         int      // Instruction pointer
-	stack      []Value  // Value stack
-	sp         int      // Stack pointer (points to next free slot)
+	ip         int              // Instruction pointer
+	stack      []Value          // Value stack
+	sp         int              // Stack pointer (points to next free slot)
+	globals    map[string]Value // Global variables
 	output     io.Writer
-	lastPopped Value    // Last value popped (for testing)
+	lastPopped Value            // Last value popped (for testing)
 }
 
 // New creates a new VM with the given bytecode chunk.
 func New(chunk *bytecode.Chunk) *VM {
 	return &VM{
-		chunk:  chunk,
-		ip:     0,
-		stack:  make([]Value, STACK_MAX),
-		sp:     0,
-		output: os.Stdout,
+		chunk:   chunk,
+		ip:      0,
+		stack:   make([]Value, STACK_MAX),
+		sp:      0,
+		globals: make(map[string]Value),
+		output:  os.Stdout,
 	}
 }
 
@@ -162,6 +164,40 @@ func (vm *VM) Run() error {
 
 		case bytecode.OP_POP:
 			vm.lastPopped = vm.pop()
+
+		case bytecode.OP_GET_GLOBAL:
+			nameIdx := vm.readU16()
+			name := vm.chunk.Constants[nameIdx].(string)
+			val, exists := vm.globals[name]
+			if !exists {
+				return fmt.Errorf("undefined variable: %s", name)
+			}
+			vm.push(val)
+
+		case bytecode.OP_SET_GLOBAL:
+			nameIdx := vm.readU16()
+			name := vm.chunk.Constants[nameIdx].(string)
+			vm.globals[name] = vm.peek(0)
+
+		case bytecode.OP_JUMP:
+			offset := vm.readU16()
+			vm.ip += int(offset)
+
+		case bytecode.OP_JUMP_BACK:
+			offset := vm.readU16()
+			vm.ip -= int(offset)
+
+		case bytecode.OP_JUMP_IF_FALSE:
+			offset := vm.readU16()
+			if !IsTruthy(vm.peek(0)) {
+				vm.ip += int(offset)
+			}
+
+		case bytecode.OP_JUMP_IF_TRUE:
+			offset := vm.readU16()
+			if IsTruthy(vm.peek(0)) {
+				vm.ip += int(offset)
+			}
 
 		case bytecode.OP_BUILTIN:
 			builtinID := vm.readByte()

@@ -199,6 +199,169 @@ func TestVMMultipleStatements(t *testing.T) {
 	}
 }
 
+func TestVMGlobalVariable(t *testing.T) {
+	vm := runVM(t, `let x: number = 42; x;`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 42 {
+		t.Errorf("expected 42, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMGlobalVariableAssignment(t *testing.T) {
+	vm := runVM(t, `let x: number = 1; x = 42; x;`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 42 {
+		t.Errorf("expected 42, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMGlobalVariableInExpression(t *testing.T) {
+	vm := runVM(t, `let x: number = 10; let y: number = 5; x + y;`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 15 {
+		t.Errorf("expected 15, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMGlobalVariablePrintln(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `let x: number = 42; println(x);`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	if output != "42\n" {
+		t.Errorf("expected '42\\n', got %q", output)
+	}
+}
+
+func TestVMGlobalStringVariable(t *testing.T) {
+	vm := runVM(t, `let s: string = "hello"; s;`)
+	if !vm.lastPopped.IsString() {
+		t.Fatalf("expected string, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsString() != "hello" {
+		t.Errorf("expected 'hello', got %q", vm.lastPopped.AsString())
+	}
+}
+
+func TestVMIfStatementTrue(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `if (true) { println(1); }`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	if output != "1\n" {
+		t.Errorf("expected '1\\n', got %q", output)
+	}
+}
+
+func TestVMIfStatementFalse(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `if (false) { println(1); }`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	if output != "" {
+		t.Errorf("expected no output, got %q", output)
+	}
+}
+
+func TestVMIfElseStatementTrue(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `if (true) { println(1); } else { println(2); }`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	if output != "1\n" {
+		t.Errorf("expected '1\\n', got %q", output)
+	}
+}
+
+func TestVMIfElseStatementFalse(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `if (false) { println(1); } else { println(2); }`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	if output != "2\n" {
+		t.Errorf("expected '2\\n', got %q", output)
+	}
+}
+
+func TestVMIfWithCondition(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `let x: number = 5; if (x > 3) { println(1); } else { println(2); }`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	if output != "1\n" {
+		t.Errorf("expected '1\\n', got %q", output)
+	}
+}
+
+func TestVMWhileLoop(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `let x: number = 0; while (x < 3) { println(x); x = x + 1; }`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	expected := "0\n1\n2\n"
+	if output != expected {
+		t.Errorf("expected %q, got %q", expected, output)
+	}
+}
+
+func TestVMWhileLoopNeverExecutes(t *testing.T) {
+	var buf bytes.Buffer
+	vm := newVMWithOutput(t, `while (false) { println(1); }`, &buf)
+	err := vm.Run()
+	if err != nil {
+		t.Fatalf("VM error: %v", err)
+	}
+
+	output := buf.String()
+	if output != "" {
+		t.Errorf("expected no output, got %q", output)
+	}
+}
+
+func TestVMWhileLoopSum(t *testing.T) {
+	vm := runVM(t, `let sum: number = 0; let i: number = 1; while (i <= 5) { sum = sum + i; i = i + 1; } sum;`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 15 {
+		t.Errorf("expected 15 (1+2+3+4+5), got %v", vm.lastPopped.AsNumber())
+	}
+}
+
 // Helper functions
 
 func runVM(t *testing.T, source string) *VM {
