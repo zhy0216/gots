@@ -1,0 +1,10 @@
+--- old.jsdocInTypeScript.js
++++ new.jsdocInTypeScript.js
+@@= skipped -93, +93 lines =@@
+     };
+ })();
+ class T {
++    prop;
+ }
+ x.prop;
+ // @param type has no effect.

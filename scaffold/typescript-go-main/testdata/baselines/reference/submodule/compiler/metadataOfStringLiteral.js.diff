@@ -1,0 +1,10 @@
+--- old.metadataOfStringLiteral.js
++++ new.metadataOfStringLiteral.js
+@@= skipped -19, +19 lines =@@
+ };
+ function PropDeco(target, propKey) { }
+ class Foo {
++    foo;
+ }
+ __decorate([
+     PropDeco,
