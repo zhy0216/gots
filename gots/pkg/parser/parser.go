@@ -85,6 +85,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.THIS, p.parseThisExpression)
 	p.registerPrefix(token.NEW, p.parseNewExpression)
 	p.registerPrefix(token.FUNCTION, p.parseFunctionExpression)
+	p.registerPrefix(token.SUPER, p.parseSuperExpression)
 
 	p.infixParseFns = make(map[token.Type]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseBinaryExpression)
@@ -370,6 +371,18 @@ func (p *Parser) parsePropertyDef() *ast.PropertyDef {
 
 func (p *Parser) parseThisExpression() ast.Expression {
 	return &ast.ThisExpr{Token: p.curToken}
+}
+
+func (p *Parser) parseSuperExpression() ast.Expression {
+	expr := &ast.SuperExpr{Token: p.curToken}
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	expr.Arguments = p.parseExpressionList(token.RPAREN)
+
+	return expr
 }
 
 func (p *Parser) parseNewExpression() ast.Expression {

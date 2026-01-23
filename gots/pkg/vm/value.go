@@ -164,6 +164,22 @@ func (v Value) AsInstance() *ObjInstance {
 	return nil
 }
 
+// IsBoundMethod returns true if the value is a bound method object.
+func (v Value) IsBoundMethod() bool {
+	if !v.IsObject() {
+		return false
+	}
+	return v.obj.Type() == OBJ_BOUND_METHOD
+}
+
+// AsBoundMethod returns the bound method object.
+func (v Value) AsBoundMethod() *ObjBoundMethod {
+	if b, ok := v.obj.(*ObjBoundMethod); ok {
+		return b
+	}
+	return nil
+}
+
 // String returns a string representation of the value.
 func (v Value) String() string {
 	switch v.Type {
@@ -247,6 +263,7 @@ const (
 	OBJ_UPVALUE
 	OBJ_CLASS
 	OBJ_INSTANCE
+	OBJ_BOUND_METHOD
 )
 
 // Object is the interface for heap-allocated objects.
@@ -399,3 +416,12 @@ func NewObjInstance(class *ObjClass) *ObjInstance {
 		Fields: make(map[string]Value),
 	}
 }
+
+// ObjBoundMethod represents a method bound to an instance.
+type ObjBoundMethod struct {
+	Receiver Value       // The instance the method is bound to
+	Method   *ObjClosure // The method closure
+}
+
+func (b *ObjBoundMethod) Type() ObjectType { return OBJ_BOUND_METHOD }
+func (b *ObjBoundMethod) String() string   { return b.Method.String() }

@@ -730,3 +730,172 @@ func TestVMLocalVariableShadowing(t *testing.T) {
 		t.Errorf("expected %q, got %q", expected, output)
 	}
 }
+
+// ============================================================
+// Phase 5: Arrays Tests
+// ============================================================
+
+func TestVMArrayLiteral(t *testing.T) {
+	vm := runVM(t, `
+		let arr: number[] = [1, 2, 3];
+		arr;
+	`)
+	if !vm.lastPopped.IsArray() {
+		t.Fatalf("expected array, got %v", vm.lastPopped.Type)
+	}
+	arr := vm.lastPopped.AsArray()
+	if len(arr.Elements) != 3 {
+		t.Errorf("expected 3 elements, got %d", len(arr.Elements))
+	}
+}
+
+func TestVMArrayIndexRead(t *testing.T) {
+	vm := runVM(t, `
+		let arr: number[] = [10, 20, 30];
+		arr[1];
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 20 {
+		t.Errorf("expected 20, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMArrayIndexWrite(t *testing.T) {
+	vm := runVM(t, `
+		let arr: number[] = [1, 2, 3];
+		arr[1] = 42;
+		arr[1];
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 42 {
+		t.Errorf("expected 42, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMArrayLen(t *testing.T) {
+	vm := runVM(t, `
+		let arr: number[] = [1, 2, 3, 4, 5];
+		len(arr);
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 5 {
+		t.Errorf("expected 5, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+// ============================================================
+// Phase 5: Object Literals Tests
+// ============================================================
+
+func TestVMObjectLiteral(t *testing.T) {
+	vm := runVM(t, `
+		let obj: {x: number, y: number} = {x: 10, y: 20};
+		obj.x;
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 10 {
+		t.Errorf("expected 10, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMObjectPropertyWrite(t *testing.T) {
+	vm := runVM(t, `
+		let obj: {x: number} = {x: 10};
+		obj.x = 42;
+		obj.x;
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 42 {
+		t.Errorf("expected 42, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+// ============================================================
+// Phase 5: Classes Tests
+// ============================================================
+
+func TestVMClassBasic(t *testing.T) {
+	vm := runVM(t, `
+		class Point {
+			x: number;
+			y: number;
+			constructor(x: number, y: number) {
+				this.x = x;
+				this.y = y;
+			}
+		}
+		let p: Point = new Point(3, 4);
+		p.x;
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 3 {
+		t.Errorf("expected 3, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMClassMethod(t *testing.T) {
+	vm := runVM(t, `
+		class Counter {
+			value: number;
+			constructor() {
+				this.value = 0;
+			}
+			increment(): void {
+				this.value = this.value + 1;
+			}
+			get(): number {
+				return this.value;
+			}
+		}
+		let c: Counter = new Counter();
+		c.increment();
+		c.increment();
+		c.increment();
+		c.get();
+	`)
+	if !vm.lastPopped.IsNumber() {
+		t.Fatalf("expected number, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsNumber() != 3 {
+		t.Errorf("expected 3, got %v", vm.lastPopped.AsNumber())
+	}
+}
+
+func TestVMClassInheritance(t *testing.T) {
+	vm := runVM(t, `
+		class Animal {
+			name: string;
+			constructor(name: string) {
+				this.name = name;
+			}
+			speak(): string {
+				return this.name;
+			}
+		}
+		class Dog extends Animal {
+			constructor(name: string) {
+				super(name);
+			}
+		}
+		let d: Dog = new Dog("Buddy");
+		d.speak();
+	`)
+	if !vm.lastPopped.IsString() {
+		t.Fatalf("expected string, got %v", vm.lastPopped.Type)
+	}
+	if vm.lastPopped.AsString() != "Buddy" {
+		t.Errorf("expected 'Buddy', got %v", vm.lastPopped.AsString())
+	}
+}

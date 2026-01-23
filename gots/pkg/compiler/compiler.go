@@ -288,8 +288,8 @@ func (c *Compiler) compileStatement(stmt ast.Statement) error {
 		if err := c.compileExpression(s.Expr); err != nil {
 			return err
 		}
-		// Pop the result of expression statement (unless it's a builtin that doesn't push)
-		if !c.lastWasBuiltin() {
+		// Pop the result of expression statement (unless it's a void builtin like println)
+		if !c.lastWasVoidBuiltin() {
 			c.emitByte(byte(bytecode.OP_POP), s.Token.Line)
 		}
 		return nil
@@ -311,6 +311,13 @@ func (c *Compiler) compileStatement(stmt ast.Statement) error {
 
 	case *ast.Block:
 		return c.compileBlock(s)
+
+	case *ast.ClassDecl:
+		return c.compileClassDecl(s)
+
+	case *ast.TypeAliasDecl:
+		// Type aliases are handled at type-check time, nothing to compile
+		return nil
 
 	default:
 		return fmt.Errorf("unknown statement type: %T", stmt)
@@ -601,15 +608,21 @@ func (c *Compiler) patchJump(offset int) {
 	c.chunk().Code[offset+1] = byte(jump)
 }
 
-// lastWasBuiltin checks if the last emitted opcode was OP_BUILTIN
-func (c *Compiler) lastWasBuiltin() bool {
+// lastWasVoidBuiltin checks if the last emitted opcode was a void builtin (println/print)
+func (c *Compiler) lastWasVoidBuiltin() bool {
 	code := c.chunk().Code
 	if len(code) < 3 {
 		return false
 	}
 	// OP_BUILTIN is followed by 2 bytes (builtin_id, arg_count)
 	// So we check 3 positions back
-	return bytecode.OpCode(code[len(code)-3]) == bytecode.OP_BUILTIN
+	if bytecode.OpCode(code[len(code)-3]) != bytecode.OP_BUILTIN {
+		return false
+	}
+	// Check the builtin ID (which is right after OP_BUILTIN)
+	builtinID := code[len(code)-2]
+	// Only println and print are void builtins
+	return builtinID == bytecode.BUILTIN_PRINTLN || builtinID == bytecode.BUILTIN_PRINT
 }
 
 func (c *Compiler) compileExpression(expr ast.Expression) error {
@@ -644,6 +657,27 @@ func (c *Compiler) compileExpression(expr ast.Expression) error {
 
 	case *ast.FunctionExpr:
 		return c.compileFunctionExpr(e)
+
+	case *ast.ArrayLiteral:
+		return c.compileArrayLiteral(e)
+
+	case *ast.ObjectLiteral:
+		return c.compileObjectLiteral(e)
+
+	case *ast.IndexExpr:
+		return c.compileIndexExpr(e)
+
+	case *ast.PropertyExpr:
+		return c.compilePropertyExpr(e)
+
+	case *ast.NewExpr:
+		return c.compileNewExpr(e)
+
+	case *ast.ThisExpr:
+		return c.compileThisExpr(e)
+
+	case *ast.SuperExpr:
+		return c.compileSuperExpr(e)
 
 	default:
 		return fmt.Errorf("unknown expression type: %T", expr)
@@ -691,14 +725,14 @@ func (c *Compiler) compileIdentifier(id *ast.Identifier) error {
 func (c *Compiler) compileAssignment(a *ast.AssignExpr) error {
 	line := a.Token.Line
 
-	// Compile the value
-	if err := c.compileExpression(a.Value); err != nil {
-		return err
-	}
-
 	// Get the target variable
 	switch target := a.Target.(type) {
 	case *ast.Identifier:
+		// Compile the value
+		if err := c.compileExpression(a.Value); err != nil {
+			return err
+		}
+
 		// Try local first
 		localIdx := c.resolveLocal(target.Name)
 		if localIdx != -1 && localIdx != -2 {
@@ -723,6 +757,35 @@ func (c *Compiler) compileAssignment(a *ast.AssignExpr) error {
 
 		c.emitByte(byte(bytecode.OP_SET_GLOBAL), line)
 		c.emitU16(uint16(idx), line)
+		return nil
+
+	case *ast.IndexExpr:
+		// Compile: array[index] = value
+		// Stack order: array, index, value
+		if err := c.compileExpression(target.Object); err != nil {
+			return err
+		}
+		if err := c.compileExpression(target.Index); err != nil {
+			return err
+		}
+		if err := c.compileExpression(a.Value); err != nil {
+			return err
+		}
+		c.emitByte(byte(bytecode.OP_SET_INDEX), line)
+		return nil
+
+	case *ast.PropertyExpr:
+		// Compile: obj.prop = value
+		// Stack order: object, value
+		if err := c.compileExpression(target.Object); err != nil {
+			return err
+		}
+		if err := c.compileExpression(a.Value); err != nil {
+			return err
+		}
+		nameIdx := c.chunk().AddConstant(target.Property)
+		c.emitByte(byte(bytecode.OP_SET_PROPERTY), line)
+		c.emitU16(uint16(nameIdx), line)
 		return nil
 
 	default:
@@ -905,4 +968,259 @@ func (c *Compiler) emitBytes(line int, bytes ...byte) {
 	for _, b := range bytes {
 		c.emitByte(b, line)
 	}
+}
+
+// ----------------------------------------------------------------------------
+// Array and Object Compilation
+// ----------------------------------------------------------------------------
+
+func (c *Compiler) compileArrayLiteral(arr *ast.ArrayLiteral) error {
+	line := arr.Token.Line
+
+	// Compile all elements
+	for _, elem := range arr.Elements {
+		if err := c.compileExpression(elem); err != nil {
+			return err
+		}
+	}
+
+	// Emit OP_ARRAY with element count
+	count := len(arr.Elements)
+	if count > 65535 {
+		return fmt.Errorf("array literal too large (max 65535 elements)")
+	}
+
+	c.emitByte(byte(bytecode.OP_ARRAY), line)
+	c.emitU16(uint16(count), line)
+
+	return nil
+}
+
+func (c *Compiler) compileObjectLiteral(obj *ast.ObjectLiteral) error {
+	line := obj.Token.Line
+
+	// Compile all key-value pairs (key, then value)
+	for _, prop := range obj.Properties {
+		// Push key as string constant
+		keyIdx := c.chunk().AddConstant(prop.Key)
+		c.emitByte(byte(bytecode.OP_CONSTANT), line)
+		c.emitU16(uint16(keyIdx), line)
+
+		// Compile value
+		if err := c.compileExpression(prop.Value); err != nil {
+			return err
+		}
+	}
+
+	// Emit OP_OBJECT with property count
+	count := len(obj.Properties)
+	if count > 65535 {
+		return fmt.Errorf("object literal too large (max 65535 properties)")
+	}
+
+	c.emitByte(byte(bytecode.OP_OBJECT), line)
+	c.emitU16(uint16(count), line)
+
+	return nil
+}
+
+func (c *Compiler) compileIndexExpr(idx *ast.IndexExpr) error {
+	line := idx.Token.Line
+
+	// Compile the object/array
+	if err := c.compileExpression(idx.Object); err != nil {
+		return err
+	}
+
+	// Compile the index
+	if err := c.compileExpression(idx.Index); err != nil {
+		return err
+	}
+
+	c.emitByte(byte(bytecode.OP_GET_INDEX), line)
+	return nil
+}
+
+func (c *Compiler) compilePropertyExpr(prop *ast.PropertyExpr) error {
+	line := prop.Token.Line
+
+	// Compile the object
+	if err := c.compileExpression(prop.Object); err != nil {
+		return err
+	}
+
+	// Emit OP_GET_PROPERTY with property name
+	nameIdx := c.chunk().AddConstant(prop.Property)
+	c.emitByte(byte(bytecode.OP_GET_PROPERTY), line)
+	c.emitU16(uint16(nameIdx), line)
+
+	return nil
+}
+
+// ----------------------------------------------------------------------------
+// Class Compilation
+// ----------------------------------------------------------------------------
+
+func (c *Compiler) compileNewExpr(expr *ast.NewExpr) error {
+	line := expr.Token.Line
+
+	// Get the class
+	classIdx := c.chunk().AddConstant(expr.ClassName)
+	c.emitByte(byte(bytecode.OP_GET_GLOBAL), line)
+	c.emitU16(uint16(classIdx), line)
+
+	// Compile arguments
+	for _, arg := range expr.Arguments {
+		if err := c.compileExpression(arg); err != nil {
+			return err
+		}
+	}
+
+	// Emit call instruction (the class acts as a constructor)
+	argCount := len(expr.Arguments)
+	if argCount > 255 {
+		return fmt.Errorf("cannot have more than 255 constructor arguments")
+	}
+
+	c.emitByte(byte(bytecode.OP_CALL), line)
+	c.emitByte(byte(argCount), line)
+
+	return nil
+}
+
+func (c *Compiler) compileThisExpr(expr *ast.ThisExpr) error {
+	line := expr.Token.Line
+
+	if c.current.funcType != TYPE_METHOD {
+		return fmt.Errorf("cannot use 'this' outside of a method")
+	}
+
+	// 'this' is always in slot 0 of the current frame
+	c.emitByte(byte(bytecode.OP_GET_LOCAL), line)
+	c.emitByte(0, line)
+
+	return nil
+}
+
+func (c *Compiler) compileSuperExpr(expr *ast.SuperExpr) error {
+	line := expr.Token.Line
+
+	if c.current.funcType != TYPE_METHOD {
+		return fmt.Errorf("cannot use 'super' outside of a method")
+	}
+
+	// Get 'this' (slot 0)
+	c.emitByte(byte(bytecode.OP_GET_LOCAL), line)
+	c.emitByte(0, line)
+
+	// Compile arguments
+	for _, arg := range expr.Arguments {
+		if err := c.compileExpression(arg); err != nil {
+			return err
+		}
+	}
+
+	// Emit super invoke for constructor call
+	initIdx := c.chunk().AddConstant("constructor")
+	c.emitByte(byte(bytecode.OP_SUPER_INVOKE), line)
+	c.emitU16(uint16(initIdx), line)
+	c.emitByte(byte(len(expr.Arguments)), line)
+
+	return nil
+}
+
+func (c *Compiler) compileClassDecl(decl *ast.ClassDecl) error {
+	line := decl.Token.Line
+
+	// Create the class
+	nameIdx := c.chunk().AddConstant(decl.Name)
+	c.emitByte(byte(bytecode.OP_CLASS), line)
+	c.emitU16(uint16(nameIdx), line)
+
+	// Define the class as a global
+	if c.current.scopeDepth > 0 {
+		if err := c.addLocal(decl.Name); err != nil {
+			return err
+		}
+		c.markInitialized()
+	} else {
+		globalIdx := c.addGlobalVariable(decl.Name)
+		c.emitByte(byte(bytecode.OP_SET_GLOBAL), line)
+		c.emitU16(uint16(globalIdx), line)
+		c.emitByte(byte(bytecode.OP_POP), line)
+	}
+
+	// Handle inheritance
+	if decl.SuperClass != "" {
+		// Get the superclass
+		superIdx := c.chunk().AddConstant(decl.SuperClass)
+		c.emitByte(byte(bytecode.OP_GET_GLOBAL), line)
+		c.emitU16(uint16(superIdx), line)
+
+		// Get the subclass
+		if c.current.scopeDepth > 0 {
+			localIdx := c.resolveLocal(decl.Name)
+			c.emitByte(byte(bytecode.OP_GET_LOCAL), line)
+			c.emitByte(byte(localIdx), line)
+		} else {
+			c.emitByte(byte(bytecode.OP_GET_GLOBAL), line)
+			c.emitU16(uint16(nameIdx), line)
+		}
+
+		// Emit inherit instruction
+		c.emitByte(byte(bytecode.OP_INHERIT), line)
+	}
+
+	// Compile constructor
+	if decl.Constructor != nil {
+		// Get the class onto the stack
+		if c.current.scopeDepth > 0 {
+			localIdx := c.resolveLocal(decl.Name)
+			c.emitByte(byte(bytecode.OP_GET_LOCAL), line)
+			c.emitByte(byte(localIdx), line)
+		} else {
+			c.emitByte(byte(bytecode.OP_GET_GLOBAL), line)
+			c.emitU16(uint16(nameIdx), line)
+		}
+
+		// Compile constructor as a method
+		if err := c.compileMethod("constructor", decl.Constructor.Params, decl.Constructor.Body); err != nil {
+			return err
+		}
+	}
+
+	// Compile methods
+	for _, method := range decl.Methods {
+		// Get the class onto the stack
+		if c.current.scopeDepth > 0 {
+			localIdx := c.resolveLocal(decl.Name)
+			c.emitByte(byte(bytecode.OP_GET_LOCAL), line)
+			c.emitByte(byte(localIdx), line)
+		} else {
+			c.emitByte(byte(bytecode.OP_GET_GLOBAL), line)
+			c.emitU16(uint16(nameIdx), line)
+		}
+
+		if err := c.compileMethod(method.Name, method.Params, method.Body); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Compiler) compileMethod(name string, params []*ast.Parameter, body *ast.Block) error {
+	line := body.Token.Line
+
+	// Compile the method body
+	if err := c.compileFunction(name, params, body, TYPE_METHOD); err != nil {
+		return err
+	}
+
+	// Emit OP_METHOD with method name
+	nameIdx := c.chunk().AddConstant(name)
+	c.emitByte(byte(bytecode.OP_METHOD), line)
+	c.emitU16(uint16(nameIdx), line)
+
+	return nil
 }
