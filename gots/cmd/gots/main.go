@@ -44,7 +44,6 @@ func main() {
 		if len(os.Args) > 3 {
 			output = os.Args[3]
 		} else {
-			// Default output name: replace .gts with .gtsb
 			output = strings.TrimSuffix(input, filepath.Ext(input)) + ".gtsb"
 		}
 		compileFile(input, output)
@@ -73,7 +72,6 @@ func main() {
 		printUsage()
 
 	default:
-		// If the first argument is a file, run it
 		if fileExists(cmd) {
 			runFile(cmd)
 		} else {
@@ -256,9 +254,8 @@ func runRepl() {
 	}
 }
 
-// compileSource compiles source code to bytecode
+// compileSource compiles source code to bytecode.
 func compileSource(source, filename string) (*bytecode.Chunk, error) {
-	// Lex and Parse
 	l := lexer.New(source)
 	p := parser.New(l)
 	program := p.ParseProgram()
@@ -267,7 +264,6 @@ func compileSource(source, filename string) (*bytecode.Chunk, error) {
 		return nil, fmt.Errorf("Parser errors:\n  %s", strings.Join(errs, "\n  "))
 	}
 
-	// Compile
 	c := compiler.New()
 	chunk, err := c.Compile(program)
 	if err != nil {
@@ -277,7 +273,7 @@ func compileSource(source, filename string) (*bytecode.Chunk, error) {
 	return chunk, nil
 }
 
-// loadBytecode loads a bytecode file
+// loadBytecode loads a bytecode file.
 func loadBytecode(path string) (*bytecode.Chunk, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -286,7 +282,6 @@ func loadBytecode(path string) (*bytecode.Chunk, error) {
 	defer f.Close()
 
 	var r io.Reader = f
-	// Handle gzip compression
 	if strings.HasSuffix(path, ".gz") {
 		gzr, err := gzip.NewReader(f)
 		if err != nil {
@@ -299,13 +294,13 @@ func loadBytecode(path string) (*bytecode.Chunk, error) {
 	return bytecode.ReadBinary(r)
 }
 
-// executeChunk executes a bytecode chunk
+// executeChunk executes a bytecode chunk.
 func executeChunk(chunk *bytecode.Chunk) error {
 	v := vm.New(chunk)
 	return v.Run()
 }
 
-// evalRepl evaluates a line in the REPL context
+// evalRepl evaluates a line in the REPL context.
 func evalRepl(source string, globals map[string]vm.Value) (string, map[string]vm.Value, error) {
 	chunk, err := compileSource(source, "<repl>")
 	if err != nil {
@@ -313,7 +308,6 @@ func evalRepl(source string, globals map[string]vm.Value) (string, map[string]vm
 	}
 
 	v := vm.New(chunk)
-	// Restore globals from previous REPL iterations
 	for name, val := range globals {
 		v.SetGlobal(name, val)
 	}
@@ -322,10 +316,7 @@ func evalRepl(source string, globals map[string]vm.Value) (string, map[string]vm
 		return "", globals, err
 	}
 
-	// Save globals for next iteration
 	newGlobals := v.GetGlobals()
-
-	// Return the last value if it wasn't void
 	lastVal := v.LastPopped()
 	if !lastVal.IsNull() {
 		return lastVal.String(), newGlobals, nil

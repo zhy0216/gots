@@ -11,8 +11,8 @@ import (
 
 // Binary format constants
 const (
-	MagicNumber    uint32 = 0x47545342 // "GTSB" in hex
-	FormatVersion  uint16 = 1
+	MagicNumber   uint32 = 0x47545342 // "GTSB" in hex
+	FormatVersion uint16 = 1
 )
 
 // Constant type tags
@@ -144,8 +144,7 @@ func writeConstant(w io.Writer, c any) error {
 		if _, err := w.Write([]byte{CONST_STRING}); err != nil {
 			return err
 		}
-		strLen := uint32(len(v))
-		if err := binary.Write(w, binary.BigEndian, strLen); err != nil {
+		if err := binary.Write(w, binary.BigEndian, uint32(len(v))); err != nil {
 			return err
 		}
 		_, err := w.Write([]byte(v))

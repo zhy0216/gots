@@ -11,9 +11,9 @@ type Chunk struct {
 // NewChunk creates a new empty chunk.
 func NewChunk() *Chunk {
 	return &Chunk{
-		Code:      make([]byte, 0),
-		Constants: make([]any, 0),
-		Lines:     make([]int, 0),
+		Code:      []byte{},
+		Constants: []any{},
+		Lines:     []int{},
 	}
 }
 

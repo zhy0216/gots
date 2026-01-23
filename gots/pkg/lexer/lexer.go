@@ -11,13 +11,12 @@ type Lexer struct {
 	position     int  // current position in input (points to current char)
 	readPosition int  // current reading position in input (after current char)
 	ch           byte // current char under examination
-	line         int  // current line number
-	column       int  // current column number
-	lineStart    int  // position where current line started
+	line         int
+	column       int
+	lineStart    int // position where current line started
 
-	// For PeekToken
-	peeked   *token.Token
-	hasPeek  bool
+	peeked  *token.Token
+	hasPeek bool
 }
 
 // New creates a new Lexer for the given input.
@@ -100,53 +99,39 @@ func (l *Lexer) NextToken() token.Token {
 		tok = l.newToken(token.DOT, l.ch)
 	case '|':
 		if l.peekChar() == '|' {
-			ch := l.ch
-			l.readChar()
-			tok = token.Token{Type: token.OR, Literal: string(ch) + string(l.ch), Line: l.line, Column: l.column - 1}
+			tok = l.makeTwoCharToken(token.OR)
 		} else {
 			tok = l.newToken(token.PIPE, l.ch)
 		}
 	case '&':
 		if l.peekChar() == '&' {
-			ch := l.ch
-			l.readChar()
-			tok = token.Token{Type: token.AND, Literal: string(ch) + string(l.ch), Line: l.line, Column: l.column - 1}
+			tok = l.makeTwoCharToken(token.AND)
 		} else {
 			tok = l.newToken(token.ILLEGAL, l.ch)
 		}
 	case '=':
 		if l.peekChar() == '=' {
-			ch := l.ch
-			l.readChar()
-			tok = token.Token{Type: token.EQ, Literal: string(ch) + string(l.ch), Line: l.line, Column: l.column - 1}
+			tok = l.makeTwoCharToken(token.EQ)
 		} else if l.peekChar() == '>' {
-			ch := l.ch
-			l.readChar()
-			tok = token.Token{Type: token.ARROW, Literal: string(ch) + string(l.ch), Line: l.line, Column: l.column - 1}
+			tok = l.makeTwoCharToken(token.ARROW)
 		} else {
 			tok = l.newToken(token.ASSIGN, l.ch)
 		}
 	case '!':
 		if l.peekChar() == '=' {
-			ch := l.ch
-			l.readChar()
-			tok = token.Token{Type: token.NEQ, Literal: string(ch) + string(l.ch), Line: l.line, Column: l.column - 1}
+			tok = l.makeTwoCharToken(token.NEQ)
 		} else {
 			tok = l.newToken(token.NOT, l.ch)
 		}
 	case '<':
 		if l.peekChar() == '=' {
-			ch := l.ch
-			l.readChar()
-			tok = token.Token{Type: token.LTE, Literal: string(ch) + string(l.ch), Line: l.line, Column: l.column - 1}
+			tok = l.makeTwoCharToken(token.LTE)
 		} else {
 			tok = l.newToken(token.LT, l.ch)
 		}
 	case '>':
 		if l.peekChar() == '=' {
-			ch := l.ch
-			l.readChar()
-			tok = token.Token{Type: token.GTE, Literal: string(ch) + string(l.ch), Line: l.line, Column: l.column - 1}
+			tok = l.makeTwoCharToken(token.GTE)
 		} else {
 			tok = l.newToken(token.GT, l.ch)
 		}
@@ -209,6 +194,19 @@ func (l *Lexer) newToken(tokenType token.Type, ch byte) token.Token {
 		Literal: string(ch),
 		Line:    l.line,
 		Column:  l.column,
+	}
+}
+
+// makeTwoCharToken creates a token from the current and next character.
+func (l *Lexer) makeTwoCharToken(tokenType token.Type) token.Token {
+	ch := l.ch
+	col := l.column
+	l.readChar()
+	return token.Token{
+		Type:    tokenType,
+		Literal: string(ch) + string(l.ch),
+		Line:    l.line,
+		Column:  col,
 	}
 }
 

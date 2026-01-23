@@ -18,32 +18,26 @@ const (
 // CallFrame represents a function call frame.
 type CallFrame struct {
 	closure       *ObjClosure
-	ip            int  // Instruction pointer (offset into closure.Function.Chunk.Code)
-	slotBase      int  // Index in the stack where this frame's locals start
-	isConstructor bool // True if this frame is a constructor call
+	ip            int
+	slotBase      int
+	isConstructor bool
 }
 
 // VM is the virtual machine that executes bytecode.
 type VM struct {
-	frames     [FRAMES_MAX]CallFrame
-	frameCount int
-	stack      []Value          // Value stack
-	sp         int              // Stack pointer (points to next free slot)
-	globals    map[string]Value // Global variables
-	output     io.Writer
-	lastPopped Value            // Last value popped (for testing)
-
-	// Open upvalue linked list (sorted by stack slot, from top to bottom)
+	frames       [FRAMES_MAX]CallFrame
+	frameCount   int
+	stack        []Value
+	sp           int
+	globals      map[string]Value
+	output       io.Writer
+	lastPopped   Value
 	openUpvalues *ObjUpvalue
-
-	// Garbage collector
-	gc *GC
+	gc           *GC
 }
 
 // New creates a new VM with the given bytecode chunk.
-// This creates a script-level function from the chunk.
 func New(chunk *bytecode.Chunk) *VM {
-	// Create a script function from the chunk
 	fn := &ObjFunction{
 		Name:  "",
 		Arity: 0,
@@ -59,14 +53,11 @@ func New(chunk *bytecode.Chunk) *VM {
 	}
 	vm.gc = NewGC(vm)
 
-	// Track the initial objects
 	vm.gc.Track(fn)
 	vm.gc.Track(closure)
 
-	// Push the closure as the first stack slot (slot 0 for the script)
 	vm.push(ObjectValue(closure))
 
-	// Set up the initial call frame
 	vm.frames[0] = CallFrame{
 		closure:  closure,
 		ip:       0,
@@ -300,9 +291,8 @@ func (vm *VM) Run() error {
 
 		case bytecode.OP_CLOSURE:
 			fnIdx := vm.readU16()
-			// Handle both *compiler.ObjFunction (from direct compilation) and
-			// *bytecode.BinaryFunction (from loading binary format)
 			var fn *ObjFunction
+
 			switch fnVal := vm.chunk().Constants[fnIdx].(type) {
 			case *compiler.ObjFunction:
 				fn = &ObjFunction{
@@ -321,17 +311,15 @@ func (vm *VM) Run() error {
 			default:
 				return vm.runtimeError("invalid function constant type: %T", fnVal)
 			}
+
 			closure := NewObjClosure(fn)
 
-			// Read upvalue descriptors
 			for i := 0; i < fn.UpvalueCount; i++ {
 				isLocal := vm.readByte() == 1
 				index := vm.readByte()
 				if isLocal {
-					// Capture local from the enclosing function
 					closure.Upvalues[i] = vm.captureUpvalue(frame.slotBase + int(index))
 				} else {
-					// Capture upvalue from the enclosing function
 					closure.Upvalues[i] = frame.closure.Upvalues[index]
 				}
 			}
@@ -347,26 +335,19 @@ func (vm *VM) Run() error {
 		case bytecode.OP_RETURN:
 			result := vm.pop()
 
-			// If this is a constructor, return the instance (slot 0) instead
 			if frame.isConstructor {
 				result = vm.stack[frame.slotBase]
 			}
 
-			// Close any open upvalues in this frame
 			vm.closeUpvalues(frame.slotBase)
 
-			// Pop the frame
 			vm.frameCount--
 			if vm.frameCount == 0 {
-				// We're returning from the script
-				vm.pop() // Pop the script closure
+				vm.pop()
 				return nil
 			}
 
-			// Discard the called function and its locals
 			vm.sp = frame.slotBase
-
-			// Push the return value
 			vm.push(result)
 
 		case bytecode.OP_BUILTIN:
@@ -380,7 +361,6 @@ func (vm *VM) Run() error {
 			count := int(vm.readU16())
 			arr := NewObjArray()
 			arr.Elements = make([]Value, count)
-			// Pop elements in reverse order (they were pushed left-to-right)
 			for i := count - 1; i >= 0; i-- {
 				arr.Elements[i] = vm.pop()
 			}
@@ -389,7 +369,6 @@ func (vm *VM) Run() error {
 		case bytecode.OP_OBJECT:
 			count := int(vm.readU16())
 			obj := NewObjObject()
-			// Pop key-value pairs in reverse order
 			for i := 0; i < count; i++ {
 				value := vm.pop()
 				key := vm.pop()
@@ -439,13 +418,14 @@ func (vm *VM) Run() error {
 			if !index.IsNumber() {
 				return vm.runtimeError("array index must be a number")
 			}
+
 			arr := object.AsArray()
 			idx := int(index.AsNumber())
 			if idx < 0 || idx >= len(arr.Elements) {
 				return vm.runtimeError("array index out of bounds: %d (length: %d)", idx, len(arr.Elements))
 			}
 			arr.Elements[idx] = value
-			vm.push(value) // Assignment expression returns the value
+			vm.push(value)
 
 		case bytecode.OP_GET_PROPERTY:
 			nameIdx := vm.readU16()
@@ -454,11 +434,9 @@ func (vm *VM) Run() error {
 
 			if object.IsInstance() {
 				instance := object.AsInstance()
-				// First check fields
 				if value, ok := instance.Fields[name]; ok {
 					vm.push(value)
 				} else if method := instance.Class.Methods[name]; method != nil {
-					// Bind method to instance
 					bound := &ObjBoundMethod{
 						Receiver: object,
 						Method:   method,
@@ -514,7 +492,6 @@ func (vm *VM) Run() error {
 				return vm.runtimeError("superclass must be a class")
 			}
 			subclass.Super = superclass
-			// Copy methods from superclass
 			for name, method := range superclass.Methods {
 				if _, exists := subclass.Methods[name]; !exists {
 					subclass.Methods[name] = method
@@ -532,18 +509,14 @@ func (vm *VM) Run() error {
 			}
 			instance := receiver.AsInstance()
 
-			// Check for field first (could be a closure stored as a field)
-			if value, ok := instance.Fields[name]; ok {
-				if value.IsClosure() {
-					vm.stack[vm.sp-argCount-1] = value
-					if err := vm.call(value.AsClosure(), argCount, false); err != nil {
-						return err
-					}
-					continue
+			if value, ok := instance.Fields[name]; ok && value.IsClosure() {
+				vm.stack[vm.sp-argCount-1] = value
+				if err := vm.call(value.AsClosure(), argCount, false); err != nil {
+					return err
 				}
+				continue
 			}
 
-			// Look up method
 			method := instance.Class.Methods[name]
 			if method == nil {
 				return vm.runtimeError("undefined method '%s' on instance of '%s'", name, instance.Class.Name)
@@ -586,8 +559,6 @@ func (vm *VM) Run() error {
 			if method == nil {
 				return vm.runtimeError("undefined method '%s' in superclass '%s'", name, superclass.Name)
 			}
-			// Super constructor calls are not marked as constructors - the child
-			// constructor will return the instance
 			if err := vm.call(method, argCount, false); err != nil {
 				return err
 			}
@@ -603,27 +574,27 @@ func (vm *VM) callValue(callee Value, argCount int) error {
 	if callee.IsClosure() {
 		return vm.call(callee.AsClosure(), argCount, false)
 	}
+
 	if callee.IsClass() {
-		// Create a new instance
 		class := callee.AsClass()
 		instance := NewObjInstance(class)
-		// Replace the class on the stack with the instance
 		vm.stack[vm.sp-argCount-1] = ObjectValue(instance)
 
-		// Call the constructor if it exists
 		if constructor, ok := class.Methods["constructor"]; ok {
 			return vm.call(constructor, argCount, true)
-		} else if argCount != 0 {
+		}
+		if argCount != 0 {
 			return vm.runtimeError("class '%s' has no constructor but was called with %d arguments", class.Name, argCount)
 		}
 		return nil
 	}
+
 	if callee.IsBoundMethod() {
 		bound := callee.AsBoundMethod()
-		// Put the receiver in slot 0
 		vm.stack[vm.sp-argCount-1] = bound.Receiver
 		return vm.call(bound.Method, argCount, false)
 	}
+
 	return vm.runtimeError("cannot call value of type %s", valueTypeName(callee))
 }
 
@@ -644,8 +615,6 @@ func (vm *VM) call(closure *ObjClosure, argCount int, isConstructor bool) error 
 	frame.closure = closure
 	frame.ip = 0
 	frame.isConstructor = isConstructor
-	// The slot base is where the function sits on the stack
-	// (args are above the function slot)
 	frame.slotBase = vm.sp - argCount - 1
 
 	return nil
@@ -653,27 +622,22 @@ func (vm *VM) call(closure *ObjClosure, argCount int, isConstructor bool) error 
 
 // captureUpvalue creates or reuses an upvalue for the given stack slot.
 func (vm *VM) captureUpvalue(stackIndex int) *ObjUpvalue {
-	// Look for an existing open upvalue for this slot
 	var prevUpvalue *ObjUpvalue
 	upvalue := vm.openUpvalues
 
-	// Walk the list to find the right position (sorted by slot, descending)
 	for upvalue != nil && upvalue.stackIndex > stackIndex {
 		prevUpvalue = upvalue
 		upvalue = upvalue.Next
 	}
 
-	// If we found an upvalue for this slot, reuse it
 	if upvalue != nil && upvalue.stackIndex == stackIndex {
 		return upvalue
 	}
 
-	// Create a new upvalue
 	newUpvalue := NewObjUpvalue(&vm.stack[stackIndex])
 	newUpvalue.stackIndex = stackIndex
 	newUpvalue.Next = upvalue
 
-	// Insert into the linked list
 	if prevUpvalue == nil {
 		vm.openUpvalues = newUpvalue
 	} else {
@@ -683,17 +647,12 @@ func (vm *VM) captureUpvalue(stackIndex int) *ObjUpvalue {
 	return newUpvalue
 }
 
-// closeUpvalues closes all upvalues that refer to stack slots at or above the given index.
+// closeUpvalues closes all upvalues at or above the given stack index.
 func (vm *VM) closeUpvalues(lastSlot int) {
 	for vm.openUpvalues != nil && vm.openUpvalues.stackIndex >= lastSlot {
 		upvalue := vm.openUpvalues
-
-		// Copy the value from the stack to the upvalue's Closed field
 		upvalue.Closed = *upvalue.Location
-		// Point Location at the Closed field
 		upvalue.Location = &upvalue.Closed
-
-		// Remove from the open list
 		vm.openUpvalues = upvalue.Next
 	}
 }
@@ -890,11 +849,8 @@ func (vm *VM) anyToValue(v any) Value {
 	case nil:
 		return NullValue()
 	case *ObjFunction:
-		// Functions are stored as ObjFunction in constants
-		// but are wrapped in closures at runtime
 		return ObjectValue(val)
 	case *compiler.ObjFunction:
-		// The compiler stores its own ObjFunction type, convert it
 		fn := &ObjFunction{
 			Name:         val.Name,
 			Arity:        val.Arity,
@@ -903,7 +859,6 @@ func (vm *VM) anyToValue(v any) Value {
 		}
 		return ObjectValue(fn)
 	default:
-		// This shouldn't happen if the compiler is correct
 		panic(fmt.Sprintf("unexpected constant type: %T", v))
 	}
 }

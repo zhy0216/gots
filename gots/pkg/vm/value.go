@@ -21,8 +21,8 @@ const (
 // Value represents a runtime value in the VM.
 type Value struct {
 	Type ValueType
-	data uint64 // Holds bool, float64 bits, or object pointer index
-	obj  Object // For object values
+	data uint64
+	obj  Object
 }
 
 // NullValue creates a null value.
@@ -243,12 +243,9 @@ func IsTruthy(v Value) bool {
 		return false
 	case VAL_BOOL:
 		return v.AsBool()
-	case VAL_NUMBER:
-		return true // All numbers are truthy (TypeScript behavior)
-	case VAL_OBJECT:
-		return true // All objects are truthy
+	default:
+		return true
 	}
-	return false
 }
 
 // ObjectType represents the type of an object.
@@ -381,10 +378,10 @@ func NewObjClosure(fn *ObjFunction) *ObjClosure {
 
 // ObjUpvalue represents a captured variable.
 type ObjUpvalue struct {
-	Location   *Value      // Points to stack slot or Closed
-	Closed     Value       // Holds value after variable goes out of scope
-	Next       *ObjUpvalue // Linked list of open upvalues
-	stackIndex int         // Stack index (for tracking in open upvalue list)
+	Location   *Value
+	Closed     Value
+	Next       *ObjUpvalue
+	stackIndex int
 	marked     bool
 }
 
@@ -443,8 +440,8 @@ func NewObjInstance(class *ObjClass) *ObjInstance {
 
 // ObjBoundMethod represents a method bound to an instance.
 type ObjBoundMethod struct {
-	Receiver Value       // The instance the method is bound to
-	Method   *ObjClosure // The method closure
+	Receiver Value
+	Method   *ObjClosure
 	marked   bool
 }
 

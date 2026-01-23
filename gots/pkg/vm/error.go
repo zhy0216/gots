@@ -22,9 +22,11 @@ type StackFrame struct {
 func (e *RuntimeError) Error() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("RuntimeError: %s\n", e.Message))
+
 	if e.Line > 0 {
 		sb.WriteString(fmt.Sprintf("  at line %d\n", e.Line))
 	}
+
 	if len(e.StackTrace) > 0 {
 		sb.WriteString("Stack trace:\n")
 		for i, frame := range e.StackTrace {
@@ -35,6 +37,7 @@ func (e *RuntimeError) Error() string {
 			sb.WriteString(fmt.Sprintf("  %d: %s (line %d)\n", i, name, frame.Line))
 		}
 	}
+
 	return sb.String()
 }
 

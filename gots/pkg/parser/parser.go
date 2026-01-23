@@ -66,11 +66,11 @@ type Parser struct {
 // New creates a new Parser.
 func New(l *lexer.Lexer) *Parser {
 	p := &Parser{
-		l:      l,
-		errors: []string{},
+		l:              l,
+		errors:         []string{},
+		prefixParseFns: make(map[token.Type]prefixParseFn),
+		infixParseFns:  make(map[token.Type]infixParseFn),
 	}
-
-	p.prefixParseFns = make(map[token.Type]prefixParseFn)
 	p.registerPrefix(token.IDENT, p.parseIdentifier)
 	p.registerPrefix(token.NUMBER, p.parseNumberLiteral)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
@@ -87,7 +87,6 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.FUNCTION, p.parseFunctionExpression)
 	p.registerPrefix(token.SUPER, p.parseSuperExpression)
 
-	p.infixParseFns = make(map[token.Type]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseBinaryExpression)
 	p.registerInfix(token.MINUS, p.parseBinaryExpression)
 	p.registerInfix(token.STAR, p.parseBinaryExpression)
@@ -161,15 +160,15 @@ func (p *Parser) Errors() []string {
 }
 
 func (p *Parser) curPrecedence() int {
-	if p, ok := precedences[p.curToken.Type]; ok {
-		return p
+	if prec, ok := precedences[p.curToken.Type]; ok {
+		return prec
 	}
 	return LOWEST
 }
 
 func (p *Parser) peekPrecedence() int {
-	if p, ok := precedences[p.peekToken.Type]; ok {
-		return p
+	if prec, ok := precedences[p.peekToken.Type]; ok {
+		return prec
 	}
 	return LOWEST
 }

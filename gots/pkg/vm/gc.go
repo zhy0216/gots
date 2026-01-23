@@ -3,23 +3,23 @@ package vm
 
 // GC implements a simple mark-and-sweep garbage collector.
 type GC struct {
-	objects       []Object // All allocated objects
-	bytesAllocated int     // Current bytes allocated
-	nextGC         int     // Threshold for next GC
-	vm             *VM     // Reference to the VM for marking roots
+	objects        []Object
+	bytesAllocated int
+	nextGC         int
+	vm             *VM
 }
 
 const (
-	GC_HEAP_GROW_FACTOR = 2
-	GC_INITIAL_THRESHOLD = 1024 * 1024 // 1 MB
+	gcHeapGrowFactor   = 2
+	gcInitialThreshold = 1024 * 1024 // 1 MB
 )
 
 // NewGC creates a new garbage collector.
 func NewGC(vm *VM) *GC {
 	return &GC{
-		objects:       make([]Object, 0),
+		objects:        []Object{},
 		bytesAllocated: 0,
-		nextGC:         GC_INITIAL_THRESHOLD,
+		nextGC:         gcInitialThreshold,
 		vm:             vm,
 	}
 }
@@ -62,21 +62,13 @@ func (gc *GC) objectSize(obj Object) int {
 
 // Collect performs a garbage collection cycle.
 func (gc *GC) Collect() {
-	beforeSize := gc.bytesAllocated
-
-	// Mark phase
 	gc.markRoots()
-
-	// Sweep phase
 	gc.sweep()
 
-	// Adjust threshold
-	gc.nextGC = gc.bytesAllocated * GC_HEAP_GROW_FACTOR
-	if gc.nextGC < GC_INITIAL_THRESHOLD {
-		gc.nextGC = GC_INITIAL_THRESHOLD
+	gc.nextGC = gc.bytesAllocated * gcHeapGrowFactor
+	if gc.nextGC < gcInitialThreshold {
+		gc.nextGC = gcInitialThreshold
 	}
-
-	_ = beforeSize // Could be used for debug logging
 }
 
 // markRoots marks all root objects.
@@ -121,17 +113,17 @@ func (gc *GC) markObject(obj Object) {
 		return
 	}
 
-	// Check if already marked using type assertion
-	if m, ok := obj.(Markable); ok && m.IsMarked() {
+	m, ok := obj.(Markable)
+	if !ok {
 		return
 	}
 
-	// Mark the object
-	if m, ok := obj.(Markable); ok {
-		m.SetMarked(true)
+	if m.IsMarked() {
+		return
 	}
 
-	// Trace references based on object type
+	m.SetMarked(true)
+
 	switch o := obj.(type) {
 	case *ObjArray:
 		for _, elem := range o.Elements {
@@ -149,8 +141,8 @@ func (gc *GC) markObject(obj Object) {
 	case *ObjUpvalue:
 		gc.markValue(*o.Location)
 	case *ObjClass:
-		for _, m := range o.Methods {
-			gc.markObject(m)
+		for _, method := range o.Methods {
+			gc.markObject(method)
 		}
 		if o.Super != nil {
 			gc.markObject(o.Super)
@@ -168,18 +160,15 @@ func (gc *GC) markObject(obj Object) {
 
 // sweep removes unmarked objects.
 func (gc *GC) sweep() {
-	// Remove unmarked objects
 	newObjects := make([]Object, 0, len(gc.objects))
 	gc.bytesAllocated = 0
 
 	for _, obj := range gc.objects {
 		if m, ok := obj.(Markable); ok && m.IsMarked() {
-			// Unmark for next cycle
 			m.SetMarked(false)
 			newObjects = append(newObjects, obj)
 			gc.bytesAllocated += gc.objectSize(obj)
 		}
-		// Unmarked objects are implicitly freed by Go's GC
 	}
 
 	gc.objects = newObjects

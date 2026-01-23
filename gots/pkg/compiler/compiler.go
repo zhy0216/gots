@@ -20,9 +20,9 @@ const (
 
 // Local represents a local variable in the current scope.
 type Local struct {
-	Name     string
-	Depth    int  // Scope depth (0 = global)
-	IsCaptured bool // Whether this local is captured by a closure
+	Name       string
+	Depth      int  // Scope depth (0 = global)
+	IsCaptured bool
 }
 
 // Upvalue represents a captured variable from an enclosing scope.
@@ -41,18 +41,18 @@ type ObjFunction struct {
 
 // CompilerState holds the state for compiling a single function.
 type CompilerState struct {
-	function  *ObjFunction
-	funcType  FunctionType
-	locals    []Local
-	upvalues  []Upvalue
+	function   *ObjFunction
+	funcType   FunctionType
+	locals     []Local
+	upvalues   []Upvalue
 	scopeDepth int
-	enclosing *CompilerState // Parent compiler for nested functions
+	enclosing  *CompilerState
 }
 
 // Compiler compiles AST to bytecode.
 type Compiler struct {
 	current *CompilerState
-	globals map[string]int // Maps global variable names to constant pool indices
+	globals map[string]int
 }
 
 // New creates a new compiler.
@@ -74,16 +74,15 @@ func (c *Compiler) initCompilerState(funcType FunctionType, name string) {
 		},
 		funcType:   funcType,
 		locals:     make([]Local, 0, 256),
-		upvalues:   make([]Upvalue, 0),
+		upvalues:   []Upvalue{},
 		scopeDepth: 0,
 		enclosing:  c.current,
 	}
 	c.current = state
 
 	// Reserve slot 0 for the function itself (or "this" for methods)
-	// This is needed because parameters start at slot 1
 	local := Local{
-		Name:       "", // Empty name so it can't be referenced
+		Name:       "",
 		Depth:      0,
 		IsCaptured: false,
 	}
@@ -167,7 +166,7 @@ func (c *Compiler) addLocal(name string) error {
 
 	local := Local{
 		Name:       name,
-		Depth:      -1, // Mark as uninitialized (for detecting use before initialization)
+		Depth:      -1,
 		IsCaptured: false,
 	}
 	c.current.locals = append(c.current.locals, local)
@@ -182,29 +181,30 @@ func (c *Compiler) markInitialized() {
 	c.current.locals[len(c.current.locals)-1].Depth = c.current.scopeDepth
 }
 
-// resolveLocal resolves a local variable by name, returns -1 if not found.
+// resolveLocal resolves a local variable by name.
+// Returns -1 if not found, -2 if used in own initializer.
 func (c *Compiler) resolveLocal(name string) int {
 	for i := len(c.current.locals) - 1; i >= 0; i-- {
 		local := &c.current.locals[i]
 		if local.Name == name {
 			if local.Depth == -1 {
-				// Variable is being used in its own initializer
-				return -2 // Special value to signal error
+				return -2
 			}
 			return i
 		}
 	}
-	return -1 // Not a local variable
+	return -1
 }
 
 // resolveUpvalue resolves an upvalue (captured variable from enclosing scope).
 func (c *Compiler) resolveUpvalue(name string) int {
 	if c.current.enclosing == nil {
-		return -1 // No enclosing scope
+		return -1
 	}
 
-	// Try to find as a local in the immediately enclosing scope
 	enclosing := c.current.enclosing
+
+	// Try to find as a local in the immediately enclosing scope
 	localIdx := c.resolveLocalIn(enclosing, name)
 	if localIdx != -1 {
 		enclosing.locals[localIdx].IsCaptured = true
@@ -288,7 +288,6 @@ func (c *Compiler) compileStatement(stmt ast.Statement) error {
 		if err := c.compileExpression(s.Expr); err != nil {
 			return err
 		}
-		// Pop the result of expression statement (unless it's a void builtin like println)
 		if !c.lastWasVoidBuiltin() {
 			c.emitByte(byte(bytecode.OP_POP), s.Token.Line)
 		}
@@ -316,7 +315,6 @@ func (c *Compiler) compileStatement(stmt ast.Statement) error {
 		return c.compileClassDecl(s)
 
 	case *ast.TypeAliasDecl:
-		// Type aliases are handled at type-check time, nothing to compile
 		return nil
 
 	default:
@@ -460,11 +458,7 @@ func (c *Compiler) compileReturnStmt(r *ast.ReturnStmt) error {
 }
 
 func (c *Compiler) addGlobalVariable(name string) int {
-	// Always add the name to the CURRENT chunk's constant pool
-	// (each function has its own chunk with its own constants)
 	idx := c.chunk().AddConstant(name)
-
-	// Only track in globals map at script level
 	if c.current.funcType == TYPE_SCRIPT {
 		c.globals[name] = idx
 	}
@@ -472,12 +466,9 @@ func (c *Compiler) addGlobalVariable(name string) int {
 }
 
 func (c *Compiler) getGlobalVariable(name string) (int, bool) {
-	// Check if this global was defined (at script level)
-	_, exists := c.globals[name]
-	if !exists {
+	if _, exists := c.globals[name]; !exists {
 		return -1, false
 	}
-	// Add the name to the current chunk's constants and return that index
 	idx := c.chunk().AddConstant(name)
 	return idx, true
 }
@@ -572,13 +563,11 @@ func (c *Compiler) compileWhileStmt(w *ast.WhileStmt) error {
 	return nil
 }
 
-// emitLoop emits a backward jump to loopStart
+// emitLoop emits a backward jump to loopStart.
 func (c *Compiler) emitLoop(loopStart int, line int) {
 	c.emitByte(byte(bytecode.OP_JUMP_BACK), line)
 
-	// Calculate offset (from current position to loop start)
-	offset := c.chunk().Count() - loopStart + 2 // +2 for the offset bytes we're about to emit
-
+	offset := c.chunk().Count() - loopStart + 2
 	if offset > 65535 {
 		panic("loop body too large")
 	}
@@ -587,19 +576,18 @@ func (c *Compiler) emitLoop(loopStart int, line int) {
 	c.emitByte(byte(offset), line)
 }
 
-// emitJump emits a jump instruction with a placeholder offset and returns the position to patch
+// emitJump emits a jump instruction with a placeholder offset.
+// Returns the position to patch.
 func (c *Compiler) emitJump(op bytecode.OpCode, line int) int {
 	c.emitByte(byte(op), line)
-	c.emitByte(0xff, line) // Placeholder high byte
-	c.emitByte(0xff, line) // Placeholder low byte
-	return c.chunk().Count() - 2 // Return position of the offset bytes
+	c.emitByte(0xff, line)
+	c.emitByte(0xff, line)
+	return c.chunk().Count() - 2
 }
 
-// patchJump patches a previously emitted jump to jump to the current position
+// patchJump patches a previously emitted jump to jump to the current position.
 func (c *Compiler) patchJump(offset int) {
-	// Calculate the jump distance (from after the jump instruction to current position)
-	jump := c.chunk().Count() - offset - 2 // -2 because offset points to the high byte
-
+	jump := c.chunk().Count() - offset - 2
 	if jump > 65535 {
 		panic("jump too large")
 	}
@@ -608,20 +596,16 @@ func (c *Compiler) patchJump(offset int) {
 	c.chunk().Code[offset+1] = byte(jump)
 }
 
-// lastWasVoidBuiltin checks if the last emitted opcode was a void builtin (println/print)
+// lastWasVoidBuiltin checks if the last emitted opcode was a void builtin.
 func (c *Compiler) lastWasVoidBuiltin() bool {
 	code := c.chunk().Code
 	if len(code) < 3 {
 		return false
 	}
-	// OP_BUILTIN is followed by 2 bytes (builtin_id, arg_count)
-	// So we check 3 positions back
 	if bytecode.OpCode(code[len(code)-3]) != bytecode.OP_BUILTIN {
 		return false
 	}
-	// Check the builtin ID (which is right after OP_BUILTIN)
 	builtinID := code[len(code)-2]
-	// Only println and print are void builtins
 	return builtinID == bytecode.BUILTIN_PRINTLN || builtinID == bytecode.BUILTIN_PRINT
 }
 
