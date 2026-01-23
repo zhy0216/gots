@@ -136,11 +136,12 @@ func (u *UnaryExpr) String() string {
 	return fmt.Sprintf("(%s%s)", u.Token.Literal, u.Operand.String())
 }
 
-// CallExpr represents a function call expression.
+// CallExpr represents a function call expression (e.g., fn() or fn?.()).
 type CallExpr struct {
 	Token     token.Token // The '(' token
 	Function  Expression  // Identifier or PropertyExpr
 	Arguments []Expression
+	Optional  bool // true for optional chaining ?.()
 }
 
 func (c *CallExpr) expressionNode()      {}
@@ -150,32 +151,43 @@ func (c *CallExpr) String() string {
 	for i, a := range c.Arguments {
 		args[i] = a.String()
 	}
+	if c.Optional {
+		return fmt.Sprintf("%s?.(%s)", c.Function.String(), strings.Join(args, ", "))
+	}
 	return fmt.Sprintf("%s(%s)", c.Function.String(), strings.Join(args, ", "))
 }
 
-// IndexExpr represents an index expression (e.g., arr[0]).
+// IndexExpr represents an index expression (e.g., arr[0] or arr?.[0]).
 type IndexExpr struct {
-	Token  token.Token // The '[' token
-	Object Expression
-	Index  Expression
+	Token    token.Token // The '[' token
+	Object   Expression
+	Index    Expression
+	Optional bool // true for optional chaining (?.[])
 }
 
 func (i *IndexExpr) expressionNode()      {}
 func (i *IndexExpr) TokenLiteral() string { return i.Token.Literal }
 func (i *IndexExpr) String() string {
+	if i.Optional {
+		return fmt.Sprintf("%s?.[%s]", i.Object.String(), i.Index.String())
+	}
 	return fmt.Sprintf("%s[%s]", i.Object.String(), i.Index.String())
 }
 
-// PropertyExpr represents a property access expression (e.g., obj.x).
+// PropertyExpr represents a property access expression (e.g., obj.x or obj?.x).
 type PropertyExpr struct {
-	Token    token.Token // The '.' token
+	Token    token.Token // The '.' or '?.' token
 	Object   Expression
 	Property string
+	Optional bool // true for optional chaining (?.)
 }
 
 func (p *PropertyExpr) expressionNode()      {}
 func (p *PropertyExpr) TokenLiteral() string { return p.Token.Literal }
 func (p *PropertyExpr) String() string {
+	if p.Optional {
+		return fmt.Sprintf("%s?.%s", p.Object.String(), p.Property)
+	}
 	return fmt.Sprintf("%s.%s", p.Object.String(), p.Property)
 }
 
@@ -290,6 +302,59 @@ func (a *AssignExpr) String() string {
 	return fmt.Sprintf("%s = %s", a.Target.String(), a.Value.String())
 }
 
+// CompoundAssignExpr represents a compound assignment expression (+=, -=, etc.).
+type CompoundAssignExpr struct {
+	Token  token.Token // The operator token (+=, -=, etc.)
+	Target Expression  // Identifier, IndexExpr, or PropertyExpr
+	Op     token.Type  // The compound operator
+	Value  Expression
+}
+
+func (c *CompoundAssignExpr) expressionNode()      {}
+func (c *CompoundAssignExpr) TokenLiteral() string { return c.Token.Literal }
+func (c *CompoundAssignExpr) String() string {
+	return fmt.Sprintf("%s %s %s", c.Target.String(), c.Token.Literal, c.Value.String())
+}
+
+// ArrowFunctionExpr represents an arrow function expression.
+type ArrowFunctionExpr struct {
+	Token      token.Token // The '=>' token
+	Params     []*Parameter
+	ReturnType Type
+	Body       *Block     // For block body: () => { ... }
+	Expression Expression // For expression body: () => expr
+}
+
+func (a *ArrowFunctionExpr) expressionNode()      {}
+func (a *ArrowFunctionExpr) TokenLiteral() string { return a.Token.Literal }
+func (a *ArrowFunctionExpr) String() string {
+	params := make([]string, len(a.Params))
+	for i, p := range a.Params {
+		params[i] = fmt.Sprintf("%s: %s", p.Name, p.ParamType.String())
+	}
+	if a.Body != nil {
+		return fmt.Sprintf("(%s): %s => { ... }", strings.Join(params, ", "), a.ReturnType.String())
+	}
+	return fmt.Sprintf("(%s): %s => %s", strings.Join(params, ", "), a.ReturnType.String(), a.Expression.String())
+}
+
+// UpdateExpr represents an increment/decrement expression (++x, x++, --x, x--).
+type UpdateExpr struct {
+	Token   token.Token // The ++ or -- token
+	Op      token.Type  // INCREMENT or DECREMENT
+	Operand Expression  // Must be assignable (identifier, property, index)
+	Prefix  bool        // true for ++x, false for x++
+}
+
+func (u *UpdateExpr) expressionNode()      {}
+func (u *UpdateExpr) TokenLiteral() string { return u.Token.Literal }
+func (u *UpdateExpr) String() string {
+	if u.Prefix {
+		return fmt.Sprintf("(%s%s)", u.Token.Literal, u.Operand.String())
+	}
+	return fmt.Sprintf("(%s%s)", u.Operand.String(), u.Token.Literal)
+}
+
 // ----------------------------------------------------------------------------
 // Statements
 // ----------------------------------------------------------------------------
@@ -397,6 +462,48 @@ func (f *ForStmt) TokenLiteral() string { return f.Token.Literal }
 func (f *ForStmt) String() string {
 	return fmt.Sprintf("for (%s; %s; %s) %s",
 		f.Init.String(), f.Condition.String(), f.Update.String(), f.Body.String())
+}
+
+// ForOfStmt represents a for-of statement.
+type ForOfStmt struct {
+	Token    token.Token // The 'for' token
+	Variable *VarDecl    // The loop variable declaration
+	Iterable Expression  // The iterable expression
+	Body     *Block
+}
+
+func (f *ForOfStmt) statementNode()       {}
+func (f *ForOfStmt) TokenLiteral() string { return f.Token.Literal }
+func (f *ForOfStmt) String() string {
+	return fmt.Sprintf("for (let %s of %s) %s",
+		f.Variable.Name, f.Iterable.String(), f.Body.String())
+}
+
+// SwitchStmt represents a switch statement.
+type SwitchStmt struct {
+	Token        token.Token // The 'switch' token
+	Discriminant Expression
+	Cases        []*CaseClause
+}
+
+func (s *SwitchStmt) statementNode()       {}
+func (s *SwitchStmt) TokenLiteral() string { return s.Token.Literal }
+func (s *SwitchStmt) String() string {
+	return fmt.Sprintf("switch (%s) { ... }", s.Discriminant.String())
+}
+
+// CaseClause represents a case or default clause in a switch statement.
+type CaseClause struct {
+	Token      token.Token // The 'case' or 'default' token
+	Test       Expression  // nil for default case
+	Consequent []Statement
+}
+
+func (c *CaseClause) String() string {
+	if c.Test == nil {
+		return "default: ..."
+	}
+	return fmt.Sprintf("case %s: ...", c.Test.String())
 }
 
 // ReturnStmt represents a return statement.

@@ -459,3 +459,166 @@ func TestHigherOrderFunction(t *testing.T) {
 		let result: number = apply(double, 5);
 	`)
 }
+
+// ============================================================
+// Type Inference Tests
+// ============================================================
+
+func TestTypeInferenceNumber(t *testing.T) {
+	expectNoErrors(t, `let x = 10;`)
+}
+
+func TestTypeInferenceString(t *testing.T) {
+	expectNoErrors(t, `let name = "hello";`)
+}
+
+func TestTypeInferenceBoolean(t *testing.T) {
+	expectNoErrors(t, `let flag = true;`)
+}
+
+func TestTypeInferenceArray(t *testing.T) {
+	expectNoErrors(t, `let arr = [1, 2, 3];`)
+}
+
+func TestTypeInferenceObject(t *testing.T) {
+	expectNoErrors(t, `let obj = { x: 1, y: 2 };`)
+}
+
+func TestTypeInferenceReassignment(t *testing.T) {
+	// Inferred type should be enforced on reassignment
+	expectError(t, `
+		let x = 10;
+		x = "hello";
+	`, "cannot assign")
+}
+
+func TestTypeInferenceWithExplicitType(t *testing.T) {
+	expectNoErrors(t, `let x: number = 10;`)
+}
+
+// ============================================================
+// Compound Assignment Tests
+// ============================================================
+
+func TestCompoundAssignmentNumber(t *testing.T) {
+	expectNoErrors(t, `
+		let x: number = 10;
+		x += 5;
+		x -= 3;
+		x *= 2;
+		x /= 4;
+		x %= 3;
+	`)
+}
+
+func TestCompoundAssignmentString(t *testing.T) {
+	expectNoErrors(t, `
+		let s: string = "hello";
+		s += " world";
+	`)
+}
+
+func TestCompoundAssignmentTypeError(t *testing.T) {
+	expectError(t, `
+		let x: number = 10;
+		x += "hello";
+	`, "requires numbers")
+}
+
+// ============================================================
+// Arrow Function Tests
+// ============================================================
+
+func TestArrowFunctionExpression(t *testing.T) {
+	expectNoErrors(t, `
+		let add = (a: number, b: number): number => a + b;
+	`)
+}
+
+func TestArrowFunctionBlock(t *testing.T) {
+	expectNoErrors(t, `
+		let double = (x: number): number => {
+			return x * 2;
+		};
+	`)
+}
+
+func TestArrowFunctionNoParams(t *testing.T) {
+	expectNoErrors(t, `
+		let getZero = (): number => 0;
+	`)
+}
+
+// ============================================================
+// Increment/Decrement Tests
+// ============================================================
+
+func TestIncrementDecrement(t *testing.T) {
+	expectNoErrors(t, `
+		let x: number = 10;
+		x++;
+		x--;
+		++x;
+		--x;
+	`)
+}
+
+func TestIncrementDecrementTypeError(t *testing.T) {
+	expectError(t, `
+		let s: string = "hello";
+		s++;
+	`, "requires number")
+}
+
+// ============================================================
+// For-of Loop Tests
+// ============================================================
+
+func TestForOfArray(t *testing.T) {
+	expectNoErrors(t, `
+		let arr: number[] = [1, 2, 3];
+		for (let item of arr) {
+			let x: number = item;
+		}
+	`)
+}
+
+func TestForOfString(t *testing.T) {
+	expectNoErrors(t, `
+		let s: string = "hello";
+		for (let char of s) {
+			let c: string = char;
+		}
+	`)
+}
+
+// ============================================================
+// Switch Statement Tests
+// ============================================================
+
+func TestSwitchStatement(t *testing.T) {
+	expectNoErrors(t, `
+		let x: number = 1;
+		switch (x) {
+			case 1:
+				let a: number = 1;
+				break;
+			case 2:
+				let b: number = 2;
+				break;
+			default:
+				let c: number = 0;
+		}
+	`)
+}
+
+// ============================================================
+// Nullish Coalescing Tests
+// ============================================================
+
+func TestNullishCoalescing(t *testing.T) {
+	expectNoErrors(t, `
+		let x: number | null = null;
+		let y: number = x ?? 0;
+	`)
+}

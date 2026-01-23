@@ -14,36 +14,47 @@ import (
 const (
 	_ int = iota
 	LOWEST
-	ASSIGN      // =
-	OR          // ||
-	AND         // &&
-	EQUALS      // == !=
-	LESSGREATER // > < >= <=
-	SUM         // + -
-	PRODUCT     // * / %
-	PREFIX      // -x !x
-	CALL        // function() array[index] obj.property
+	ASSIGN          // =
+	NULLISH         // ??
+	OR              // ||
+	AND             // &&
+	EQUALS          // == !=
+	LESSGREATER     // > < >= <=
+	SUM             // + -
+	PRODUCT         // * / %
+	PREFIX          // -x !x ++x --x
+	POSTFIX         // x++ x--
+	CALL            // function() array[index] obj.property
 )
 
 // precedences maps token types to their precedence levels
 var precedences = map[token.Type]int{
-	token.ASSIGN:  ASSIGN,
-	token.OR:      OR,
-	token.AND:     AND,
-	token.EQ:      EQUALS,
-	token.NEQ:     EQUALS,
-	token.LT:      LESSGREATER,
-	token.GT:      LESSGREATER,
-	token.LTE:     LESSGREATER,
-	token.GTE:     LESSGREATER,
-	token.PLUS:    SUM,
-	token.MINUS:   SUM,
-	token.STAR:    PRODUCT,
-	token.SLASH:   PRODUCT,
-	token.PERCENT: PRODUCT,
-	token.LPAREN:  CALL,
-	token.LBRACKET: CALL,
-	token.DOT:     CALL,
+	token.ASSIGN:           ASSIGN,
+	token.PLUS_ASSIGN:      ASSIGN,
+	token.MINUS_ASSIGN:     ASSIGN,
+	token.STAR_ASSIGN:      ASSIGN,
+	token.SLASH_ASSIGN:     ASSIGN,
+	token.PERCENT_ASSIGN:   ASSIGN,
+	token.NULLISH_COALESCE: NULLISH,
+	token.OR:               OR,
+	token.AND:              AND,
+	token.EQ:               EQUALS,
+	token.NEQ:              EQUALS,
+	token.LT:               LESSGREATER,
+	token.GT:               LESSGREATER,
+	token.LTE:              LESSGREATER,
+	token.GTE:              LESSGREATER,
+	token.PLUS:             SUM,
+	token.MINUS:            SUM,
+	token.STAR:             PRODUCT,
+	token.SLASH:            PRODUCT,
+	token.PERCENT:          PRODUCT,
+	token.INCREMENT:        POSTFIX,
+	token.DECREMENT:        POSTFIX,
+	token.LPAREN:           CALL,
+	token.LBRACKET:         CALL,
+	token.DOT:              CALL,
+	token.QUESTION_DOT:     CALL,
 }
 
 type (
@@ -79,7 +90,9 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.NULL, p.parseNullLiteral)
 	p.registerPrefix(token.MINUS, p.parseUnaryExpression)
 	p.registerPrefix(token.NOT, p.parseUnaryExpression)
-	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
+	p.registerPrefix(token.INCREMENT, p.parsePrefixUpdateExpression)
+	p.registerPrefix(token.DECREMENT, p.parsePrefixUpdateExpression)
+	p.registerPrefix(token.LPAREN, p.parseGroupedOrArrowFunction)
 	p.registerPrefix(token.LBRACKET, p.parseArrayLiteral)
 	p.registerPrefix(token.LBRACE, p.parseObjectLiteral)
 	p.registerPrefix(token.THIS, p.parseThisExpression)
@@ -100,10 +113,19 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.GTE, p.parseBinaryExpression)
 	p.registerInfix(token.AND, p.parseBinaryExpression)
 	p.registerInfix(token.OR, p.parseBinaryExpression)
+	p.registerInfix(token.NULLISH_COALESCE, p.parseBinaryExpression)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
 	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
 	p.registerInfix(token.DOT, p.parsePropertyExpression)
+	p.registerInfix(token.QUESTION_DOT, p.parseOptionalChainExpression)
 	p.registerInfix(token.ASSIGN, p.parseAssignExpression)
+	p.registerInfix(token.PLUS_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(token.MINUS_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(token.STAR_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(token.SLASH_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(token.PERCENT_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(token.INCREMENT, p.parsePostfixUpdateExpression)
+	p.registerInfix(token.DECREMENT, p.parsePostfixUpdateExpression)
 
 	// Read two tokens to initialize curToken and peekToken
 	p.nextToken()
@@ -215,6 +237,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseClassDeclaration()
 	case token.TYPE:
 		return p.parseTypeAlias()
+	case token.SWITCH:
+		return p.parseSwitchStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -520,12 +544,12 @@ func (p *Parser) parseVarDeclaration(isConst bool) *ast.VarDecl {
 
 	decl.Name = p.curToken.Literal
 
-	if !p.expectPeek(token.COLON) {
-		return nil
+	// Type annotation is optional for type inference
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // consume ':'
+		p.nextToken()
+		decl.VarType = p.parseType()
 	}
-
-	p.nextToken()
-	decl.VarType = p.parseType()
 
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
@@ -695,12 +719,108 @@ func (p *Parser) parseWhileStatement() *ast.WhileStmt {
 	return stmt
 }
 
-func (p *Parser) parseForStatement() *ast.ForStmt {
-	stmt := &ast.ForStmt{Token: p.curToken}
+func (p *Parser) parseForStatement() ast.Statement {
+	forToken := p.curToken
 
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
+
+	// Check if this is a for-of loop
+	// Pattern: for (let/const ident of ...)
+	if p.peekTokenIs(token.LET) || p.peekTokenIs(token.CONST) {
+		// Look ahead to detect for-of
+		// Save current position conceptually (we'll parse and decide)
+		p.nextToken() // move to let/const
+		isConst := p.curTokenIs(token.CONST)
+
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+
+		varName := p.curToken.Literal
+		varToken := p.curToken
+
+		// Check for optional type annotation
+		var varType ast.Type
+		if p.peekTokenIs(token.COLON) {
+			p.nextToken()
+			p.nextToken()
+			varType = p.parseType()
+		}
+
+		// Check if next is 'of' (for-of) or '=' (regular for)
+		if p.peekTokenIs(token.OF) {
+			// This is a for-of loop
+			stmt := &ast.ForOfStmt{Token: forToken}
+			stmt.Variable = &ast.VarDecl{
+				Token:   varToken,
+				Name:    varName,
+				VarType: varType,
+				IsConst: isConst,
+			}
+
+			p.nextToken() // consume 'of'
+			p.nextToken() // move to iterable expression
+			stmt.Iterable = p.parseExpression(LOWEST)
+
+			if !p.expectPeek(token.RPAREN) {
+				return nil
+			}
+
+			if !p.expectPeek(token.LBRACE) {
+				return nil
+			}
+
+			stmt.Body = p.parseBlockStatement()
+			return stmt
+		}
+
+		// Regular for loop - continue parsing
+		stmt := &ast.ForStmt{Token: forToken}
+		stmt.Init = &ast.VarDecl{
+			Token:   varToken,
+			Name:    varName,
+			VarType: varType,
+			IsConst: isConst,
+		}
+
+		if !p.expectPeek(token.ASSIGN) {
+			return nil
+		}
+
+		p.nextToken()
+		stmt.Init.Value = p.parseExpression(LOWEST)
+
+		if p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+
+		p.nextToken()
+		stmt.Condition = p.parseExpression(LOWEST)
+
+		if !p.expectPeek(token.SEMICOLON) {
+			return nil
+		}
+
+		p.nextToken()
+		stmt.Update = p.parseExpression(LOWEST)
+
+		if !p.expectPeek(token.RPAREN) {
+			return nil
+		}
+
+		if !p.expectPeek(token.LBRACE) {
+			return nil
+		}
+
+		stmt.Body = p.parseBlockStatement()
+
+		return stmt
+	}
+
+	// Fallback for other for loop patterns
+	stmt := &ast.ForStmt{Token: forToken}
 
 	p.nextToken()
 	stmt.Init = p.parseVarDeclaration(false)
@@ -1027,4 +1147,316 @@ func (p *Parser) parseFunctionType() *ast.FunctionType {
 	funcType.ReturnType = p.parseType()
 
 	return funcType
+}
+
+// ============================================================
+// New Feature Parsers
+// ============================================================
+
+// parseGroupedOrArrowFunction handles both grouped expressions and arrow functions.
+// It needs to look ahead to determine which one it is.
+func (p *Parser) parseGroupedOrArrowFunction() ast.Expression {
+	startToken := p.curToken
+
+	// Check for empty params: ()
+	if p.peekTokenIs(token.RPAREN) {
+		p.nextToken() // consume )
+
+		// Check if followed by : (arrow function)
+		if p.peekTokenIs(token.COLON) {
+			// Empty params arrow function
+			return p.parseArrowFunctionWithParams(startToken, []*ast.Parameter{})
+		}
+
+		// Empty parentheses - this is actually a syntax error in most cases
+		// but we'll return nil for now
+		return nil
+	}
+
+	// Check if next token is IDENT followed by COLON (arrow function param pattern)
+	if p.peekTokenIs(token.IDENT) {
+		// Save current position by noting peek token
+		p.nextToken() // move to ident
+
+		if p.peekTokenIs(token.COLON) {
+			// This looks like arrow function params
+			// Parse first parameter
+			params := []*ast.Parameter{}
+			param := p.parseParameter()
+			if param != nil {
+				params = append(params, param)
+			}
+
+			// Parse remaining parameters
+			for p.peekTokenIs(token.COMMA) {
+				p.nextToken() // consume comma
+				p.nextToken() // move to next param
+				param := p.parseParameter()
+				if param != nil {
+					params = append(params, param)
+				}
+			}
+
+			if !p.expectPeek(token.RPAREN) {
+				return nil
+			}
+
+			// Check if followed by : type =>
+			if p.peekTokenIs(token.COLON) {
+				return p.parseArrowFunctionWithParams(startToken, params)
+			}
+
+			// Not an arrow function after all - this is an error
+			// because we've consumed ident: type which isn't a valid expression
+			return nil
+		}
+
+		// Not an arrow function, parse as grouped expression
+		// curToken is now the identifier, we need to parse from here
+		exp := p.parseExpression(LOWEST)
+
+		if !p.expectPeek(token.RPAREN) {
+			return nil
+		}
+
+		return exp
+	}
+
+	// Not an identifier, so definitely not an arrow function
+	// Parse as grouped expression
+	p.nextToken()
+	exp := p.parseExpression(LOWEST)
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	return exp
+}
+
+// parseArrowFunctionWithParams parses an arrow function after parameters have been parsed.
+func (p *Parser) parseArrowFunctionWithParams(startToken token.Token, params []*ast.Parameter) ast.Expression {
+	arrow := &ast.ArrowFunctionExpr{
+		Token:  startToken,
+		Params: params,
+	}
+
+	// Parse return type
+	if !p.expectPeek(token.COLON) {
+		return nil
+	}
+
+	p.nextToken()
+	arrow.ReturnType = p.parseType()
+
+	// Expect =>
+	if !p.expectPeek(token.ARROW) {
+		return nil
+	}
+
+	p.nextToken()
+
+	// Check if body is a block or expression
+	if p.curTokenIs(token.LBRACE) {
+		arrow.Body = p.parseBlockStatement()
+	} else {
+		arrow.Expression = p.parseExpression(LOWEST)
+	}
+
+	return arrow
+}
+
+// parseCompoundAssignExpression parses compound assignment (+=, -=, etc.)
+func (p *Parser) parseCompoundAssignExpression(left ast.Expression) ast.Expression {
+	expr := &ast.CompoundAssignExpr{
+		Token:  p.curToken,
+		Target: left,
+		Op:     p.curToken.Type,
+	}
+
+	p.nextToken()
+	expr.Value = p.parseExpression(ASSIGN - 1) // Right associative
+
+	return expr
+}
+
+// parsePrefixUpdateExpression parses prefix increment/decrement (++x, --x)
+func (p *Parser) parsePrefixUpdateExpression() ast.Expression {
+	expr := &ast.UpdateExpr{
+		Token:  p.curToken,
+		Op:     p.curToken.Type,
+		Prefix: true,
+	}
+
+	p.nextToken()
+	expr.Operand = p.parseExpression(PREFIX)
+
+	return expr
+}
+
+// parsePostfixUpdateExpression parses postfix increment/decrement (x++, x--)
+func (p *Parser) parsePostfixUpdateExpression(left ast.Expression) ast.Expression {
+	return &ast.UpdateExpr{
+		Token:   p.curToken,
+		Op:      p.curToken.Type,
+		Operand: left,
+		Prefix:  false,
+	}
+}
+
+// parseOptionalChainExpression parses optional chaining (?.)
+func (p *Parser) parseOptionalChainExpression(left ast.Expression) ast.Expression {
+	tok := p.curToken
+
+	// Check what follows ?.
+	if p.peekTokenIs(token.LPAREN) {
+		// Optional call: fn?.()
+		p.nextToken()
+		call := &ast.CallExpr{Token: p.curToken, Function: left, Optional: true}
+		call.Arguments = p.parseExpressionList(token.RPAREN)
+		return call
+	} else if p.peekTokenIs(token.LBRACKET) {
+		// Optional index: arr?.[0]
+		p.nextToken()
+		expr := &ast.IndexExpr{Token: p.curToken, Object: left, Optional: true}
+		p.nextToken()
+		expr.Index = p.parseExpression(LOWEST)
+		if !p.expectPeek(token.RBRACKET) {
+			return nil
+		}
+		return expr
+	} else {
+		// Optional property: obj?.prop
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		return &ast.PropertyExpr{
+			Token:    tok,
+			Object:   left,
+			Property: p.curToken.Literal,
+			Optional: true,
+		}
+	}
+}
+
+// parseForOfStatement parses for-of loops
+func (p *Parser) parseForOfStatement() *ast.ForOfStmt {
+	stmt := &ast.ForOfStmt{Token: p.curToken}
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	// Expect 'let' or 'const'
+	if !p.expectPeek(token.LET) && !p.curTokenIs(token.CONST) {
+		return nil
+	}
+
+	isConst := p.curTokenIs(token.CONST)
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	varName := p.curToken.Literal
+
+	// Optional type annotation
+	var varType ast.Type
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken()
+		p.nextToken()
+		varType = p.parseType()
+	}
+
+	stmt.Variable = &ast.VarDecl{
+		Token:   p.curToken,
+		Name:    varName,
+		VarType: varType,
+		IsConst: isConst,
+	}
+
+	if !p.expectPeek(token.OF) {
+		return nil
+	}
+
+	p.nextToken()
+	stmt.Iterable = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+
+	return stmt
+}
+
+// parseSwitchStatement parses switch statements
+func (p *Parser) parseSwitchStatement() *ast.SwitchStmt {
+	stmt := &ast.SwitchStmt{Token: p.curToken}
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	p.nextToken()
+	stmt.Discriminant = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	stmt.Cases = []*ast.CaseClause{}
+
+	p.nextToken()
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		clause := p.parseCaseClause()
+		if clause != nil {
+			stmt.Cases = append(stmt.Cases, clause)
+		}
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+// parseCaseClause parses a case or default clause
+func (p *Parser) parseCaseClause() *ast.CaseClause {
+	clause := &ast.CaseClause{Token: p.curToken}
+
+	if p.curTokenIs(token.CASE) {
+		p.nextToken()
+		clause.Test = p.parseExpression(LOWEST)
+	} else if p.curTokenIs(token.DEFAULT) {
+		clause.Test = nil
+	} else {
+		return nil
+	}
+
+	if !p.expectPeek(token.COLON) {
+		return nil
+	}
+
+	clause.Consequent = []ast.Statement{}
+
+	// Parse statements until we hit case, default, or }
+	for !p.peekTokenIs(token.CASE) && !p.peekTokenIs(token.DEFAULT) &&
+		!p.peekTokenIs(token.RBRACE) && !p.peekTokenIs(token.EOF) {
+		p.nextToken()
+		stmt := p.parseStatement()
+		if stmt != nil {
+			clause.Consequent = append(clause.Consequent, stmt)
+		}
+	}
+
+	return clause
 }

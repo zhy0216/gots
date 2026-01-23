@@ -318,6 +318,12 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.ForStmt:
 		c.checkForStmt(s)
 
+	case *ast.ForOfStmt:
+		c.checkForOfStmt(s)
+
+	case *ast.SwitchStmt:
+		c.checkSwitchStmt(s)
+
 	case *ast.ReturnStmt:
 		c.checkReturnStmt(s)
 
@@ -339,15 +345,34 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 }
 
 func (c *Checker) checkVarDecl(decl *ast.VarDecl) {
-	declaredType := c.resolveType(decl.VarType)
-	initType := c.checkExpr(decl.Value)
+	var declaredType Type
 
-	if !IsAssignableTo(initType, declaredType) {
-		c.error(decl.Token.Line, decl.Token.Column,
-			"cannot assign %s to %s", initType.String(), declaredType.String())
+	if decl.VarType != nil {
+		// Explicit type annotation
+		declaredType = c.resolveType(decl.VarType)
+		if decl.Value != nil {
+			initType := c.checkExpr(decl.Value)
+			if !IsAssignableTo(initType, declaredType) {
+				c.error(decl.Token.Line, decl.Token.Column,
+					"cannot assign %s to %s", initType.String(), declaredType.String())
+			}
+		}
+	} else {
+		// Type inference
+		if decl.Value == nil {
+			c.error(decl.Token.Line, decl.Token.Column,
+				"variable declaration requires type annotation or initializer")
+			return
+		}
+		declaredType = c.inferType(decl.Value)
 	}
 
 	c.scope.Define(decl.Name, declaredType)
+}
+
+// inferType infers the type of an expression for type inference.
+func (c *Checker) inferType(expr ast.Expression) Type {
+	return c.checkExpr(expr)
 }
 
 func (c *Checker) checkBlock(block *ast.Block) {
@@ -601,6 +626,9 @@ func (c *Checker) checkExpr(expr ast.Expression) Type {
 	case *ast.FunctionExpr:
 		return c.checkFunctionExpr(e)
 
+	case *ast.ArrowFunctionExpr:
+		return c.checkArrowFunctionExpr(e)
+
 	case *ast.NewExpr:
 		return c.checkNewExpr(e)
 
@@ -612,6 +640,12 @@ func (c *Checker) checkExpr(expr ast.Expression) Type {
 
 	case *ast.AssignExpr:
 		return c.checkAssignExpr(e)
+
+	case *ast.CompoundAssignExpr:
+		return c.checkCompoundAssignExpr(e)
+
+	case *ast.UpdateExpr:
+		return c.checkUpdateExpr(e)
 	}
 
 	return AnyType
@@ -679,6 +713,17 @@ func (c *Checker) checkBinaryExpr(expr *ast.BinaryExpr) Type {
 				"logical operator requires booleans, got %s and %s", left.String(), right.String())
 		}
 		return BooleanType
+
+	// Nullish coalescing
+	case token.NULLISH_COALESCE:
+		// left ?? right - returns right if left is null/undefined
+		// The type is the union of the non-null type of left and right
+		// For simplicity, return the type of right (or left if it's not nullable)
+		if nullable, ok := left.(*Nullable); ok {
+			// If left is nullable, result could be inner type or right type
+			return LeastUpperBound(nullable.Inner, right)
+		}
+		return left
 	}
 
 	return AnyType
@@ -1011,4 +1056,158 @@ func (c *Checker) checkAssignExpr(expr *ast.AssignExpr) Type {
 
 	c.error(expr.Token.Line, expr.Token.Column, "invalid assignment target")
 	return AnyType
+}
+
+// checkForOfStmt checks a for-of statement.
+func (c *Checker) checkForOfStmt(stmt *ast.ForOfStmt) {
+	iterableType := c.checkExpr(stmt.Iterable)
+	iterableType = Unwrap(iterableType)
+
+	var elementType Type
+	switch t := iterableType.(type) {
+	case *Array:
+		elementType = t.Element
+	default:
+		if iterableType.Equals(StringType) {
+			elementType = StringType
+		} else {
+			c.error(stmt.Token.Line, stmt.Token.Column,
+				"for-of requires array or string, got %s", iterableType.String())
+			elementType = AnyType
+		}
+	}
+
+	// Check variable type if explicitly declared
+	if stmt.Variable.VarType != nil {
+		declaredType := c.resolveType(stmt.Variable.VarType)
+		if !IsAssignableTo(elementType, declaredType) {
+			c.error(stmt.Token.Line, stmt.Token.Column,
+				"cannot assign %s to %s", elementType.String(), declaredType.String())
+		}
+		elementType = declaredType
+	}
+
+	c.pushScope()
+	c.scope.Define(stmt.Variable.Name, elementType)
+	c.loopDepth++
+	c.checkBlock(stmt.Body)
+	c.loopDepth--
+	c.popScope()
+}
+
+// checkSwitchStmt checks a switch statement.
+func (c *Checker) checkSwitchStmt(stmt *ast.SwitchStmt) {
+	discriminantType := c.checkExpr(stmt.Discriminant)
+
+	for _, clause := range stmt.Cases {
+		if clause.Test != nil {
+			testType := c.checkExpr(clause.Test)
+			if !IsAssignableTo(testType, discriminantType) && !IsAssignableTo(discriminantType, testType) {
+				c.error(clause.Token.Line, clause.Token.Column,
+					"case type %s is not comparable to switch type %s",
+					testType.String(), discriminantType.String())
+			}
+		}
+
+		// Check case body statements
+		c.loopDepth++ // break is valid in switch
+		for _, s := range clause.Consequent {
+			c.checkStatement(s)
+		}
+		c.loopDepth--
+	}
+}
+
+// checkCompoundAssignExpr checks compound assignment expressions (+=, -=, etc.).
+func (c *Checker) checkCompoundAssignExpr(expr *ast.CompoundAssignExpr) Type {
+	targetType := c.checkExpr(expr.Target)
+	valueType := c.checkExpr(expr.Value)
+
+	// For now, require both to be numbers for arithmetic compound assignment
+	// String += string is also valid
+	switch expr.Op {
+	case token.PLUS_ASSIGN:
+		if targetType.Equals(StringType) && valueType.Equals(StringType) {
+			return StringType
+		}
+		if !targetType.Equals(NumberType) || !valueType.Equals(NumberType) {
+			c.error(expr.Token.Line, expr.Token.Column,
+				"operator += requires numbers or strings, got %s and %s",
+				targetType.String(), valueType.String())
+		}
+		return NumberType
+	default:
+		if !targetType.Equals(NumberType) || !valueType.Equals(NumberType) {
+			c.error(expr.Token.Line, expr.Token.Column,
+				"operator %s requires numbers, got %s and %s",
+				expr.Token.Literal, targetType.String(), valueType.String())
+		}
+		return NumberType
+	}
+}
+
+// checkUpdateExpr checks increment/decrement expressions.
+func (c *Checker) checkUpdateExpr(expr *ast.UpdateExpr) Type {
+	operandType := c.checkExpr(expr.Operand)
+
+	if !operandType.Equals(NumberType) {
+		c.error(expr.Token.Line, expr.Token.Column,
+			"operator %s requires number, got %s",
+			expr.Token.Literal, operandType.String())
+	}
+
+	// Verify operand is assignable (identifier, property, or index)
+	switch expr.Operand.(type) {
+	case *ast.Identifier, *ast.PropertyExpr, *ast.IndexExpr:
+		// OK
+	default:
+		c.error(expr.Token.Line, expr.Token.Column,
+			"invalid operand for %s", expr.Token.Literal)
+	}
+
+	return NumberType
+}
+
+// checkArrowFunctionExpr checks arrow function expressions.
+func (c *Checker) checkArrowFunctionExpr(expr *ast.ArrowFunctionExpr) Type {
+	params := make([]*Param, len(expr.Params))
+	for i, p := range expr.Params {
+		params[i] = &Param{
+			Name: p.Name,
+			Type: c.resolveType(p.ParamType),
+		}
+	}
+
+	funcType := &Function{
+		Params:     params,
+		ReturnType: c.resolveType(expr.ReturnType),
+	}
+
+	// Check body
+	savedFunc := c.currentFunc
+	c.currentFunc = funcType
+
+	c.pushScope()
+	for _, p := range params {
+		c.scope.Define(p.Name, p.Type)
+	}
+
+	if expr.Body != nil {
+		// Block body
+		for _, stmt := range expr.Body.Statements {
+			c.checkStatement(stmt)
+		}
+	} else if expr.Expression != nil {
+		// Expression body - check that expression type matches return type
+		exprType := c.checkExpr(expr.Expression)
+		if !IsAssignableTo(exprType, funcType.ReturnType) {
+			c.error(expr.Token.Line, expr.Token.Column,
+				"cannot return %s, expected %s", exprType.String(), funcType.ReturnType.String())
+		}
+	}
+
+	c.popScope()
+	c.currentFunc = savedFunc
+
+	return funcType
 }

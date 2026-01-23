@@ -794,3 +794,240 @@ test/
   array-methods.gts
   ...
 ```
+
+### Test Patterns
+
+Based on the existing codebase, tests follow these patterns:
+
+**Table-driven tests:**
+```go
+func TestVMFeature(t *testing.T) {
+    tests := []struct {
+        input    string
+        expected float64  // or string, bool, etc.
+    }{
+        {"source code;", expectedValue},
+        // ...
+    }
+
+    for _, tt := range tests {
+        vm := runVM(t, tt.input)
+        // assertions
+    }
+}
+```
+
+**Output capture tests:**
+```go
+func TestVMFeatureWithOutput(t *testing.T) {
+    var buf bytes.Buffer
+    vm := newVMWithOutput(t, `source code;`, &buf)
+    err := vm.Run()
+    // ...
+    output := buf.String()
+    // assertions on output
+}
+```
+
+**Error tests:**
+```go
+func TestCheckerErrorCase(t *testing.T) {
+    checker := newChecker(t, `invalid code;`)
+    if len(checker.Errors()) == 0 {
+        t.Error("expected type error")
+    }
+}
+```
+
+---
+
+## Design Decisions & Rationale
+
+### Why Explicit Function Signatures?
+
+GoTS requires explicit type annotations for function parameters and return types, unlike TypeScript's inference. Rationale:
+
+1. **Clarity at boundaries** - Functions are API contracts; explicit types document intent
+2. **Simpler implementation** - No need for bidirectional type inference
+3. **Faster type checking** - No need to analyze function body to determine parameter types
+4. **Better error messages** - Errors point to explicit declarations, not inferred locations
+
+### Why No `var` Keyword?
+
+TypeScript supports `var`, `let`, and `const`. GoTS only supports `let` and `const`:
+
+1. **Simplicity** - Two constructs sufficient for all use cases
+2. **No hoisting** - `var` hoisting is confusing; `let`/`const` have cleaner semantics
+3. **Block scoping only** - Consistent scoping rules throughout
+
+### Why Value-Based Null (not Reference)?
+
+GoTS uses `null` as a distinct value type, not a reference type:
+
+1. **Explicit nullability** - `string | null` makes nullable types visible
+2. **No billion-dollar mistake** - Can't accidentally pass null where not expected
+3. **Simpler GC** - No special null reference handling
+
+### Bytecode vs Tree-walking
+
+GoTS compiles to bytecode rather than interpreting the AST directly:
+
+1. **Performance** - Bytecode interpretation is ~10x faster than tree-walking
+2. **Serialization** - Bytecode can be saved/loaded (`.gtsb` files)
+3. **Separation of concerns** - Compiler and VM are independent
+
+---
+
+## Known Limitations
+
+### Current Implementation Limits
+
+| Limit | Value | Defined In |
+|-------|-------|------------|
+| Max local variables per scope | 256 | compiler.go |
+| Max stack depth | 256 | vm.go |
+| Max call frames | 64 | vm.go |
+| GC initial threshold | 1MB | vm.go |
+
+### Intentionally Unsupported Features
+
+These TypeScript features are **not planned** for GoTS:
+
+| Feature | Reason |
+|---------|--------|
+| `any` type | Defeats purpose of static typing |
+| Type assertions (`as`) | Prefer explicit runtime checks |
+| Non-null assertion (`!`) | Prefer explicit null handling |
+| `typeof` type guards | Complex control flow analysis |
+| Mapped types | Too complex for MVP |
+| Conditional types | Too complex for MVP |
+| `readonly` modifier | Can add later if needed |
+| Enums | Use const objects or union types |
+| Namespaces | Use modules when added |
+| Decorators | Out of scope |
+
+---
+
+## Dependencies Between Features
+
+Some features have implementation dependencies:
+
+```
+Arrow Functions
+    └── (none, standalone)
+
+Compound Assignment (+=, -=, etc.)
+    └── (none, standalone)
+
+Type Inference
+    └── (none, compile-time only)
+
+Array Methods
+    └── Arrow Functions (for callbacks)
+    └── Type Inference (for return types)
+
+For-of Loop
+    └── (none, standalone)
+
+Optional Chaining (?.)
+    └── Nullish Coalescing (??) (often used together)
+
+Template Literals
+    └── String Methods (for implementation)
+
+Interfaces
+    └── (none, compile-time only)
+
+Try/Catch
+    └── Classes (for Error class)
+
+Generics
+    └── Interfaces (for constraints)
+    └── Type Inference (for type argument inference)
+```
+
+---
+
+## Migration Notes
+
+When implementing features, consider backwards compatibility:
+
+### Safe to Add (Non-breaking)
+- New syntax that was previously a parse error
+- New built-in functions
+- New operators
+- New keywords (if not valid identifiers)
+
+### Requires Care
+- Changes to type checking rules
+- Changes to operator semantics
+- New reserved words that were valid identifiers
+
+### Bytecode Versioning
+- Current bytecode version: 1
+- Increment version when adding new opcodes
+- VM should reject incompatible versions
+
+---
+
+## Appendix: Quick Reference
+
+### File Locations for Common Changes
+
+| Change Type | Files to Modify |
+|-------------|-----------------|
+| New keyword | `token/token.go`, `lexer/lexer.go` |
+| New operator | `token/token.go`, `lexer/lexer.go`, `parser/parser.go` |
+| New AST node | `ast/ast.go` |
+| New statement | `ast/ast.go`, `parser/parser.go`, `types/checker.go`, `compiler/compiler.go` |
+| New expression | `ast/ast.go`, `parser/parser.go`, `types/checker.go`, `compiler/compiler.go` |
+| New opcode | `bytecode/opcode.go`, `compiler/compiler.go`, `vm/vm.go` |
+| New built-in | `vm/vm.go` (in `callNative`) |
+| New type | `types/types.go`, `types/checker.go` |
+
+### Parser Precedence Levels
+
+```go
+const (
+    LOWEST      = 1
+    ASSIGN      = 2   // =
+    OR          = 3   // ||
+    AND         = 4   // &&
+    EQUALITY    = 5   // == !=
+    COMPARISON  = 6   // < > <= >=
+    SUM         = 7   // + -
+    PRODUCT     = 8   // * / %
+    PREFIX      = 9   // ! -
+    CALL        = 10  // () [] .
+)
+```
+
+When adding new operators:
+- `??` should be between ASSIGN and OR (precedence ~2.5)
+- `?.` should have same precedence as `.` (CALL level)
+
+### Opcode Categories
+
+| Category | Opcodes |
+|----------|---------|
+| Constants | `OP_CONSTANT`, `OP_TRUE`, `OP_FALSE`, `OP_NULL` |
+| Arithmetic | `OP_ADD`, `OP_SUB`, `OP_MUL`, `OP_DIV`, `OP_MOD`, `OP_NEG` |
+| Comparison | `OP_EQ`, `OP_NEQ`, `OP_LT`, `OP_LTE`, `OP_GT`, `OP_GTE` |
+| Logical | `OP_NOT`, `OP_AND`, `OP_OR` |
+| Variables | `OP_GET_GLOBAL`, `OP_SET_GLOBAL`, `OP_GET_LOCAL`, `OP_SET_LOCAL` |
+| Control | `OP_JUMP`, `OP_JUMP_IF_FALSE`, `OP_LOOP` |
+| Functions | `OP_CALL`, `OP_RETURN`, `OP_CLOSURE` |
+| Objects | `OP_ARRAY`, `OP_OBJECT`, `OP_GET_PROP`, `OP_SET_PROP`, `OP_GET_INDEX`, `OP_SET_INDEX` |
+| Classes | `OP_CLASS`, `OP_METHOD`, `OP_GET_SUPER`, `OP_INVOKE`, `OP_SUPER_INVOKE` |
+
+---
+
+## Changelog
+
+| Date | Change |
+|------|--------|
+| 2024-01 | Initial plan document created |
+
+---
+
+*Last updated: January 2024*

@@ -27,6 +27,17 @@ const (
 	SLASH   // /
 	PERCENT // %
 
+	// Compound assignment operators
+	PLUS_ASSIGN    // +=
+	MINUS_ASSIGN   // -=
+	STAR_ASSIGN    // *=
+	SLASH_ASSIGN   // /=
+	PERCENT_ASSIGN // %=
+
+	// Increment/decrement operators
+	INCREMENT // ++
+	DECREMENT // --
+
 	// Comparison operators
 	EQ  // ==
 	NEQ // !=
@@ -39,6 +50,12 @@ const (
 	AND // &&
 	OR  // ||
 	NOT // !
+
+	// Nullish coalescing
+	NULLISH_COALESCE // ??
+
+	// Optional chaining
+	QUESTION_DOT // ?.
 
 	// Assignment
 	ASSIGN // =
@@ -56,6 +73,7 @@ const (
 	DOT       // .
 	ARROW     // =>
 	PIPE      // |
+	QUESTION  // ?
 
 	// Keywords
 	LET         // let
@@ -75,6 +93,10 @@ const (
 	SUPER       // super
 	CONSTRUCTOR // constructor
 	TYPE        // type
+	SWITCH      // switch
+	CASE        // case
+	DEFAULT     // default
+	OF          // of
 
 	// Type keywords
 	NUMBER_TYPE  // number
@@ -121,6 +143,17 @@ var typeStrings = map[Type]string{
 	SLASH:   "/",
 	PERCENT: "%",
 
+	// Compound assignment
+	PLUS_ASSIGN:    "+=",
+	MINUS_ASSIGN:   "-=",
+	STAR_ASSIGN:    "*=",
+	SLASH_ASSIGN:   "/=",
+	PERCENT_ASSIGN: "%=",
+
+	// Increment/decrement
+	INCREMENT: "++",
+	DECREMENT: "--",
+
 	// Comparison
 	EQ:  "==",
 	NEQ: "!=",
@@ -133,6 +166,12 @@ var typeStrings = map[Type]string{
 	AND: "&&",
 	OR:  "||",
 	NOT: "!",
+
+	// Nullish coalescing
+	NULLISH_COALESCE: "??",
+
+	// Optional chaining
+	QUESTION_DOT: "?.",
 
 	// Assignment
 	ASSIGN: "=",
@@ -150,6 +189,7 @@ var typeStrings = map[Type]string{
 	DOT:       ".",
 	ARROW:     "=>",
 	PIPE:      "|",
+	QUESTION:  "?",
 
 	// Keywords
 	LET:         "let",
@@ -169,6 +209,10 @@ var typeStrings = map[Type]string{
 	SUPER:       "super",
 	CONSTRUCTOR: "constructor",
 	TYPE:        "type",
+	SWITCH:      "switch",
+	CASE:        "case",
+	DEFAULT:     "default",
+	OF:          "of",
 
 	// Type keywords
 	NUMBER_TYPE:  "number",
@@ -197,6 +241,10 @@ var keywords = map[string]Type{
 	"super":       SUPER,
 	"constructor": CONSTRUCTOR,
 	"type":        TYPE,
+	"switch":      SWITCH,
+	"case":        CASE,
+	"default":     DEFAULT,
+	"of":          OF,
 	"true":        TRUE,
 	"false":       FALSE,
 	"null":        NULL,

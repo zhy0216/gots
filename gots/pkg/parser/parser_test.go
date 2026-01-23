@@ -543,3 +543,410 @@ func testBinaryExpression(t *testing.T, expr ast.Expression, left interface{}, o
 
 	testLiteralExpression(t, binary.Right, right)
 }
+
+// ============================================================
+// Type Inference Tests
+// ============================================================
+
+func TestParseVarDeclWithTypeInference(t *testing.T) {
+	tests := []struct {
+		input    string
+		name     string
+		hasType  bool
+		isConst  bool
+	}{
+		{"let x = 10;", "x", false, false},
+		{"let name = \"hello\";", "name", false, false},
+		{"let flag = true;", "flag", false, false},
+		{"const PI = 3.14;", "PI", false, true},
+		{"let arr = [1, 2, 3];", "arr", false, false},
+		{"let obj = { x: 1, y: 2 };", "obj", false, false},
+		// Explicit type still works
+		{"let y: number = 20;", "y", true, false},
+		{"const NAME: string = \"test\";", "NAME", true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			program := p.ParseProgram()
+			checkParserErrors(t, p)
+
+			if len(program.Statements) != 1 {
+				t.Fatalf("program has %d statements, want 1", len(program.Statements))
+			}
+
+			stmt, ok := program.Statements[0].(*ast.VarDecl)
+			if !ok {
+				t.Fatalf("statement is not *ast.VarDecl, got %T", program.Statements[0])
+			}
+
+			if stmt.Name != tt.name {
+				t.Errorf("stmt.Name = %q, want %q", stmt.Name, tt.name)
+			}
+
+			if tt.hasType && stmt.VarType == nil {
+				t.Error("expected VarType to be non-nil")
+			}
+			if !tt.hasType && stmt.VarType != nil {
+				t.Error("expected VarType to be nil for inferred type")
+			}
+
+			if stmt.IsConst != tt.isConst {
+				t.Errorf("stmt.IsConst = %v, want %v", stmt.IsConst, tt.isConst)
+			}
+		})
+	}
+}
+
+// ============================================================
+// Compound Assignment Tests
+// ============================================================
+
+func TestParseCompoundAssignment(t *testing.T) {
+	tests := []struct {
+		input    string
+		target   string
+		operator string
+		value    float64
+	}{
+		{"x += 5;", "x", "+=", 5},
+		{"x -= 3;", "x", "-=", 3},
+		{"x *= 2;", "x", "*=", 2},
+		{"x /= 4;", "x", "/=", 4},
+		{"x %= 3;", "x", "%=", 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			program := p.ParseProgram()
+			checkParserErrors(t, p)
+
+			if len(program.Statements) != 1 {
+				t.Fatalf("program has %d statements, want 1", len(program.Statements))
+			}
+
+			stmt, ok := program.Statements[0].(*ast.ExprStmt)
+			if !ok {
+				t.Fatalf("statement is not *ast.ExprStmt, got %T", program.Statements[0])
+			}
+
+			assign, ok := stmt.Expr.(*ast.CompoundAssignExpr)
+			if !ok {
+				t.Fatalf("expr is not *ast.CompoundAssignExpr, got %T", stmt.Expr)
+			}
+
+			testIdentifier(t, assign.Target, tt.target)
+			if assign.Token.Literal != tt.operator {
+				t.Errorf("operator = %q, want %q", assign.Token.Literal, tt.operator)
+			}
+			testNumberLiteral(t, assign.Value, tt.value)
+		})
+	}
+}
+
+// ============================================================
+// Arrow Function Tests
+// ============================================================
+
+func TestParseArrowFunctionExpression(t *testing.T) {
+	input := "let add = (a: number, b: number): number => a + b;"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.VarDecl)
+	fn, ok := stmt.Value.(*ast.ArrowFunctionExpr)
+	if !ok {
+		t.Fatalf("stmt.Value is not *ast.ArrowFunctionExpr, got %T", stmt.Value)
+	}
+
+	if len(fn.Params) != 2 {
+		t.Fatalf("wrong number of params. got=%d, want=2", len(fn.Params))
+	}
+
+	if fn.Params[0].Name != "a" {
+		t.Errorf("param[0].Name = %q, want %q", fn.Params[0].Name, "a")
+	}
+
+	if fn.Params[1].Name != "b" {
+		t.Errorf("param[1].Name = %q, want %q", fn.Params[1].Name, "b")
+	}
+
+	// Body should be expression, not block
+	if fn.Body != nil {
+		t.Error("expected Body to be nil for expression arrow function")
+	}
+
+	if fn.Expression == nil {
+		t.Fatal("expected Expression to be non-nil")
+	}
+}
+
+func TestParseArrowFunctionWithBlock(t *testing.T) {
+	input := "let double = (x: number): number => { return x * 2; };"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.VarDecl)
+	fn, ok := stmt.Value.(*ast.ArrowFunctionExpr)
+	if !ok {
+		t.Fatalf("stmt.Value is not *ast.ArrowFunctionExpr, got %T", stmt.Value)
+	}
+
+	if fn.Body == nil {
+		t.Fatal("expected Body to be non-nil for block arrow function")
+	}
+
+	if fn.Expression != nil {
+		t.Error("expected Expression to be nil for block arrow function")
+	}
+}
+
+func TestParseArrowFunctionNoParams(t *testing.T) {
+	input := "let getZero = (): number => 0;"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.VarDecl)
+	fn, ok := stmt.Value.(*ast.ArrowFunctionExpr)
+	if !ok {
+		t.Fatalf("stmt.Value is not *ast.ArrowFunctionExpr, got %T", stmt.Value)
+	}
+
+	if len(fn.Params) != 0 {
+		t.Errorf("wrong number of params. got=%d, want=0", len(fn.Params))
+	}
+}
+
+// ============================================================
+// Nullish Coalescing Tests
+// ============================================================
+
+func TestParseNullishCoalescing(t *testing.T) {
+	input := "x ?? defaultValue;"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExprStmt)
+	binary, ok := stmt.Expr.(*ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expr is not *ast.BinaryExpr, got %T", stmt.Expr)
+	}
+
+	testIdentifier(t, binary.Left, "x")
+	if binary.Token.Literal != "??" {
+		t.Errorf("operator = %q, want %q", binary.Token.Literal, "??")
+	}
+	testIdentifier(t, binary.Right, "defaultValue")
+}
+
+func TestNullishCoalescingPrecedence(t *testing.T) {
+	// ?? should have lower precedence than ||
+	input := "a || b ?? c;"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExprStmt)
+	// Should parse as (a || b) ?? c
+	binary, ok := stmt.Expr.(*ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expr is not *ast.BinaryExpr, got %T", stmt.Expr)
+	}
+
+	if binary.Token.Literal != "??" {
+		t.Errorf("outer operator = %q, want %q", binary.Token.Literal, "??")
+	}
+
+	inner, ok := binary.Left.(*ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("left is not *ast.BinaryExpr, got %T", binary.Left)
+	}
+
+	if inner.Token.Literal != "||" {
+		t.Errorf("inner operator = %q, want %q", inner.Token.Literal, "||")
+	}
+}
+
+// ============================================================
+// Increment/Decrement Tests
+// ============================================================
+
+func TestParseIncrementDecrement(t *testing.T) {
+	tests := []struct {
+		input    string
+		operator string
+		prefix   bool
+	}{
+		{"++x;", "++", true},
+		{"--x;", "--", true},
+		{"x++;", "++", false},
+		{"x--;", "--", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			program := p.ParseProgram()
+			checkParserErrors(t, p)
+
+			stmt := program.Statements[0].(*ast.ExprStmt)
+			update, ok := stmt.Expr.(*ast.UpdateExpr)
+			if !ok {
+				t.Fatalf("expr is not *ast.UpdateExpr, got %T", stmt.Expr)
+			}
+
+			if update.Token.Literal != tt.operator {
+				t.Errorf("operator = %q, want %q", update.Token.Literal, tt.operator)
+			}
+
+			if update.Prefix != tt.prefix {
+				t.Errorf("prefix = %v, want %v", update.Prefix, tt.prefix)
+			}
+
+			testIdentifier(t, update.Operand, "x")
+		})
+	}
+}
+
+// ============================================================
+// For-of Loop Tests
+// ============================================================
+
+func TestParseForOfLoop(t *testing.T) {
+	input := "for (let item of items) { println(item); }"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ast.ForOfStmt)
+	if !ok {
+		t.Fatalf("statement is not *ast.ForOfStmt, got %T", program.Statements[0])
+	}
+
+	if stmt.Variable.Name != "item" {
+		t.Errorf("variable name = %q, want %q", stmt.Variable.Name, "item")
+	}
+
+	testIdentifier(t, stmt.Iterable, "items")
+
+	if stmt.Body == nil {
+		t.Fatal("expected Body to be non-nil")
+	}
+}
+
+// ============================================================
+// Switch Statement Tests
+// ============================================================
+
+func TestParseSwitchStatement(t *testing.T) {
+	input := `switch (x) {
+		case 1:
+			println("one");
+			break;
+		case 2:
+		case 3:
+			println("two or three");
+			break;
+		default:
+			println("other");
+	}`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ast.SwitchStmt)
+	if !ok {
+		t.Fatalf("statement is not *ast.SwitchStmt, got %T", program.Statements[0])
+	}
+
+	testIdentifier(t, stmt.Discriminant, "x")
+
+	if len(stmt.Cases) != 4 {
+		t.Fatalf("wrong number of cases. got=%d, want=4", len(stmt.Cases))
+	}
+
+	// First case: 1
+	if stmt.Cases[0].Test == nil {
+		t.Error("case 0 test should not be nil")
+	}
+
+	// Last case should be default
+	if stmt.Cases[3].Test != nil {
+		t.Error("default case test should be nil")
+	}
+}
+
+// ============================================================
+// Optional Chaining Tests
+// ============================================================
+
+func TestParseOptionalChaining(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{"obj?.property;"},
+		{"arr?.[0];"},
+		{"fn?.();"},
+		{"a?.b?.c;"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			program := p.ParseProgram()
+			checkParserErrors(t, p)
+
+			if len(program.Statements) != 1 {
+				t.Fatalf("program has %d statements, want 1", len(program.Statements))
+			}
+		})
+	}
+}
+
+func TestParseOptionalPropertyAccess(t *testing.T) {
+	input := "obj?.property;"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExprStmt)
+	prop, ok := stmt.Expr.(*ast.PropertyExpr)
+	if !ok {
+		t.Fatalf("expr is not *ast.PropertyExpr, got %T", stmt.Expr)
+	}
+
+	if !prop.Optional {
+		t.Error("expected Optional to be true")
+	}
+
+	testIdentifier(t, prop.Object, "obj")
+	if prop.Property != "property" {
+		t.Errorf("prop.Property = %q, want %q", prop.Property, "property")
+	}
+}
