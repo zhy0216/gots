@@ -35,6 +35,9 @@ type VM struct {
 
 	// Open upvalue linked list (sorted by stack slot, from top to bottom)
 	openUpvalues *ObjUpvalue
+
+	// Garbage collector
+	gc *GC
 }
 
 // New creates a new VM with the given bytecode chunk.
@@ -54,6 +57,11 @@ func New(chunk *bytecode.Chunk) *VM {
 		globals: make(map[string]Value),
 		output:  os.Stdout,
 	}
+	vm.gc = NewGC(vm)
+
+	// Track the initial objects
+	vm.gc.Track(fn)
+	vm.gc.Track(closure)
 
 	// Push the closure as the first stack slot (slot 0 for the script)
 	vm.push(ObjectValue(closure))
@@ -77,6 +85,9 @@ func NewWithClosure(closure *ObjClosure) *VM {
 		globals: make(map[string]Value),
 		output:  os.Stdout,
 	}
+	vm.gc = NewGC(vm)
+	vm.gc.Track(closure)
+	vm.gc.Track(closure.Function)
 
 	// Push the closure as the first stack slot
 	vm.push(ObjectValue(closure))
@@ -127,7 +138,7 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '+'")
 			}
 			vm.push(NumberValue(a.AsNumber() + b.AsNumber()))
 
@@ -135,7 +146,7 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '-'")
 			}
 			vm.push(NumberValue(a.AsNumber() - b.AsNumber()))
 
@@ -143,7 +154,7 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '*'")
 			}
 			vm.push(NumberValue(a.AsNumber() * b.AsNumber()))
 
@@ -151,10 +162,10 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '/'")
 			}
 			if b.AsNumber() == 0 {
-				return fmt.Errorf("division by zero")
+				return vm.runtimeError("division by zero")
 			}
 			vm.push(NumberValue(a.AsNumber() / b.AsNumber()))
 
@@ -162,14 +173,14 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '%%'")
 			}
 			vm.push(NumberValue(math.Mod(a.AsNumber(), b.AsNumber())))
 
 		case bytecode.OP_NEGATE:
 			a := vm.pop()
 			if !a.IsNumber() {
-				return fmt.Errorf("operand must be a number")
+				return vm.runtimeError("operand must be a number for unary '-'")
 			}
 			vm.push(NumberValue(-a.AsNumber()))
 
@@ -187,7 +198,7 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '<'")
 			}
 			vm.push(BoolValue(a.AsNumber() < b.AsNumber()))
 
@@ -195,7 +206,7 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '<='")
 			}
 			vm.push(BoolValue(a.AsNumber() <= b.AsNumber()))
 
@@ -203,7 +214,7 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '>'")
 			}
 			vm.push(BoolValue(a.AsNumber() > b.AsNumber()))
 
@@ -211,7 +222,7 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsNumber() || !b.IsNumber() {
-				return fmt.Errorf("operands must be numbers")
+				return vm.runtimeError("operands must be numbers for '>='")
 			}
 			vm.push(BoolValue(a.AsNumber() >= b.AsNumber()))
 
@@ -223,7 +234,7 @@ func (vm *VM) Run() error {
 			b := vm.pop()
 			a := vm.pop()
 			if !a.IsString() || !b.IsString() {
-				return fmt.Errorf("operands must be strings")
+				return vm.runtimeError("operands must be strings for string concatenation")
 			}
 			result := a.AsString() + b.AsString()
 			vm.push(ObjectValue(NewObjString(result)))
@@ -244,7 +255,7 @@ func (vm *VM) Run() error {
 			name := vm.chunk().Constants[nameIdx].(string)
 			val, exists := vm.globals[name]
 			if !exists {
-				return fmt.Errorf("undefined variable: %s", name)
+				return vm.runtimeError("undefined variable '%s'", name)
 			}
 			vm.push(val)
 
@@ -289,13 +300,26 @@ func (vm *VM) Run() error {
 
 		case bytecode.OP_CLOSURE:
 			fnIdx := vm.readU16()
-			// The compiler stores *compiler.ObjFunction, convert to *vm.ObjFunction
-			compilerFn := vm.chunk().Constants[fnIdx].(*compiler.ObjFunction)
-			fn := &ObjFunction{
-				Name:         compilerFn.Name,
-				Arity:        compilerFn.Arity,
-				UpvalueCount: compilerFn.UpvalueCount,
-				Chunk:        compilerFn.Chunk,
+			// Handle both *compiler.ObjFunction (from direct compilation) and
+			// *bytecode.BinaryFunction (from loading binary format)
+			var fn *ObjFunction
+			switch fnVal := vm.chunk().Constants[fnIdx].(type) {
+			case *compiler.ObjFunction:
+				fn = &ObjFunction{
+					Name:         fnVal.Name,
+					Arity:        fnVal.Arity,
+					UpvalueCount: fnVal.UpvalueCount,
+					Chunk:        fnVal.Chunk,
+				}
+			case *bytecode.BinaryFunction:
+				fn = &ObjFunction{
+					Name:         fnVal.Name,
+					Arity:        fnVal.Arity,
+					UpvalueCount: fnVal.UpvalueCount,
+					Chunk:        fnVal.Chunk,
+				}
+			default:
+				return vm.runtimeError("invalid function constant type: %T", fnVal)
 			}
 			closure := NewObjClosure(fn)
 
@@ -382,26 +406,26 @@ func (vm *VM) Run() error {
 
 			if object.IsArray() {
 				if !index.IsNumber() {
-					return fmt.Errorf("array index must be a number")
+					return vm.runtimeError("array index must be a number")
 				}
 				arr := object.AsArray()
 				idx := int(index.AsNumber())
 				if idx < 0 || idx >= len(arr.Elements) {
-					return fmt.Errorf("array index out of bounds: %d", idx)
+					return vm.runtimeError("array index out of bounds: %d (length: %d)", idx, len(arr.Elements))
 				}
 				vm.push(arr.Elements[idx])
 			} else if object.IsString() {
 				if !index.IsNumber() {
-					return fmt.Errorf("string index must be a number")
+					return vm.runtimeError("string index must be a number")
 				}
 				str := object.AsString()
 				idx := int(index.AsNumber())
 				if idx < 0 || idx >= len(str) {
-					return fmt.Errorf("string index out of bounds: %d", idx)
+					return vm.runtimeError("string index out of bounds: %d (length: %d)", idx, len(str))
 				}
 				vm.push(ObjectValue(NewObjString(string(str[idx]))))
 			} else {
-				return fmt.Errorf("cannot index type %T", object.obj)
+				return vm.runtimeError("cannot index value of type %s", valueTypeName(object))
 			}
 
 		case bytecode.OP_SET_INDEX:
@@ -410,15 +434,15 @@ func (vm *VM) Run() error {
 			object := vm.pop()
 
 			if !object.IsArray() {
-				return fmt.Errorf("can only index-assign to arrays")
+				return vm.runtimeError("can only index-assign to arrays, got %s", valueTypeName(object))
 			}
 			if !index.IsNumber() {
-				return fmt.Errorf("array index must be a number")
+				return vm.runtimeError("array index must be a number")
 			}
 			arr := object.AsArray()
 			idx := int(index.AsNumber())
 			if idx < 0 || idx >= len(arr.Elements) {
-				return fmt.Errorf("array index out of bounds: %d", idx)
+				return vm.runtimeError("array index out of bounds: %d (length: %d)", idx, len(arr.Elements))
 			}
 			arr.Elements[idx] = value
 			vm.push(value) // Assignment expression returns the value
@@ -441,7 +465,7 @@ func (vm *VM) Run() error {
 					}
 					vm.push(ObjectValue(bound))
 				} else {
-					return fmt.Errorf("undefined property: %s", name)
+					return vm.runtimeError("undefined property '%s' on instance of '%s'", name, instance.Class.Name)
 				}
 			} else if obj, ok := object.AsObject().(*ObjObject); ok {
 				if value, exists := obj.Fields[name]; exists {
@@ -450,7 +474,7 @@ func (vm *VM) Run() error {
 					vm.push(NullValue())
 				}
 			} else {
-				return fmt.Errorf("cannot access property on %T", object.obj)
+				return vm.runtimeError("cannot access property '%s' on value of type %s", name, valueTypeName(object))
 			}
 
 		case bytecode.OP_SET_PROPERTY:
@@ -467,7 +491,7 @@ func (vm *VM) Run() error {
 				obj.Fields[name] = value
 				vm.push(value)
 			} else {
-				return fmt.Errorf("cannot set property on %T", object.obj)
+				return vm.runtimeError("cannot set property '%s' on value of type %s", name, valueTypeName(object))
 			}
 
 		case bytecode.OP_CLASS:
@@ -487,7 +511,7 @@ func (vm *VM) Run() error {
 			subclass := vm.pop().AsClass()
 			superclass := vm.pop().AsClass()
 			if superclass == nil {
-				return fmt.Errorf("superclass must be a class")
+				return vm.runtimeError("superclass must be a class")
 			}
 			subclass.Super = superclass
 			// Copy methods from superclass
@@ -504,7 +528,7 @@ func (vm *VM) Run() error {
 
 			receiver := vm.peek(argCount)
 			if !receiver.IsInstance() {
-				return fmt.Errorf("can only invoke methods on instances")
+				return vm.runtimeError("can only invoke methods on instances, got %s", valueTypeName(receiver))
 			}
 			instance := receiver.AsInstance()
 
@@ -522,7 +546,7 @@ func (vm *VM) Run() error {
 			// Look up method
 			method := instance.Class.Methods[name]
 			if method == nil {
-				return fmt.Errorf("undefined method: %s", name)
+				return vm.runtimeError("undefined method '%s' on instance of '%s'", name, instance.Class.Name)
 			}
 
 			if err := vm.call(method, argCount, false); err != nil {
@@ -535,11 +559,11 @@ func (vm *VM) Run() error {
 			instance := vm.pop().AsInstance()
 			superclass := instance.Class.Super
 			if superclass == nil {
-				return fmt.Errorf("no superclass")
+				return vm.runtimeError("class '%s' has no superclass", instance.Class.Name)
 			}
 			method := superclass.Methods[name]
 			if method == nil {
-				return fmt.Errorf("undefined method in superclass: %s", name)
+				return vm.runtimeError("undefined method '%s' in superclass '%s'", name, superclass.Name)
 			}
 			bound := &ObjBoundMethod{
 				Receiver: ObjectValue(instance),
@@ -556,11 +580,11 @@ func (vm *VM) Run() error {
 			instance := receiver.AsInstance()
 			superclass := instance.Class.Super
 			if superclass == nil {
-				return fmt.Errorf("no superclass")
+				return vm.runtimeError("class '%s' has no superclass", instance.Class.Name)
 			}
 			method := superclass.Methods[name]
 			if method == nil {
-				return fmt.Errorf("undefined method in superclass: %s", name)
+				return vm.runtimeError("undefined method '%s' in superclass '%s'", name, superclass.Name)
 			}
 			// Super constructor calls are not marked as constructors - the child
 			// constructor will return the instance
@@ -569,7 +593,7 @@ func (vm *VM) Run() error {
 			}
 
 		default:
-			return fmt.Errorf("unknown opcode: %v", op)
+			return vm.runtimeError("unknown opcode: %v", op)
 		}
 	}
 }
@@ -590,7 +614,7 @@ func (vm *VM) callValue(callee Value, argCount int) error {
 		if constructor, ok := class.Methods["constructor"]; ok {
 			return vm.call(constructor, argCount, true)
 		} else if argCount != 0 {
-			return fmt.Errorf("class %s has no constructor but was called with %d arguments", class.Name, argCount)
+			return vm.runtimeError("class '%s' has no constructor but was called with %d arguments", class.Name, argCount)
 		}
 		return nil
 	}
@@ -600,17 +624,18 @@ func (vm *VM) callValue(callee Value, argCount int) error {
 		vm.stack[vm.sp-argCount-1] = bound.Receiver
 		return vm.call(bound.Method, argCount, false)
 	}
-	return fmt.Errorf("can only call functions and classes")
+	return vm.runtimeError("cannot call value of type %s", valueTypeName(callee))
 }
 
 // call invokes a closure with the given arguments.
 func (vm *VM) call(closure *ObjClosure, argCount int, isConstructor bool) error {
 	if argCount != closure.Function.Arity {
-		return fmt.Errorf("expected %d arguments but got %d", closure.Function.Arity, argCount)
+		return vm.runtimeError("function '%s' expected %d arguments but got %d",
+			closure.Function.Name, closure.Function.Arity, argCount)
 	}
 
 	if vm.frameCount >= FRAMES_MAX {
-		return fmt.Errorf("stack overflow")
+		return vm.runtimeError("stack overflow (max call depth: %d)", FRAMES_MAX)
 	}
 
 	frame := &vm.frames[vm.frameCount]
@@ -677,7 +702,7 @@ func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 	switch builtinID {
 	case bytecode.BUILTIN_PRINTLN:
 		if argCount != 1 {
-			return fmt.Errorf("println expects 1 argument, got %d", argCount)
+			return vm.runtimeError("println expects 1 argument, got %d", argCount)
 		}
 		val := vm.pop()
 		fmt.Fprintln(vm.output, val.String())
@@ -685,7 +710,7 @@ func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 
 	case bytecode.BUILTIN_PRINT:
 		if argCount != 1 {
-			return fmt.Errorf("print expects 1 argument, got %d", argCount)
+			return vm.runtimeError("print expects 1 argument, got %d", argCount)
 		}
 		val := vm.pop()
 		fmt.Fprint(vm.output, val.String())
@@ -693,7 +718,7 @@ func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 
 	case bytecode.BUILTIN_LEN:
 		if argCount != 1 {
-			return fmt.Errorf("len expects 1 argument, got %d", argCount)
+			return vm.runtimeError("len expects 1 argument, got %d", argCount)
 		}
 		val := vm.pop()
 		if val.IsString() {
@@ -701,13 +726,13 @@ func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 		} else if val.IsArray() {
 			vm.push(NumberValue(float64(len(val.AsArray().Elements))))
 		} else {
-			return fmt.Errorf("len: argument must be string or array")
+			return vm.runtimeError("len: argument must be string or array, got %s", valueTypeName(val))
 		}
 		return nil
 
 	case bytecode.BUILTIN_TYPEOF:
 		if argCount != 1 {
-			return fmt.Errorf("typeof expects 1 argument, got %d", argCount)
+			return vm.runtimeError("typeof expects 1 argument, got %d", argCount)
 		}
 		val := vm.pop()
 		var typeName string
@@ -737,8 +762,118 @@ func (vm *VM) callBuiltin(builtinID int, argCount int) error {
 		vm.push(ObjectValue(NewObjString(typeName)))
 		return nil
 
+	case bytecode.BUILTIN_PUSH:
+		if argCount != 2 {
+			return vm.runtimeError("push expects 2 arguments, got %d", argCount)
+		}
+		val := vm.pop()
+		arr := vm.pop()
+		if !arr.IsArray() {
+			return vm.runtimeError("push: first argument must be an array, got %s", valueTypeName(arr))
+		}
+		arr.AsArray().Elements = append(arr.AsArray().Elements, val)
+		vm.push(NumberValue(float64(len(arr.AsArray().Elements))))
+		return nil
+
+	case bytecode.BUILTIN_POP:
+		if argCount != 1 {
+			return vm.runtimeError("pop expects 1 argument, got %d", argCount)
+		}
+		arr := vm.pop()
+		if !arr.IsArray() {
+			return vm.runtimeError("pop: argument must be an array, got %s", valueTypeName(arr))
+		}
+		elements := arr.AsArray().Elements
+		if len(elements) == 0 {
+			return vm.runtimeError("pop: cannot pop from empty array")
+		}
+		lastVal := elements[len(elements)-1]
+		arr.AsArray().Elements = elements[:len(elements)-1]
+		vm.push(lastVal)
+		return nil
+
+	case bytecode.BUILTIN_TOSTRING:
+		if argCount != 1 {
+			return vm.runtimeError("toString expects 1 argument, got %d", argCount)
+		}
+		val := vm.pop()
+		vm.push(ObjectValue(NewObjString(val.String())))
+		return nil
+
+	case bytecode.BUILTIN_TONUMBER:
+		if argCount != 1 {
+			return vm.runtimeError("toNumber expects 1 argument, got %d", argCount)
+		}
+		val := vm.pop()
+		if val.IsNumber() {
+			vm.push(val)
+		} else if val.IsString() {
+			var num float64
+			_, err := fmt.Sscanf(val.AsString(), "%f", &num)
+			if err != nil {
+				vm.push(NumberValue(math.NaN()))
+			} else {
+				vm.push(NumberValue(num))
+			}
+		} else if val.IsBool() {
+			if val.AsBool() {
+				vm.push(NumberValue(1))
+			} else {
+				vm.push(NumberValue(0))
+			}
+		} else if val.IsNull() {
+			vm.push(NumberValue(0))
+		} else {
+			vm.push(NumberValue(math.NaN()))
+		}
+		return nil
+
+	case bytecode.BUILTIN_SQRT:
+		if argCount != 1 {
+			return vm.runtimeError("sqrt expects 1 argument, got %d", argCount)
+		}
+		val := vm.pop()
+		if !val.IsNumber() {
+			return vm.runtimeError("sqrt: argument must be a number, got %s", valueTypeName(val))
+		}
+		vm.push(NumberValue(math.Sqrt(val.AsNumber())))
+		return nil
+
+	case bytecode.BUILTIN_FLOOR:
+		if argCount != 1 {
+			return vm.runtimeError("floor expects 1 argument, got %d", argCount)
+		}
+		val := vm.pop()
+		if !val.IsNumber() {
+			return vm.runtimeError("floor: argument must be a number, got %s", valueTypeName(val))
+		}
+		vm.push(NumberValue(math.Floor(val.AsNumber())))
+		return nil
+
+	case bytecode.BUILTIN_CEIL:
+		if argCount != 1 {
+			return vm.runtimeError("ceil expects 1 argument, got %d", argCount)
+		}
+		val := vm.pop()
+		if !val.IsNumber() {
+			return vm.runtimeError("ceil: argument must be a number, got %s", valueTypeName(val))
+		}
+		vm.push(NumberValue(math.Ceil(val.AsNumber())))
+		return nil
+
+	case bytecode.BUILTIN_ABS:
+		if argCount != 1 {
+			return vm.runtimeError("abs expects 1 argument, got %d", argCount)
+		}
+		val := vm.pop()
+		if !val.IsNumber() {
+			return vm.runtimeError("abs: argument must be a number, got %s", valueTypeName(val))
+		}
+		vm.push(NumberValue(math.Abs(val.AsNumber())))
+		return nil
+
 	default:
-		return fmt.Errorf("unknown builtin: %d", builtinID)
+		return vm.runtimeError("unknown builtin: %d", builtinID)
 	}
 }
 
@@ -799,4 +934,60 @@ func (vm *VM) pop() Value {
 
 func (vm *VM) peek(distance int) Value {
 	return vm.stack[vm.sp-1-distance]
+}
+
+// SetOutput sets the output writer for the VM.
+func (vm *VM) SetOutput(w io.Writer) {
+	vm.output = w
+}
+
+// SetGlobal sets a global variable.
+func (vm *VM) SetGlobal(name string, val Value) {
+	vm.globals[name] = val
+}
+
+// GetGlobals returns a copy of the globals map.
+func (vm *VM) GetGlobals() map[string]Value {
+	result := make(map[string]Value)
+	for k, v := range vm.globals {
+		result[k] = v
+	}
+	return result
+}
+
+// LastPopped returns the last popped value.
+func (vm *VM) LastPopped() Value {
+	return vm.lastPopped
+}
+
+// valueTypeName returns a human-readable name for a value's type.
+func valueTypeName(v Value) string {
+	switch v.Type {
+	case VAL_NULL:
+		return "null"
+	case VAL_BOOL:
+		return "boolean"
+	case VAL_NUMBER:
+		return "number"
+	case VAL_OBJECT:
+		switch v.obj.Type() {
+		case OBJ_STRING:
+			return "string"
+		case OBJ_ARRAY:
+			return "array"
+		case OBJ_OBJECT:
+			return "object"
+		case OBJ_FUNCTION, OBJ_CLOSURE:
+			return "function"
+		case OBJ_CLASS:
+			return "class"
+		case OBJ_INSTANCE:
+			return "instance"
+		case OBJ_BOUND_METHOD:
+			return "method"
+		default:
+			return "object"
+		}
+	}
+	return "unknown"
 }

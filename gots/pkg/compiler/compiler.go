@@ -922,12 +922,18 @@ func (c *Compiler) compileCall(call *ast.CallExpr) error {
 }
 
 var builtinFunctions = map[string]int{
-	"println": bytecode.BUILTIN_PRINTLN,
-	"print":   bytecode.BUILTIN_PRINT,
-	"len":     bytecode.BUILTIN_LEN,
-	"push":    bytecode.BUILTIN_PUSH,
-	"pop":     bytecode.BUILTIN_POP,
-	"typeof":  bytecode.BUILTIN_TYPEOF,
+	"println":  bytecode.BUILTIN_PRINTLN,
+	"print":    bytecode.BUILTIN_PRINT,
+	"len":      bytecode.BUILTIN_LEN,
+	"push":     bytecode.BUILTIN_PUSH,
+	"pop":      bytecode.BUILTIN_POP,
+	"typeof":   bytecode.BUILTIN_TYPEOF,
+	"toString": bytecode.BUILTIN_TOSTRING,
+	"toNumber": bytecode.BUILTIN_TONUMBER,
+	"sqrt":     bytecode.BUILTIN_SQRT,
+	"floor":    bytecode.BUILTIN_FLOOR,
+	"ceil":     bytecode.BUILTIN_CEIL,
+	"abs":      bytecode.BUILTIN_ABS,
 }
 
 func (c *Compiler) compileBuiltinCall(call *ast.CallExpr, builtinID int) error {

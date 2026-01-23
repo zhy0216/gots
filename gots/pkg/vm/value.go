@@ -274,12 +274,15 @@ type Object interface {
 
 // ObjString represents a string object.
 type ObjString struct {
-	Value string
-	Hash  uint32
+	Value  string
+	Hash   uint32
+	marked bool
 }
 
-func (s *ObjString) Type() ObjectType { return OBJ_STRING }
-func (s *ObjString) String() string   { return s.Value }
+func (s *ObjString) Type() ObjectType   { return OBJ_STRING }
+func (s *ObjString) String() string     { return s.Value }
+func (s *ObjString) IsMarked() bool     { return s.marked }
+func (s *ObjString) SetMarked(m bool)   { s.marked = m }
 
 // NewObjString creates a new string object.
 func NewObjString(value string) *ObjString {
@@ -301,12 +304,15 @@ func hashString(s string) uint32 {
 // ObjArray represents an array object.
 type ObjArray struct {
 	Elements []Value
+	marked   bool
 }
 
 func (a *ObjArray) Type() ObjectType { return OBJ_ARRAY }
 func (a *ObjArray) String() string {
 	return fmt.Sprintf("[Array(%d)]", len(a.Elements))
 }
+func (a *ObjArray) IsMarked() bool   { return a.marked }
+func (a *ObjArray) SetMarked(m bool) { a.marked = m }
 
 // NewObjArray creates a new array object.
 func NewObjArray() *ObjArray {
@@ -318,10 +324,13 @@ func NewObjArray() *ObjArray {
 // ObjObject represents a plain object (object literal).
 type ObjObject struct {
 	Fields map[string]Value
+	marked bool
 }
 
 func (o *ObjObject) Type() ObjectType { return OBJ_OBJECT }
 func (o *ObjObject) String() string   { return "[Object]" }
+func (o *ObjObject) IsMarked() bool   { return o.marked }
+func (o *ObjObject) SetMarked(m bool) { o.marked = m }
 
 // NewObjObject creates a new plain object.
 func NewObjObject() *ObjObject {
@@ -336,6 +345,7 @@ type ObjFunction struct {
 	Arity        int
 	UpvalueCount int
 	Chunk        *bytecode.Chunk
+	marked       bool
 }
 
 func (f *ObjFunction) Type() ObjectType { return OBJ_FUNCTION }
@@ -345,15 +355,20 @@ func (f *ObjFunction) String() string {
 	}
 	return fmt.Sprintf("<fn %s>", f.Name)
 }
+func (f *ObjFunction) IsMarked() bool   { return f.marked }
+func (f *ObjFunction) SetMarked(m bool) { f.marked = m }
 
 // ObjClosure represents a closure (function + captured environment).
 type ObjClosure struct {
 	Function *ObjFunction
 	Upvalues []*ObjUpvalue
+	marked   bool
 }
 
 func (c *ObjClosure) Type() ObjectType { return OBJ_CLOSURE }
 func (c *ObjClosure) String() string   { return c.Function.String() }
+func (c *ObjClosure) IsMarked() bool   { return c.marked }
+func (c *ObjClosure) SetMarked(m bool) { c.marked = m }
 
 // NewObjClosure creates a new closure.
 func NewObjClosure(fn *ObjFunction) *ObjClosure {
@@ -370,10 +385,13 @@ type ObjUpvalue struct {
 	Closed     Value       // Holds value after variable goes out of scope
 	Next       *ObjUpvalue // Linked list of open upvalues
 	stackIndex int         // Stack index (for tracking in open upvalue list)
+	marked     bool
 }
 
 func (u *ObjUpvalue) Type() ObjectType { return OBJ_UPVALUE }
 func (u *ObjUpvalue) String() string   { return "upvalue" }
+func (u *ObjUpvalue) IsMarked() bool   { return u.marked }
+func (u *ObjUpvalue) SetMarked(m bool) { u.marked = m }
 
 // NewObjUpvalue creates a new upvalue pointing to a stack location.
 func NewObjUpvalue(slot *Value) *ObjUpvalue {
@@ -387,10 +405,13 @@ type ObjClass struct {
 	Name    string
 	Super   *ObjClass
 	Methods map[string]*ObjClosure
+	marked  bool
 }
 
 func (c *ObjClass) Type() ObjectType { return OBJ_CLASS }
 func (c *ObjClass) String() string   { return c.Name }
+func (c *ObjClass) IsMarked() bool   { return c.marked }
+func (c *ObjClass) SetMarked(m bool) { c.marked = m }
 
 // NewObjClass creates a new class.
 func NewObjClass(name string) *ObjClass {
@@ -404,10 +425,13 @@ func NewObjClass(name string) *ObjClass {
 type ObjInstance struct {
 	Class  *ObjClass
 	Fields map[string]Value
+	marked bool
 }
 
 func (i *ObjInstance) Type() ObjectType { return OBJ_INSTANCE }
 func (i *ObjInstance) String() string   { return fmt.Sprintf("%s instance", i.Class.Name) }
+func (i *ObjInstance) IsMarked() bool   { return i.marked }
+func (i *ObjInstance) SetMarked(m bool) { i.marked = m }
 
 // NewObjInstance creates a new instance of a class.
 func NewObjInstance(class *ObjClass) *ObjInstance {
@@ -421,7 +445,10 @@ func NewObjInstance(class *ObjClass) *ObjInstance {
 type ObjBoundMethod struct {
 	Receiver Value       // The instance the method is bound to
 	Method   *ObjClosure // The method closure
+	marked   bool
 }
 
 func (b *ObjBoundMethod) Type() ObjectType { return OBJ_BOUND_METHOD }
 func (b *ObjBoundMethod) String() string   { return b.Method.String() }
+func (b *ObjBoundMethod) IsMarked() bool   { return b.marked }
+func (b *ObjBoundMethod) SetMarked(m bool) { b.marked = m }
