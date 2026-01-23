@@ -6,6 +6,14 @@ A TypeScript-like language compiler and virtual machine written in Go.
 
 GoTS implements a complete compilation pipeline: lexer → parser → type checker → compiler → bytecode VM. It supports static typing, functions, closures, classes with inheritance, and garbage collection.
 
+## Important Notes
+
+**`../scaffold/` is for implementation reference only.** It contains:
+- `quickjs/` - QuickJS JavaScript engine (C implementation reference)
+- `typescript-go-main/` - TypeScript compiler in Go (reference for TypeScript semantics)
+
+Do not modify files in scaffold/. Use them only as reference for understanding how language features should be implemented.
+
 ## Architecture
 
 ```
