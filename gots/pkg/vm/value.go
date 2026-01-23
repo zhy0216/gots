@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/pocketlang/gots/pkg/bytecode"
+	"github.com/zhy0216/quickts/gots/pkg/bytecode"
 )
 
 // ValueType represents the type of a Value.

@@ -3,8 +3,8 @@ package parser
 import (
 	"testing"
 
-	"github.com/pocketlang/gots/pkg/ast"
-	"github.com/pocketlang/gots/pkg/lexer"
+	"github.com/zhy0216/quickts/gots/pkg/ast"
+	"github.com/zhy0216/quickts/gots/pkg/lexer"
 )
 
 func TestParseNumberLiteral(t *testing.T) {

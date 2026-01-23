@@ -3,7 +3,7 @@ package ast
 import (
 	"testing"
 
-	"github.com/pocketlang/gots/pkg/token"
+	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
 func TestNodeInterface(t *testing.T) {

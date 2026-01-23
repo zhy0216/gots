@@ -4,9 +4,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/pocketlang/gots/pkg/ast"
-	"github.com/pocketlang/gots/pkg/bytecode"
-	"github.com/pocketlang/gots/pkg/token"
+	"github.com/zhy0216/quickts/gots/pkg/ast"
+	"github.com/zhy0216/quickts/gots/pkg/bytecode"
+	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
 // FunctionType indicates what type of function is being compiled.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pocketlang/gots/pkg/token"
+	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
 // Node is the interface that all AST nodes implement.

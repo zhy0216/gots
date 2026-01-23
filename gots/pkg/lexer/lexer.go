@@ -2,7 +2,7 @@
 package lexer
 
 import (
-	"github.com/pocketlang/gots/pkg/token"
+	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
 // Lexer performs lexical analysis on GoTS source code.

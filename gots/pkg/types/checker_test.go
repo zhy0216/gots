@@ -3,8 +3,8 @@ package types
 import (
 	"testing"
 
-	"github.com/pocketlang/gots/pkg/lexer"
-	"github.com/pocketlang/gots/pkg/parser"
+	"github.com/zhy0216/quickts/gots/pkg/lexer"
+	"github.com/zhy0216/quickts/gots/pkg/parser"
 )
 
 func checkProgram(t *testing.T, input string) (*Checker, bool) {

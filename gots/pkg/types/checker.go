@@ -4,8 +4,8 @@ package types
 import (
 	"fmt"
 
-	"github.com/pocketlang/gots/pkg/ast"
-	"github.com/pocketlang/gots/pkg/token"
+	"github.com/zhy0216/quickts/gots/pkg/ast"
+	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
 // Error represents a type checking error.

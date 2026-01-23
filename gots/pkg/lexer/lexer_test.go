@@ -3,7 +3,7 @@ package lexer
 import (
 	"testing"
 
-	"github.com/pocketlang/gots/pkg/token"
+	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
 func TestNextToken_SingleCharacters(t *testing.T) {

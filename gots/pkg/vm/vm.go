@@ -6,8 +6,8 @@ import (
 	"math"
 	"os"
 
-	"github.com/pocketlang/gots/pkg/bytecode"
-	"github.com/pocketlang/gots/pkg/compiler"
+	"github.com/zhy0216/quickts/gots/pkg/bytecode"
+	"github.com/zhy0216/quickts/gots/pkg/compiler"
 )
 
 const (

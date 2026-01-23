@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pocketlang/gots/pkg/bytecode"
-	"github.com/pocketlang/gots/pkg/compiler"
-	"github.com/pocketlang/gots/pkg/lexer"
-	"github.com/pocketlang/gots/pkg/parser"
-	"github.com/pocketlang/gots/pkg/vm"
+	"github.com/zhy0216/quickts/gots/pkg/bytecode"
+	"github.com/zhy0216/quickts/gots/pkg/compiler"
+	"github.com/zhy0216/quickts/gots/pkg/lexer"
+	"github.com/zhy0216/quickts/gots/pkg/parser"
+	"github.com/zhy0216/quickts/gots/pkg/vm"
 )
 
 const version = "0.1.0"

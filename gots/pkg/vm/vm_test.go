@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/pocketlang/gots/pkg/compiler"
-	"github.com/pocketlang/gots/pkg/lexer"
-	"github.com/pocketlang/gots/pkg/parser"
+	"github.com/zhy0216/quickts/gots/pkg/compiler"
+	"github.com/zhy0216/quickts/gots/pkg/lexer"
+	"github.com/zhy0216/quickts/gots/pkg/parser"
 )
 
 func TestVMNumberLiteral(t *testing.T) {
