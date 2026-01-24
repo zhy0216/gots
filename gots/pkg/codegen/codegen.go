@@ -221,6 +221,8 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 			g.collectImportsFromExpr(entry.Key)
 			g.collectImportsFromExpr(entry.Value)
 		}
+	case *typed.SetLit:
+		// Empty set literal - nothing to collect
 	case *typed.MethodCallExpr:
 		g.collectImportsFromExpr(e.Object)
 		for _, arg := range e.Args {
@@ -1087,6 +1089,9 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 	case *typed.MapLit:
 		return g.genMapLit(e)
 
+	case *typed.SetLit:
+		return g.genSetLit(e)
+
 	case *typed.MethodCallExpr:
 		return g.genMethodCallExpr(e)
 	}
@@ -1309,6 +1314,23 @@ func (g *Generator) genIndexExpr(expr *typed.IndexExpr) string {
 
 func (g *Generator) genPropertyExpr(expr *typed.PropertyExpr) string {
 	object := g.genExpr(expr.Object)
+	objType := types.Unwrap(expr.Object.Type())
+
+	// Handle special properties for collection types
+	switch objType.(type) {
+	case *types.Array:
+		if expr.Property == "length" {
+			return fmt.Sprintf("len(%s)", object)
+		}
+	case *types.Map:
+		if expr.Property == "size" {
+			return fmt.Sprintf("len(%s)", object)
+		}
+	case *types.Set:
+		if expr.Property == "size" {
+			return fmt.Sprintf("len(%s)", object)
+		}
+	}
 
 	if expr.Optional {
 		// Optional chaining: obj?.prop
@@ -1510,51 +1532,240 @@ func (g *Generator) genMapLit(expr *typed.MapLit) string {
 	return fmt.Sprintf("map[%s]%s{%s}", goKeyType, goValType, strings.Join(entries, ", "))
 }
 
+func (g *Generator) genSetLit(expr *typed.SetLit) string {
+	setType := expr.ExprType.(*types.Set)
+	goElemType := g.goType(setType.Element)
+	// Sets are represented as map[T]struct{} in Go
+	return fmt.Sprintf("make(map[%s]struct{})", goElemType)
+}
+
 func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 	obj := g.genExpr(expr.Object)
 	objType := types.Unwrap(expr.Object.Type())
 
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+
 	// Handle Map method calls
 	if mapType, ok := objType.(*types.Map); ok {
-		args := make([]string, len(expr.Args))
-		for i, arg := range expr.Args {
-			args[i] = g.genExpr(arg)
-		}
-
 		switch expr.Method {
 		case "get":
 			// m.get(key) => m[key]
 			return fmt.Sprintf("%s[%s]", obj, args[0])
 
 		case "set":
-			// m.set(key, value) => m[key] = value (as statement, returns nothing)
-			return fmt.Sprintf("%s[%s] = %s", obj, args[0], args[1])
+			// m.set(key, value) => func() map[K]V { m[key] = value; return m }()
+			keyType := g.goType(mapType.Key)
+			valType := g.goType(mapType.Value)
+			return fmt.Sprintf("func() map[%s]%s { %s[%s] = %s; return %s }()", keyType, valType, obj, args[0], args[1], obj)
 
 		case "has":
 			// m.has(key) => func() bool { _, ok := m[key]; return ok }()
 			return fmt.Sprintf("func() bool { _, ok := %s[%s]; return ok }()", obj, args[0])
 
 		case "delete":
-			// m.delete(key) => delete(m, key)
-			return fmt.Sprintf("delete(%s, %s)", obj, args[0])
+			// m.delete(key) => func() bool { _, ok := m[key]; if ok { delete(m, key) }; return ok }()
+			return fmt.Sprintf("func() bool { _, ok := %s[%s]; if ok { delete(%s, %s) }; return ok }()", obj, args[0], obj, args[0])
 
 		case "keys":
-			// m.keys() => func() []K { keys := make([]K, 0, len(m)); for k := range m { keys = append(keys, k) }; return keys }()
 			keyType := g.goType(mapType.Key)
 			return fmt.Sprintf("func() []%s { keys := make([]%s, 0, len(%s)); for k := range %s { keys = append(keys, k) }; return keys }()", keyType, keyType, obj, obj)
 
 		case "values":
-			// m.values() => func() []V { vals := make([]V, 0, len(m)); for _, v := range m { vals = append(vals, v) }; return vals }()
 			valType := g.goType(mapType.Value)
 			return fmt.Sprintf("func() []%s { vals := make([]%s, 0, len(%s)); for _, v := range %s { vals = append(vals, v) }; return vals }()", valType, valType, obj, obj)
+
+		case "entries":
+			// entries() => func() [][2]interface{} { ... }
+			return fmt.Sprintf("func() []interface{} { entries := make([]interface{}, 0, len(%s)); for k, v := range %s { entries = append(entries, []interface{}{k, v}) }; return entries }()", obj, obj)
+
+		case "clear":
+			// clear() => func() { for k := range m { delete(m, k) } }()
+			return fmt.Sprintf("func() { for k := range %s { delete(%s, k) } }()", obj, obj)
+
+		case "forEach":
+			// forEach(callback) => func() { for k, v := range m { callback(v, k) } }()
+			return fmt.Sprintf("func() { for k, v := range %s { %s(v, k) } }()", obj, args[0])
 		}
 	}
 
-	// Fallback for other method calls
-	args := make([]string, len(expr.Args))
-	for i, arg := range expr.Args {
-		args[i] = g.genExpr(arg)
+	// Handle Set method calls (implemented as map[T]struct{})
+	if setType, ok := objType.(*types.Set); ok {
+		elemType := g.goType(setType.Element)
+		switch expr.Method {
+		case "add":
+			// s.add(value) => func() map[T]struct{} { s[value] = struct{}{}; return s }()
+			return fmt.Sprintf("func() map[%s]struct{} { %s[%s] = struct{}{}; return %s }()", elemType, obj, args[0], obj)
+
+		case "has":
+			// s.has(value) => func() bool { _, ok := s[value]; return ok }()
+			return fmt.Sprintf("func() bool { _, ok := %s[%s]; return ok }()", obj, args[0])
+
+		case "delete":
+			// s.delete(value) => func() bool { _, ok := s[value]; if ok { delete(s, value) }; return ok }()
+			return fmt.Sprintf("func() bool { _, ok := %s[%s]; if ok { delete(%s, %s) }; return ok }()", obj, args[0], obj, args[0])
+
+		case "clear":
+			// clear() => func() { for k := range s { delete(s, k) } }()
+			return fmt.Sprintf("func() { for k := range %s { delete(%s, k) } }()", obj, obj)
+
+		case "values":
+			// values() => func() []T { vals := make([]T, 0, len(s)); for v := range s { vals = append(vals, v) }; return vals }()
+			return fmt.Sprintf("func() []%s { vals := make([]%s, 0, len(%s)); for v := range %s { vals = append(vals, v) }; return vals }()", elemType, elemType, obj, obj)
+
+		case "forEach":
+			// forEach(callback) => func() { for v := range s { callback(v) } }()
+			return fmt.Sprintf("func() { for v := range %s { %s(v) } }()", obj, args[0])
+		}
 	}
+
+	// Handle Array method calls
+	if arrType, ok := objType.(*types.Array); ok {
+		elemType := g.goType(arrType.Element)
+		switch expr.Method {
+		case "push":
+			// arr.push(values...) => func() int { arr = append(arr, values...); return len(arr) }()
+			// Note: This requires the array to be a pointer or passed by reference for mutation
+			// For now, generate code that works with slice semantics
+			if len(args) == 1 {
+				return fmt.Sprintf("func() int { %s = append(%s, %s); return len(%s) }()", obj, obj, args[0], obj)
+			}
+			return fmt.Sprintf("func() int { %s = append(%s, %s); return len(%s) }()", obj, obj, strings.Join(args, ", "), obj)
+
+		case "pop":
+			// arr.pop() => func() *T { if len(arr) == 0 { return nil }; v := arr[len(arr)-1]; arr = arr[:len(arr)-1]; return &v }()
+			return fmt.Sprintf("func() *%s { if len(%s) == 0 { return nil }; v := %s[len(%s)-1]; %s = %s[:len(%s)-1]; return &v }()", elemType, obj, obj, obj, obj, obj, obj)
+
+		case "shift":
+			// arr.shift() => func() *T { if len(arr) == 0 { return nil }; v := arr[0]; arr = arr[1:]; return &v }()
+			return fmt.Sprintf("func() *%s { if len(%s) == 0 { return nil }; v := %s[0]; %s = %s[1:]; return &v }()", elemType, obj, obj, obj, obj)
+
+		case "unshift":
+			// arr.unshift(values...) => func() int { arr = append([]T{values...}, arr...); return len(arr) }()
+			if len(args) == 1 {
+				return fmt.Sprintf("func() int { %s = append([]%s{%s}, %s...); return len(%s) }()", obj, elemType, args[0], obj, obj)
+			}
+			return fmt.Sprintf("func() int { %s = append([]%s{%s}, %s...); return len(%s) }()", obj, elemType, strings.Join(args, ", "), obj, obj)
+
+		case "slice":
+			// arr.slice(start?, end?) => arr[start:end]
+			if len(args) == 0 {
+				return fmt.Sprintf("append([]%s{}, %s...)", elemType, obj)
+			} else if len(args) == 1 {
+				return fmt.Sprintf("%s[%s:]", obj, args[0])
+			}
+			return fmt.Sprintf("%s[%s:%s]", obj, args[0], args[1])
+
+		case "splice":
+			// splice is complex - simplified implementation
+			// For now, return a simple version that just returns the deleted elements
+			if len(args) >= 2 {
+				return fmt.Sprintf("func() []%s { start := %s; deleteCount := %s; deleted := %s[start:start+deleteCount]; %s = append(%s[:start], %s[start+deleteCount:]...); return deleted }()", elemType, args[0], args[1], obj, obj, obj, obj)
+			}
+			return fmt.Sprintf("%s[%s:]", obj, args[0])
+
+		case "concat":
+			// arr.concat(other...) => append(arr, other...)
+			if len(args) == 1 {
+				return fmt.Sprintf("append(%s, %s...)", obj, args[0])
+			}
+			// Multiple arrays
+			result := obj
+			for _, arg := range args {
+				result = fmt.Sprintf("append(%s, %s...)", result, arg)
+			}
+			return result
+
+		case "indexOf":
+			// arr.indexOf(value, fromIndex?) => func() int { for i := start; i < len(arr); i++ { if arr[i] == value { return i } }; return -1 }()
+			start := "0"
+			if len(args) > 1 {
+				start = args[1]
+			}
+			return fmt.Sprintf("func() int { for i := %s; i < len(%s); i++ { if %s[i] == %s { return i } }; return -1 }()", start, obj, obj, args[0])
+
+		case "includes":
+			// arr.includes(value, fromIndex?) => func() bool { for i := start; i < len(arr); i++ { if arr[i] == value { return true } }; return false }()
+			start := "0"
+			if len(args) > 1 {
+				start = args[1]
+			}
+			return fmt.Sprintf("func() bool { for i := %s; i < len(%s); i++ { if %s[i] == %s { return true } }; return false }()", start, obj, obj, args[0])
+
+		case "join":
+			// arr.join(separator?) => strings.Join(...)  -- for string arrays only, otherwise needs conversion
+			g.imports["strings"] = true
+			sep := `","`
+			if len(args) > 0 {
+				sep = args[0]
+			}
+			// Need to handle different element types
+			if elemType == "string" {
+				return fmt.Sprintf("strings.Join(%s, %s)", obj, sep)
+			}
+			// For other types, need to convert to strings
+			g.imports["fmt"] = true
+			return fmt.Sprintf("func() string { strs := make([]string, len(%s)); for i, v := range %s { strs[i] = fmt.Sprint(v) }; return strings.Join(strs, %s) }()", obj, obj, sep)
+
+		case "reverse":
+			// arr.reverse() => func() []T { for i, j := 0, len(arr)-1; i < j; i, j = i+1, j-1 { arr[i], arr[j] = arr[j], arr[i] }; return arr }()
+			return fmt.Sprintf("func() []%s { for i, j := 0, len(%s)-1; i < j; i, j = i+1, j-1 { %s[i], %s[j] = %s[j], %s[i] }; return %s }()", elemType, obj, obj, obj, obj, obj, obj)
+
+		case "sort":
+			// arr.sort(compareFn?) => requires sort package
+			g.imports["sort"] = true
+			if len(args) == 0 {
+				// Default sort based on type
+				return fmt.Sprintf("func() []%s { sort.Slice(%s, func(i, j int) bool { return %s[i] < %s[j] }); return %s }()", elemType, obj, obj, obj, obj)
+			}
+			// Custom comparator
+			return fmt.Sprintf("func() []%s { sort.Slice(%s, func(i, j int) bool { return %s(%s[i], %s[j]) < 0 }); return %s }()", elemType, obj, args[0], obj, obj, obj)
+
+		case "map":
+			// arr.map(callback) => func() []U { result := make([]U, len(arr)); for i, v := range arr { result[i] = callback(v, i) }; return result }()
+			resultElemType := "interface{}"
+			if exprType, ok := expr.ExprType.(*types.Array); ok {
+				resultElemType = g.goType(exprType.Element)
+			}
+			return fmt.Sprintf("func() []%s { result := make([]%s, len(%s)); for i, v := range %s { result[i] = %s(v, i) }; return result }()", resultElemType, resultElemType, obj, obj, args[0])
+
+		case "filter":
+			// arr.filter(callback) => func() []T { result := make([]T, 0); for i, v := range arr { if callback(v, i) { result = append(result, v) } }; return result }()
+			return fmt.Sprintf("func() []%s { result := make([]%s, 0); for i, v := range %s { if %s(v, i) { result = append(result, v) } }; return result }()", elemType, elemType, obj, args[0])
+
+		case "reduce":
+			// arr.reduce(callback, initialValue) => func() U { acc := initialValue; for i, v := range arr { acc = callback(acc, v, i) }; return acc }()
+			accType := "interface{}"
+			if len(args) > 1 {
+				accType = g.goType(expr.Args[1].Type())
+			}
+			return fmt.Sprintf("func() %s { acc := %s; for i, v := range %s { acc = %s(acc, v, i) }; return acc }()", accType, args[1], obj, args[0])
+
+		case "forEach":
+			// arr.forEach(callback) => func() { for i, v := range arr { callback(v, i) } }()
+			return fmt.Sprintf("func() { for i, v := range %s { %s(v, i) } }()", obj, args[0])
+
+		case "find":
+			// arr.find(callback) => func() *T { for i, v := range arr { if callback(v, i) { return &v } }; return nil }()
+			return fmt.Sprintf("func() *%s { for i, v := range %s { if %s(v, i) { return &v } }; return nil }()", elemType, obj, args[0])
+
+		case "findIndex":
+			// arr.findIndex(callback) => func() int { for i, v := range arr { if callback(v, i) { return i } }; return -1 }()
+			return fmt.Sprintf("func() int { for i, v := range %s { if %s(v, i) { return i } }; return -1 }()", obj, args[0])
+
+		case "some":
+			// arr.some(callback) => func() bool { for i, v := range arr { if callback(v, i) { return true } }; return false }()
+			return fmt.Sprintf("func() bool { for i, v := range %s { if %s(v, i) { return true } }; return false }()", obj, args[0])
+
+		case "every":
+			// arr.every(callback) => func() bool { for i, v := range arr { if !callback(v, i) { return false } }; return true }()
+			return fmt.Sprintf("func() bool { for i, v := range %s { if !%s(v, i) { return false } }; return true }()", obj, args[0])
+		}
+	}
+
+	// Fallback for other method calls (class methods, etc.)
 	return fmt.Sprintf("%s.%s(%s)", obj, exportName(expr.Method), strings.Join(args, ", "))
 }
 
@@ -1595,6 +1806,9 @@ func (g *Generator) goType(t types.Type) string {
 
 	case *types.Map:
 		return fmt.Sprintf("map[%s]%s", g.goType(typ.Key), g.goType(typ.Value))
+
+	case *types.Set:
+		return fmt.Sprintf("map[%s]struct{}", g.goType(typ.Element))
 
 	case *types.Object:
 		// Anonymous struct

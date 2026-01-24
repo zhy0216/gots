@@ -233,6 +233,14 @@ type MapEntry struct {
 func (m *MapLit) exprNode()        {}
 func (m *MapLit) Type() types.Type { return m.ExprType }
 
+// SetLit represents a Set literal expression.
+type SetLit struct {
+	ExprType types.Type // *types.Set
+}
+
+func (s *SetLit) exprNode()        {}
+func (s *SetLit) Type() types.Type { return s.ExprType }
+
 // MethodCallExpr represents a method call on an object (e.g., map.get("key")).
 type MethodCallExpr struct {
 	Object   Expr

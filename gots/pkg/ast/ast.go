@@ -247,10 +247,11 @@ func (f *FunctionExpr) String() string {
 	return fmt.Sprintf("function(%s): %s { ... }", strings.Join(params, ", "), f.ReturnType.String())
 }
 
-// NewExpr represents a new expression (e.g., new Point(1, 2)).
+// NewExpr represents a new expression (e.g., new Point(1, 2) or new Map<string, int>()).
 type NewExpr struct {
 	Token     token.Token // The 'new' token
 	ClassName string
+	TypeArgs  []Type // Type arguments for generic types (e.g., <string, int> for Map)
 	Arguments []Expression
 }
 
@@ -261,7 +262,15 @@ func (n *NewExpr) String() string {
 	for i, a := range n.Arguments {
 		args[i] = a.String()
 	}
-	return fmt.Sprintf("new %s(%s)", n.ClassName, strings.Join(args, ", "))
+	typeArgsStr := ""
+	if len(n.TypeArgs) > 0 {
+		typeArgs := make([]string, len(n.TypeArgs))
+		for i, t := range n.TypeArgs {
+			typeArgs[i] = t.String()
+		}
+		typeArgsStr = "<" + strings.Join(typeArgs, ", ") + ">"
+	}
+	return fmt.Sprintf("new %s%s(%s)", n.ClassName, typeArgsStr, strings.Join(args, ", "))
 }
 
 // ThisExpr represents the 'this' keyword.
@@ -813,6 +822,17 @@ func (m *MapType) typeNode()            {}
 func (m *MapType) TokenLiteral() string { return m.String() }
 func (m *MapType) String() string {
 	return fmt.Sprintf("Map<%s, %s>", m.KeyType.String(), m.ValueType.String())
+}
+
+// SetType represents a set type (e.g., Set<int>).
+type SetType struct {
+	ElementType Type
+}
+
+func (s *SetType) typeNode()            {}
+func (s *SetType) TokenLiteral() string { return s.String() }
+func (s *SetType) String() string {
+	return fmt.Sprintf("Set<%s>", s.ElementType.String())
 }
 
 // InterfaceType represents an interface type reference.

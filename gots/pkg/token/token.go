@@ -111,6 +111,7 @@ const (
 
 	// Advanced type keywords
 	MAP       // Map
+	SET       // Set
 	INTERFACE // interface
 	IMPORT    // import
 	FROM      // from
@@ -238,6 +239,7 @@ var typeStrings = map[Type]string{
 
 	// Advanced type keywords
 	MAP:       "Map",
+	SET:       "Set",
 	INTERFACE: "interface",
 	IMPORT:    "import",
 	FROM:      "from",
@@ -279,6 +281,7 @@ var keywords = map[string]Type{
 	"boolean":     BOOLEAN_TYPE,
 	"void":        VOID_TYPE,
 	"Map":         MAP,
+	"Set":         SET,
 	"interface":   INTERFACE,
 	"import":      IMPORT,
 	"from":        FROM,
@@ -301,7 +304,7 @@ func IsKeyword(t Type) bool {
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL, SWITCH, CASE, DEFAULT, OF,
 		TRY, CATCH, THROW,
 		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
-		MAP, INTERFACE, IMPORT, FROM, EXPORT:
+		MAP, SET, INTERFACE, IMPORT, FROM, EXPORT:
 		return true
 	}
 	return false

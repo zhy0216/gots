@@ -122,6 +122,27 @@ func (m *Map) Equals(other Type) bool {
 }
 
 // ----------------------------------------------------------------------------
+// Set Type
+// ----------------------------------------------------------------------------
+
+// Set represents a set type (e.g., Set<int>).
+type Set struct {
+	Element Type
+}
+
+func (s *Set) typeNode() {}
+func (s *Set) String() string {
+	return fmt.Sprintf("Set<%s>", s.Element.String())
+}
+
+func (s *Set) Equals(other Type) bool {
+	if o, ok := other.(*Set); ok {
+		return s.Element.Equals(o.Element)
+	}
+	return false
+}
+
+// ----------------------------------------------------------------------------
 // Interface Type
 // ----------------------------------------------------------------------------
 
@@ -883,6 +904,8 @@ func substituteType(t Type, subst map[string]Type) Type {
 			Key:   substituteType(typ.Key, subst),
 			Value: substituteType(typ.Value, subst),
 		}
+	case *Set:
+		return &Set{Element: substituteType(typ.Element, subst)}
 	case *Nullable:
 		return &Nullable{Inner: substituteType(typ.Inner, subst)}
 	case *Function:
@@ -913,6 +936,8 @@ func typeNameForInstantiation(t Type) string {
 		return "arr_" + typeNameForInstantiation(typ.Element)
 	case *Map:
 		return "map_" + typeNameForInstantiation(typ.Key) + "_" + typeNameForInstantiation(typ.Value)
+	case *Set:
+		return "set_" + typeNameForInstantiation(typ.Element)
 	default:
 		return "unknown"
 	}

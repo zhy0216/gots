@@ -422,11 +422,26 @@ func (p *Parser) parseSuperExpression() ast.Expression {
 func (p *Parser) parseNewExpression() ast.Expression {
 	expr := &ast.NewExpr{Token: p.curToken}
 
-	if !p.expectPeek(token.IDENT) {
+	// Accept IDENT, MAP, or SET as class name
+	if p.peekTokenIs(token.IDENT) {
+		p.nextToken()
+		expr.ClassName = p.curToken.Literal
+	} else if p.peekTokenIs(token.MAP) {
+		p.nextToken()
+		expr.ClassName = "Map"
+	} else if p.peekTokenIs(token.SET) {
+		p.nextToken()
+		expr.ClassName = "Set"
+	} else {
+		msg := fmt.Sprintf("line %d: expected class name after 'new', got %s", p.peekToken.Line, p.peekToken.Type)
+		p.errors = append(p.errors, msg)
 		return nil
 	}
 
-	expr.ClassName = p.curToken.Literal
+	// Check for type arguments: new Map<K, V>() or new Set<T>()
+	if p.peekTokenIs(token.LT) {
+		expr.TypeArgs = p.parseTypeArguments()
+	}
 
 	if !p.expectPeek(token.LPAREN) {
 		return nil
@@ -1063,6 +1078,8 @@ func (p *Parser) parseType() ast.Type {
 		typ = &ast.PrimitiveType{Kind: ast.TypeNull}
 	case token.MAP:
 		typ = p.parseMapType()
+	case token.SET:
+		typ = p.parseSetType()
 	case token.IDENT:
 		namedType := &ast.NamedType{Name: p.curToken.Literal}
 		// Check for type arguments: Stack<int>
@@ -1571,6 +1588,25 @@ func (p *Parser) parseMapType() *ast.MapType {
 	return &ast.MapType{
 		KeyType:   keyType,
 		ValueType: valueType,
+	}
+}
+
+// parseSetType parses Set<T> type syntax
+func (p *Parser) parseSetType() *ast.SetType {
+	// curToken is SET, expect <
+	if !p.expectPeek(token.LT) {
+		return nil
+	}
+
+	p.nextToken() // move to element type
+	elementType := p.parseType()
+
+	if !p.expectPeek(token.GT) {
+		return nil
+	}
+
+	return &ast.SetType{
+		ElementType: elementType,
 	}
 }
 

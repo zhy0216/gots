@@ -577,6 +577,11 @@ func (b *Builder) resolveType(astType ast.Type) types.Type {
 			Value: b.resolveType(t.ValueType),
 		}
 
+	case *ast.SetType:
+		return &types.Set{
+			Element: b.resolveType(t.ElementType),
+		}
+
 	case *ast.NamedType:
 		// First check if it's a type parameter in scope
 		if tp, ok := b.typeParamScope[t.Name]; ok {
@@ -1508,6 +1513,12 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		if mapType, ok := objType.(*types.Map); ok {
 			return b.buildMapMethodCall(objExpr, mapType, propExpr.Property, expr)
 		}
+		if setType, ok := objType.(*types.Set); ok {
+			return b.buildSetMethodCall(objExpr, setType, propExpr.Property, expr)
+		}
+		if arrType, ok := objType.(*types.Array); ok {
+			return b.buildArrayMethodCall(objExpr, arrType, propExpr.Property, expr)
+		}
 	}
 
 	callee := b.buildExpr(expr.Function)
@@ -1712,6 +1723,36 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 			resultType = types.AnyType
 		}
 
+	case *types.Array:
+		// Arrays have a .length property
+		if expr.Property == "length" {
+			resultType = types.IntType
+		} else {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"property %s does not exist on array type", expr.Property)
+			resultType = types.AnyType
+		}
+
+	case *types.Map:
+		// Maps have a .size property
+		if expr.Property == "size" {
+			resultType = types.IntType
+		} else {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"property %s does not exist on Map type", expr.Property)
+			resultType = types.AnyType
+		}
+
+	case *types.Set:
+		// Sets have a .size property
+		if expr.Property == "size" {
+			resultType = types.IntType
+		} else {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"property %s does not exist on Set type", expr.Property)
+			resultType = types.AnyType
+		}
+
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"cannot access property on type %s", objectType.String())
@@ -1861,6 +1902,26 @@ func (b *Builder) buildNewExpr(expr *ast.NewExpr) Expr {
 	args := make([]Expr, len(expr.Arguments))
 	for i, arg := range expr.Arguments {
 		args[i] = b.buildExpr(arg)
+	}
+
+	// Handle new Map<K, V>() - creates an empty map
+	if expr.ClassName == "Map" && len(expr.TypeArgs) == 2 {
+		keyType := b.resolveType(expr.TypeArgs[0])
+		valType := b.resolveType(expr.TypeArgs[1])
+		mapType := &types.Map{Key: keyType, Value: valType}
+		return &MapLit{
+			Entries:  []*MapEntry{},
+			ExprType: mapType,
+		}
+	}
+
+	// Handle new Set<T>() - creates an empty set
+	if expr.ClassName == "Set" && len(expr.TypeArgs) == 1 {
+		elemType := b.resolveType(expr.TypeArgs[0])
+		setType := &types.Set{Element: elemType}
+		return &SetLit{
+			ExprType: setType,
+		}
 	}
 
 	// Check for generic class
@@ -2170,9 +2231,333 @@ func (b *Builder) buildMapMethodCall(obj Expr, mapType *types.Map, method string
 		}
 		resultType = &types.Array{Element: mapType.Value}
 
+	case "entries":
+		// entries() returns [K, V][] - approximated as any[] for now
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.entries expects 0 arguments, got %d", len(args))
+		}
+		// Return type is an array of tuples - we'll use any[] as approximation
+		resultType = &types.Array{Element: types.AnyType}
+
+	case "clear":
+		// clear() returns void
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.clear expects 0 arguments, got %d", len(args))
+		}
+		resultType = types.VoidType
+
+	case "forEach":
+		// forEach(callback: (value: V, key: K) => void) returns void
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.forEach expects 1 argument, got %d", len(args))
+		}
+		resultType = types.VoidType
+
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown Map method: %s", method)
+		resultType = types.AnyType
+	}
+
+	return &MethodCallExpr{
+		Object:   obj,
+		Method:   method,
+		Args:     args,
+		ExprType: resultType,
+	}
+}
+
+// buildSetMethodCall handles method calls on Set types (add, has, delete, clear, values, forEach)
+func (b *Builder) buildSetMethodCall(obj Expr, setType *types.Set, method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	var resultType types.Type
+
+	switch method {
+	case "add":
+		// add(value) returns Set<T>
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.add expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), setType.Element) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.add value type mismatch: expected %s, got %s",
+				setType.Element.String(), args[0].Type().String())
+		}
+		resultType = setType
+
+	case "has":
+		// has(value) returns boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.has expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), setType.Element) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.has value type mismatch: expected %s, got %s",
+				setType.Element.String(), args[0].Type().String())
+		}
+		resultType = types.BooleanType
+
+	case "delete":
+		// delete(value) returns boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.delete expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), setType.Element) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.delete value type mismatch: expected %s, got %s",
+				setType.Element.String(), args[0].Type().String())
+		}
+		resultType = types.BooleanType
+
+	case "clear":
+		// clear() returns void
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.clear expects 0 arguments, got %d", len(args))
+		}
+		resultType = types.VoidType
+
+	case "values":
+		// values() returns T[]
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.values expects 0 arguments, got %d", len(args))
+		}
+		resultType = &types.Array{Element: setType.Element}
+
+	case "forEach":
+		// forEach(callback: (value: T) => void) returns void
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Set.forEach expects 1 argument, got %d", len(args))
+		}
+		resultType = types.VoidType
+
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown Set method: %s", method)
+		resultType = types.AnyType
+	}
+
+	return &MethodCallExpr{
+		Object:   obj,
+		Method:   method,
+		Args:     args,
+		ExprType: resultType,
+	}
+}
+
+// buildArrayMethodCall handles method calls on Array types
+func (b *Builder) buildArrayMethodCall(obj Expr, arrType *types.Array, method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	var resultType types.Type
+
+	switch method {
+	case "push":
+		// push(value: T, ...): int
+		if len(args) < 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.push expects at least 1 argument, got %d", len(args))
+		} else {
+			for i, arg := range args {
+				if !types.IsAssignableTo(arg.Type(), arrType.Element) {
+					b.error(expr.Token.Line, expr.Token.Column,
+						"Array.push argument %d type mismatch: expected %s, got %s",
+						i+1, arrType.Element.String(), arg.Type().String())
+				}
+			}
+		}
+		resultType = types.IntType
+
+	case "pop":
+		// pop(): T | null
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.pop expects 0 arguments, got %d", len(args))
+		}
+		resultType = &types.Nullable{Inner: arrType.Element}
+
+	case "shift":
+		// shift(): T | null
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.shift expects 0 arguments, got %d", len(args))
+		}
+		resultType = &types.Nullable{Inner: arrType.Element}
+
+	case "unshift":
+		// unshift(value: T, ...): int
+		if len(args) < 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.unshift expects at least 1 argument, got %d", len(args))
+		} else {
+			for i, arg := range args {
+				if !types.IsAssignableTo(arg.Type(), arrType.Element) {
+					b.error(expr.Token.Line, expr.Token.Column,
+						"Array.unshift argument %d type mismatch: expected %s, got %s",
+						i+1, arrType.Element.String(), arg.Type().String())
+				}
+			}
+		}
+		resultType = types.IntType
+
+	case "slice":
+		// slice(start?: int, end?: int): T[]
+		if len(args) > 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.slice expects 0-2 arguments, got %d", len(args))
+		}
+		resultType = arrType
+
+	case "splice":
+		// splice(start: int, deleteCount?: int, ...items: T[]): T[]
+		if len(args) < 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.splice expects at least 1 argument, got %d", len(args))
+		}
+		resultType = arrType
+
+	case "concat":
+		// concat(...arrays: T[][]): T[]
+		resultType = arrType
+
+	case "indexOf":
+		// indexOf(value: T, fromIndex?: int): int
+		if len(args) < 1 || len(args) > 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.indexOf expects 1-2 arguments, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), arrType.Element) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.indexOf value type mismatch: expected %s, got %s",
+				arrType.Element.String(), args[0].Type().String())
+		}
+		resultType = types.IntType
+
+	case "includes":
+		// includes(value: T, fromIndex?: int): boolean
+		if len(args) < 1 || len(args) > 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.includes expects 1-2 arguments, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), arrType.Element) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.includes value type mismatch: expected %s, got %s",
+				arrType.Element.String(), args[0].Type().String())
+		}
+		resultType = types.BooleanType
+
+	case "join":
+		// join(separator?: string): string
+		if len(args) > 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.join expects 0-1 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "reverse":
+		// reverse(): T[]
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.reverse expects 0 arguments, got %d", len(args))
+		}
+		resultType = arrType
+
+	case "sort":
+		// sort(compareFn?: (a: T, b: T) => int): T[]
+		if len(args) > 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.sort expects 0-1 arguments, got %d", len(args))
+		}
+		resultType = arrType
+
+	case "map":
+		// map(callback: (value: T, index: int) => U): U[]
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.map expects 1 argument, got %d", len(args))
+			resultType = &types.Array{Element: types.AnyType}
+		} else {
+			// Try to get return type from callback
+			cbType := types.Unwrap(args[0].Type())
+			if fn, ok := cbType.(*types.Function); ok {
+				resultType = &types.Array{Element: fn.ReturnType}
+			} else {
+				resultType = &types.Array{Element: types.AnyType}
+			}
+		}
+
+	case "filter":
+		// filter(callback: (value: T, index: int) => boolean): T[]
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.filter expects 1 argument, got %d", len(args))
+		}
+		resultType = arrType
+
+	case "reduce":
+		// reduce(callback: (acc: U, value: T, index: int) => U, initialValue: U): U
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.reduce expects 2 arguments, got %d", len(args))
+			resultType = types.AnyType
+		} else {
+			// Return type is the type of initialValue
+			resultType = args[1].Type()
+		}
+
+	case "forEach":
+		// forEach(callback: (value: T, index: int) => void): void
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.forEach expects 1 argument, got %d", len(args))
+		}
+		resultType = types.VoidType
+
+	case "find":
+		// find(callback: (value: T, index: int) => boolean): T | null
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.find expects 1 argument, got %d", len(args))
+		}
+		resultType = &types.Nullable{Inner: arrType.Element}
+
+	case "findIndex":
+		// findIndex(callback: (value: T, index: int) => boolean): int
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.findIndex expects 1 argument, got %d", len(args))
+		}
+		resultType = types.IntType
+
+	case "some":
+		// some(callback: (value: T, index: int) => boolean): boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.some expects 1 argument, got %d", len(args))
+		}
+		resultType = types.BooleanType
+
+	case "every":
+		// every(callback: (value: T, index: int) => boolean): boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.every expects 1 argument, got %d", len(args))
+		}
+		resultType = types.BooleanType
+
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown Array method: %s", method)
 		resultType = types.AnyType
 	}
 
