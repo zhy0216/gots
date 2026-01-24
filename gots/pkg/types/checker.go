@@ -8,6 +8,42 @@ import (
 	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
+// isNumericType checks if a type is int or float.
+func isNumericType(t Type) bool {
+	if p, ok := t.(*Primitive); ok {
+		return p.Kind == KindInt || p.Kind == KindFloat
+	}
+	return false
+}
+
+// isNumericOrAny checks if a type is int, float, or any.
+// This allows arithmetic operations on dynamic types.
+func isNumericOrAny(t Type) bool {
+	if p, ok := t.(*Primitive); ok {
+		return p.Kind == KindInt || p.Kind == KindFloat || p.Kind == KindAny
+	}
+	return false
+}
+
+// numericResultType returns the result type for numeric operations.
+// If either operand is any, result is any.
+// If either operand is float, result is float. Otherwise int.
+func numericResultType(left, right Type) Type {
+	leftP, leftOk := left.(*Primitive)
+	rightP, rightOk := right.(*Primitive)
+	if leftOk && rightOk {
+		// If either is any, result is any
+		if leftP.Kind == KindAny || rightP.Kind == KindAny {
+			return AnyType
+		}
+		if leftP.Kind == KindFloat || rightP.Kind == KindFloat {
+			return FloatType
+		}
+		return IntType
+	}
+	return FloatType // default to float for safety
+}
+
 // Error represents a type checking error.
 type Error struct {
 	Line    int
@@ -161,8 +197,10 @@ func (c *Checker) resolveType(astType ast.Type) Type {
 	switch t := astType.(type) {
 	case *ast.PrimitiveType:
 		switch t.Kind {
-		case ast.TypeNumber:
-			return NumberType
+		case ast.TypeInt:
+			return IntType
+		case ast.TypeFloat:
+			return FloatType
 		case ast.TypeString:
 			return StringType
 		case ast.TypeBoolean:
@@ -588,7 +626,11 @@ func (c *Checker) checkExpr(expr ast.Expression) Type {
 
 	switch e := expr.(type) {
 	case *ast.NumberLiteral:
-		return NumberType
+		// Infer int for integers, float for decimals
+		if e.Value == float64(int64(e.Value)) {
+			return IntType
+		}
+		return FloatType
 
 	case *ast.StringLiteral:
 		return StringType
@@ -676,22 +718,37 @@ func (c *Checker) checkBinaryExpr(expr *ast.BinaryExpr) Type {
 		if left.Equals(StringType) && right.Equals(StringType) {
 			return StringType
 		}
-		if !left.Equals(NumberType) || !right.Equals(NumberType) {
+		// Allow any type in arithmetic for dynamic typing support
+		if left.Equals(AnyType) && right.Equals(AnyType) {
+			return AnyType
+		}
+		if !isNumericOrAny(left) || !isNumericOrAny(right) {
 			c.error(expr.Token.Line, expr.Token.Column,
 				"operator + requires number or string, got %s and %s", left.String(), right.String())
 		}
-		return NumberType
+		return numericResultType(left, right)
 
-	case token.MINUS, token.STAR, token.SLASH, token.PERCENT:
-		if !left.Equals(NumberType) || !right.Equals(NumberType) {
+	case token.MINUS, token.STAR, token.PERCENT:
+		if !isNumericOrAny(left) || !isNumericOrAny(right) {
 			c.error(expr.Token.Line, expr.Token.Column,
 				"operator %s requires numbers, got %s and %s", expr.Token.Literal, left.String(), right.String())
 		}
-		return NumberType
+		return numericResultType(left, right)
+
+	case token.SLASH:
+		// Division always returns float (or any if either operand is any)
+		if !isNumericOrAny(left) || !isNumericOrAny(right) {
+			c.error(expr.Token.Line, expr.Token.Column,
+				"operator / requires numbers, got %s and %s", left.String(), right.String())
+		}
+		if left.Equals(AnyType) || right.Equals(AnyType) {
+			return AnyType
+		}
+		return FloatType
 
 	// Comparison operators
 	case token.LT, token.GT, token.LTE, token.GTE:
-		if !left.Equals(NumberType) || !right.Equals(NumberType) {
+		if !isNumericOrAny(left) || !isNumericOrAny(right) {
 			c.error(expr.Token.Line, expr.Token.Column,
 				"comparison requires numbers, got %s and %s", left.String(), right.String())
 		}
@@ -734,11 +791,11 @@ func (c *Checker) checkUnaryExpr(expr *ast.UnaryExpr) Type {
 
 	switch expr.Op {
 	case token.MINUS:
-		if !operand.Equals(NumberType) {
+		if !isNumericType(operand) {
 			c.error(expr.Token.Line, expr.Token.Column,
 				"unary - requires number, got %s", operand.String())
 		}
-		return NumberType
+		return operand // preserve int/float type
 
 	case token.NOT:
 		if !operand.Equals(BooleanType) {
@@ -785,18 +842,18 @@ func (c *Checker) checkIndexExpr(expr *ast.IndexExpr) Type {
 	objectType = Unwrap(objectType)
 
 	if arr, ok := objectType.(*Array); ok {
-		if !indexType.Equals(NumberType) {
+		if !indexType.Equals(IntType) {
 			c.error(expr.Token.Line, expr.Token.Column,
-				"array index must be number, got %s", indexType.String())
+				"array index must be int, got %s", indexType.String())
 		}
 		return arr.Element
 	}
 
 	// String indexing
 	if objectType.Equals(StringType) {
-		if !indexType.Equals(NumberType) {
+		if !indexType.Equals(IntType) {
 			c.error(expr.Token.Line, expr.Token.Column,
-				"string index must be number, got %s", indexType.String())
+				"string index must be int, got %s", indexType.String())
 		}
 		return StringType
 	}
@@ -1005,9 +1062,9 @@ func (c *Checker) checkAssignExpr(expr *ast.AssignExpr) Type {
 
 		if arr, ok := objectType.(*Array); ok {
 			indexType := c.checkExpr(target.Index)
-			if !indexType.Equals(NumberType) {
+			if !indexType.Equals(IntType) {
 				c.error(expr.Token.Line, expr.Token.Column,
-					"array index must be number, got %s", indexType.String())
+					"array index must be int, got %s", indexType.String())
 			}
 			if !IsAssignableTo(valueType, arr.Element) {
 				c.error(expr.Token.Line, expr.Token.Column,
@@ -1130,19 +1187,19 @@ func (c *Checker) checkCompoundAssignExpr(expr *ast.CompoundAssignExpr) Type {
 		if targetType.Equals(StringType) && valueType.Equals(StringType) {
 			return StringType
 		}
-		if !targetType.Equals(NumberType) || !valueType.Equals(NumberType) {
+		if !isNumericType(targetType) || !isNumericType(valueType) {
 			c.error(expr.Token.Line, expr.Token.Column,
 				"operator += requires numbers or strings, got %s and %s",
 				targetType.String(), valueType.String())
 		}
-		return NumberType
+		return numericResultType(targetType, valueType)
 	default:
-		if !targetType.Equals(NumberType) || !valueType.Equals(NumberType) {
+		if !isNumericType(targetType) || !isNumericType(valueType) {
 			c.error(expr.Token.Line, expr.Token.Column,
 				"operator %s requires numbers, got %s and %s",
 				expr.Token.Literal, targetType.String(), valueType.String())
 		}
-		return NumberType
+		return numericResultType(targetType, valueType)
 	}
 }
 
@@ -1150,7 +1207,7 @@ func (c *Checker) checkCompoundAssignExpr(expr *ast.CompoundAssignExpr) Type {
 func (c *Checker) checkUpdateExpr(expr *ast.UpdateExpr) Type {
 	operandType := c.checkExpr(expr.Operand)
 
-	if !operandType.Equals(NumberType) {
+	if !isNumericType(operandType) {
 		c.error(expr.Token.Line, expr.Token.Column,
 			"operator %s requires number, got %s",
 			expr.Token.Literal, operandType.String())
@@ -1165,7 +1222,7 @@ func (c *Checker) checkUpdateExpr(expr *ast.UpdateExpr) Type {
 			"invalid operand for %s", expr.Token.Literal)
 	}
 
-	return NumberType
+	return operandType // preserve int/float type
 }
 
 // checkArrowFunctionExpr checks arrow function expressions.

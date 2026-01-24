@@ -21,7 +21,8 @@ type Type interface {
 type PrimitiveKind int
 
 const (
-	KindNumber PrimitiveKind = iota
+	KindInt PrimitiveKind = iota
+	KindFloat
 	KindString
 	KindBoolean
 	KindVoid
@@ -30,7 +31,7 @@ const (
 	KindNever // Bottom type
 )
 
-// Primitive represents a primitive type (number, string, boolean, void, null).
+// Primitive represents a primitive type (int, float, string, boolean, void, null).
 type Primitive struct {
 	Kind PrimitiveKind
 }
@@ -38,8 +39,10 @@ type Primitive struct {
 func (p *Primitive) typeNode() {}
 func (p *Primitive) String() string {
 	switch p.Kind {
-	case KindNumber:
-		return "number"
+	case KindInt:
+		return "int"
+	case KindFloat:
+		return "float"
 	case KindString:
 		return "string"
 	case KindBoolean:
@@ -65,7 +68,8 @@ func (p *Primitive) Equals(other Type) bool {
 
 // Convenience constructors for primitive types
 var (
-	NumberType  = &Primitive{Kind: KindNumber}
+	IntType     = &Primitive{Kind: KindInt}
+	FloatType   = &Primitive{Kind: KindFloat}
 	StringType  = &Primitive{Kind: KindString}
 	BooleanType = &Primitive{Kind: KindBoolean}
 	VoidType    = &Primitive{Kind: KindVoid}
@@ -358,6 +362,7 @@ func MakeNullable(t Type) Type {
 // - Null to nullable types
 // - Subclass to superclass
 // - Structural compatibility for objects
+// - Function type compatibility with any
 func IsAssignableTo(from, to Type) bool {
 	from = Unwrap(from)
 	to = Unwrap(to)
@@ -420,6 +425,44 @@ func IsAssignableTo(from, to Type) bool {
 				}
 			}
 			return true
+		}
+	}
+
+	// Function type compatibility
+	// A function is assignable to another function if:
+	// - They have the same number of parameters (or target has any params)
+	// - Each parameter is compatible (contravariant, but we allow any)
+	// - Return type is compatible (covariant, but we allow any)
+	if fromFn, ok := from.(*Function); ok {
+		if toFn, ok := to.(*Function); ok {
+			// If target function has any-typed single param, accept any function
+			if len(toFn.Params) == 1 && toFn.Params[0].Type.Equals(AnyType) && toFn.ReturnType.Equals(AnyType) {
+				return true
+			}
+			// If param counts differ, not assignable (unless target is generic any function)
+			if len(fromFn.Params) != len(toFn.Params) {
+				return false
+			}
+			// Check each parameter (contravariant, but we accept any on either side)
+			for i := range fromFn.Params {
+				fromP := fromFn.Params[i].Type
+				toP := toFn.Params[i].Type
+				// If either is any, it's compatible
+				if fromP.Equals(AnyType) || toP.Equals(AnyType) {
+					continue
+				}
+				// Contravariance: to's param should be assignable to from's param
+				if !IsAssignableTo(toP, fromP) {
+					return false
+				}
+			}
+			// Check return type (covariant)
+			fromRet := fromFn.ReturnType
+			toRet := toFn.ReturnType
+			if fromRet.Equals(AnyType) || toRet.Equals(AnyType) {
+				return true
+			}
+			return IsAssignableTo(fromRet, toRet)
 		}
 	}
 

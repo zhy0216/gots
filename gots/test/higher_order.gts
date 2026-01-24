@@ -3,8 +3,8 @@
 
 // Currying: transforming a function with multiple arguments
 // into a sequence of functions each with a single argument
-function curry_add(a: number): Function {
-    return function(b: number): number {
+function curry_add(a: int): Function {
+    return function(b: int): int {
         return a + b
     }
 }
@@ -18,20 +18,20 @@ println(add10(3))  // 13
 
 // Function composition: (f . g)(x) = f(g(x))
 function compose(f: Function, g: Function): Function {
-    return function(x: number): number {
+    return function(x: int): int {
         return f(g(x))
     }
 }
 
-function double(x: number): number {
+function double(x: int): int {
     return x * 2
 }
 
-function increment(x: number): number {
+function increment(x: int): int {
     return x + 1
 }
 
-function square(x: number): number {
+function square(x: int): int {
     return x * x
 }
 
@@ -47,8 +47,8 @@ let tripleCompose: Function = compose(compose(double, increment), square)
 println(tripleCompose(3))  // ((3^2) + 1) * 2 = 20
 
 // Partial application using closures
-function makeMultiplier(factor: number): Function {
-    return function(x: number): number {
+function makeMultiplier(factor: int): Function {
+    return function(x: int): int {
         return x * factor
     }
 }
@@ -61,17 +61,17 @@ println(triple(7))     // 21
 println(quadruple(7))  // 28
 
 // Higher-order array operations (manual implementation)
-function forEach(arr: number[], f: Function): void {
-    let i: number = 0
+function forEach(arr: int[], f: Function): void {
+    let i: int = 0
     while (i < len(arr)) {
         f(arr[i])
         i = i + 1
     }
 }
 
-function map(arr: number[], f: Function): number[] {
-    let result: number[] = []
-    let i: number = 0
+function map(arr: int[], f: Function): int[] {
+    let result: int[] = []
+    let i: int = 0
     while (i < len(arr)) {
         push(result, f(arr[i]))
         i = i + 1
@@ -79,9 +79,9 @@ function map(arr: number[], f: Function): number[] {
     return result
 }
 
-function filter(arr: number[], predicate: Function): number[] {
-    let result: number[] = []
-    let i: number = 0
+function filter(arr: int[], predicate: Function): int[] {
+    let result: int[] = []
+    let i: int = 0
     while (i < len(arr)) {
         if (predicate(arr[i])) {
             push(result, arr[i])
@@ -91,9 +91,9 @@ function filter(arr: number[], predicate: Function): number[] {
     return result
 }
 
-function reduce(arr: number[], f: Function, initial: number): number {
-    let acc: number = initial
-    let i: number = 0
+function reduce(arr: int[], f: Function, initial: int): int {
+    let acc: int = initial
+    let i: int = 0
     while (i < len(arr)) {
         acc = f(acc, arr[i])
         i = i + 1
@@ -101,44 +101,44 @@ function reduce(arr: number[], f: Function, initial: number): number {
     return acc
 }
 
-let numbers: number[] = [1, 2, 3, 4, 5]
+let numbers: int[] = [1, 2, 3, 4, 5]
 
 println("Map (double each element):")
-let doubled: number[] = map(numbers, double)
-forEach(doubled, function(x: number): void {
+let doubled: int[] = map(numbers, double)
+forEach(doubled, function(x: int): void {
     println(x)
 })
 
 println("Filter (keep even numbers):")
-let evens: number[] = filter(numbers, function(x: number): boolean {
+let evens: int[] = filter(numbers, function(x: int): boolean {
     return x % 2 == 0
 })
-forEach(evens, function(x: number): void {
+forEach(evens, function(x: int): void {
     println(x)
 })
 
 println("Reduce (sum all elements):")
-let sum: number = reduce(numbers, function(acc: number, x: number): number {
+let sum: int = reduce(numbers, function(acc: int, x: int): int {
     return acc + x
 }, 0)
 println(sum)  // 15
 
 println("Reduce (product of all elements):")
-let product: number = reduce(numbers, function(acc: number, x: number): number {
+let product: int = reduce(numbers, function(acc: int, x: int): int {
     return acc * x
 }, 1)
 println(product)  // 120
 
 // Chaining: sum of squares of even numbers
-let data: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-let evenSquareSum: number = reduce(
+let data: int[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let evenSquareSum: int = reduce(
     map(
-        filter(data, function(x: number): boolean {
+        filter(data, function(x: int): boolean {
             return x % 2 == 0
         }),
         square
     ),
-    function(acc: number, x: number): number {
+    function(acc: int, x: int): int {
         return acc + x
     },
     0

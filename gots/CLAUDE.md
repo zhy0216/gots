@@ -1,10 +1,10 @@
 # GoTS (GoTypeScript)
 
-A TypeScript-like language compiler and virtual machine written in Go.
+A TypeScript-like language that compiles to Go.
 
 ## Project Overview
 
-GoTS implements a complete compilation pipeline: lexer → parser → type checker → compiler → bytecode VM. It supports static typing, functions, closures, classes with inheritance, and garbage collection.
+GoTS implements a complete compilation pipeline: lexer → parser → type checker → Go code generator. It transpiles TypeScript-like source code to Go, providing static typing, functions, closures, classes with inheritance, and access to the Go ecosystem.
 
 ## Important Notes
 
@@ -17,7 +17,7 @@ Do not modify files in scaffold/. Use them only as reference for understanding h
 ## Architecture
 
 ```
-Source (.gts) → Lexer → Parser → Type Checker → Compiler → Bytecode (.gtsb) → VM
+Source (.gts) → Lexer → Parser → TypedAST Builder → Go Code Generator → go build → Native Binary
 ```
 
 ### Package Structure
@@ -28,10 +28,9 @@ Source (.gts) → Lexer → Parser → Type Checker → Compiler → Bytecode (.
 | `pkg/lexer` | Tokenization with line/column tracking |
 | `pkg/ast` | AST node definitions (statements, expressions, types) |
 | `pkg/parser` | Pratt parser with operator precedence |
-| `pkg/types` | Type checker with scope and type narrowing |
-| `pkg/bytecode` | Opcode definitions and binary serialization |
-| `pkg/compiler` | AST to bytecode generation |
-| `pkg/vm` | Stack-based bytecode interpreter with GC |
+| `pkg/types` | Type definitions and utilities |
+| `pkg/typed` | Type-annotated AST with builder |
+| `pkg/codegen` | Go source code generator |
 | `cmd/gots` | CLI entry point |
 
 ## Build & Run
@@ -50,64 +49,97 @@ go test -v ./pkg/...
 ## CLI Commands
 
 ```bash
-gots run program.gts           # Compile and execute
-gots compile program.gts       # Compile to .gtsb
-gots exec program.gtsb         # Execute bytecode
-gots disasm program.gts        # Disassemble
-gots repl                      # Interactive REPL
+gots run program.gts              # Compile and run
+gots build program.gts            # Compile to native binary
+gots build program.gts -o myapp   # Specify output name
+gots build program.gts --emit-go  # Output Go source instead
+gots emit-go program.gts          # Generate Go source code
+gots repl                         # Interactive REPL
 ```
 
 ## Language Features
 
 ### Types
-- Primitives: `number`, `string`, `boolean`, `void`, `null`
-- Arrays: `number[]`, `string[]`
-- Objects: `{x: number, y: string}`
-- Functions: `(a: number) => string`
+- Primitives: `int`, `float`, `string`, `boolean`, `void`, `null`
+- Arrays: `int[]`, `float[]`, `string[]`
+- Objects: `{x: int, y: string}`
+- Functions: `(a: int) => string`, `Function` (dynamic)
 - Nullable: `string | null`
-- Type aliases: `type Point = {x: number, y: number}`
+- Type aliases: `type Point = {x: int, y: int}`
+
+### Type Mapping to Go
+
+| GTS Type | Go Type |
+|----------|---------|
+| `int` | `int` |
+| `float` | `float64` |
+| `string` | `string` |
+| `boolean` | `bool` |
+| `void` | (no return) |
+| `null` | `nil` / `interface{}` |
+| `Function` | `interface{}` |
+| `T[]` | `[]T` |
+| `T \| null` | `*T` |
+| `class C` | `*C` (struct pointer) |
+
+### Numeric Type Rules
+- Integer literals (e.g., `42`) have type `int`
+- Decimal literals (e.g., `3.14`) have type `float`
+- `int + int = int`, `int + float = float`, `float + float = float`
+- Division (`/`) always returns `float`
+- Modulo (`%`) requires `int` operands
+- Array indexing requires `int`
+- `len()` returns `int`
 
 ### Syntax Examples
 
 ```typescript
 // Variables
-let x: number = 42;
-const name: string = "GoTS";
+let x: int = 42
+let pi: float = 3.14159
+const name: string = "GoTS"
 
 // Functions
-function factorial(n: number): number {
-    if (n <= 1) { return 1; }
-    return n * factorial(n - 1);
+function factorial(n: int): int {
+    if (n <= 1) { return 1 }
+    return n * factorial(n - 1)
+}
+
+// Higher-order functions
+function curry_add(a: int): Function {
+    return function(b: int): int {
+        return a + b
+    }
 }
 
 // Classes
 class Animal {
-    name: string;
+    name: string
     constructor(name: string) {
-        this.name = name;
+        this.name = name
     }
     speak(): void {
-        println(this.name);
+        println(this.name)
     }
 }
 
 class Dog extends Animal {
     constructor(name: string) {
-        super(name);
+        super(name)
     }
     speak(): void {
-        println(this.name + " barks");
+        println(this.name + " barks")
     }
 }
 
 // Arrays
-let arr: number[] = [1, 2, 3];
-push(arr, 4);
-let last: number = pop(arr);
+let arr: int[] = [1, 2, 3]
+push(arr, 4)
+let last: int = pop(arr)
 ```
 
 ### Built-in Functions
-`println`, `print`, `len`, `push`, `pop`, `typeof`, `tostring`, `tonumber`, `sqrt`, `floor`, `ceil`, `abs`
+`println`, `print`, `len`, `push`, `pop`, `typeof`, `tostring`, `toint`, `tofloat`, `sqrt`, `floor`, `ceil`, `abs`
 
 ## Key Implementation Details
 
@@ -116,28 +148,27 @@ let last: number = pop(arr);
 - Two-token lookahead
 - Error recovery (collects multiple errors)
 
-### Compiler
-- Max 256 local variables per scope
-- Slot 0 reserved for function/this
-- Upvalue chains for closure capture (Lua-style)
+### TypedAST Builder
+- Transforms AST to type-annotated AST
+- Performs type checking during transformation
+- Tracks scope and variable types
+- Collects closure capture information
+- Allows `any` type in arithmetic for dynamic typing support
 
-### VM
-- Stack-based (256 elements max)
-- 64 call frames max
-- Mark-and-sweep GC (threshold starts at 1MB, grows 2x)
-
-### Bytecode Format
-- Magic: `GTSB` (0x47545342)
-- Version: 1
-- Supports gzip compression (.gtsb.gz)
-- RLE-compressed line info
+### Code Generator
+- Generates idiomatic Go code
+- Maps GTS types to Go types
+- Classes become Go structs with methods
+- Closures map directly to Go closures
+- Runtime helpers for dynamic operations (`gts_call`, `gts_toint`, etc.)
+- Automatic type assertions for `any` operands in arithmetic
 
 ## Code Conventions
 
-- `Obj*` prefix for heap-allocated objects (ObjString, ObjArray, etc.)
-- `VAL_*` for value type constants
-- `OP_*` for bytecode opcodes
-- `TYPE_*` for compilation context types
+- Exported Go names are capitalized (e.g., `count` → `Count`)
+- Constructor functions are named `NewClassName`
+- Method receivers use `this` pointer
+- Go reserved words get `_` suffix
 
 ## Testing
 
@@ -147,13 +178,43 @@ Each package has corresponding `*_test.go` files. Example programs in `test/` di
 # Run specific package tests
 go test -v ./pkg/lexer
 go test -v ./pkg/parser
-go test -v ./pkg/compiler
-go test -v ./pkg/vm
+go test -v ./pkg/types
+go test -v ./pkg/codegen
+
+# Run example programs
+gots run test/example.gts
+gots run test/higher_order.gts
+gots run test/y_combinator.gts
 ```
 
 ## Development Workflow
 
 1. Make changes to source
-2. Run `go test ./...` to verify
+2. Run `go test ./pkg/...` to verify
 3. Test with example: `go run ./cmd/gots run test/example.gts`
-4. For bytecode changes, check disassembly: `go run ./cmd/gots disasm test/example.gts`
+4. Check generated Go: `go run ./cmd/gots emit-go test/example.gts`
+
+## Generated Code Example
+
+Input (`test.gts`):
+```typescript
+function add(a: int, b: int): int {
+    return a + b
+}
+println(add(2, 3))
+```
+
+Output (generated Go):
+```go
+package main
+
+import "fmt"
+
+func add(a int, b int) int {
+    return (a + b)
+}
+
+func main() {
+    fmt.Println(add(2, 3))
+}
+```

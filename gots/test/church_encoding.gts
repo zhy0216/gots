@@ -8,32 +8,32 @@
 // two  = λf.λx. f(f(x))     (apply f twice)
 
 function zero(f: Function): Function {
-    return function(x: number): number {
+    return function(x: int): int {
         return x
     }
 }
 
 function one(f: Function): Function {
-    return function(x: number): number {
+    return function(x: int): int {
         return f(x)
     }
 }
 
 function two(f: Function): Function {
-    return function(x: number): number {
+    return function(x: int): int {
         return f(f(x))
     }
 }
 
 function three(f: Function): Function {
-    return function(x: number): number {
+    return function(x: int): int {
         return f(f(f(x)))
     }
 }
 
 // Convert Church numeral to integer by applying increment
-function churchToInt(n: Function): number {
-    let inc: Function = function(x: number): number {
+function churchToInt(n: Function): int {
+    let inc: Function = function(x: int): int {
         return x + 1
     }
     return n(inc)(0)
@@ -49,7 +49,7 @@ println(churchToInt(three))  // 3
 // succ(n) = λf.λx. f(n(f)(x))
 function succ(n: Function): Function {
     return function(f: Function): Function {
-        return function(x: number): number {
+        return function(x: int): int {
             return f(n(f)(x))
         }
     }
@@ -66,7 +66,7 @@ println(churchToInt(five))   // 5
 // add(m, n) = λf.λx. m(f)(n(f)(x))
 function add(m: Function, n: Function): Function {
     return function(f: Function): Function {
-        return function(x: number): number {
+        return function(x: int): int {
             return m(f)(n(f)(x))
         }
     }
@@ -99,9 +99,9 @@ println(churchToInt(exp(two, three)))     // 2^3 = 8
 println(churchToInt(exp(three, two)))     // 3^2 = 9
 
 // Convert integer to Church numeral using successor
-function intToChurch(n: number): Function {
+function intToChurch(n: int): Function {
     let result: Function = zero
-    let i: number = 0
+    let i: int = 0
     while (i < n) {
         result = succ(result)
         i = i + 1
@@ -122,18 +122,18 @@ println(churchToInt(mult(six, seven))) // 42
 // false = λa.λb. b (select second)
 
 // We'll use a number encoding: true = 1, false = 0
-function churchTrue(a: number, b: number): number {
+function churchTrue(a: int, b: int): int {
     return a
 }
 
-function churchFalse(a: number, b: number): number {
+function churchFalse(a: int, b: int): int {
     return b
 }
 
 // isZero checks if a Church numeral is zero
 // isZero(n) = n(λx. false)(true)
-function isZero(n: Function): number {
-    let alwaysFalse: Function = function(x: number): number {
+function isZero(n: Function): int {
+    let alwaysFalse: Function = function(x: int): int {
         return 0  // false
     }
     return n(alwaysFalse)(1)  // returns 1 (true) if n is zero

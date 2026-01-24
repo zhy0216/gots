@@ -241,7 +241,7 @@ func TestNextToken_Keywords(t *testing.T) {
 	input := `let const function return if else while for break continue
 		class extends new this super constructor type
 		true false null
-		number string boolean void`
+		int float string boolean void`
 
 	tests := []struct {
 		expectedType    token.Type
@@ -267,7 +267,8 @@ func TestNextToken_Keywords(t *testing.T) {
 		{token.TRUE, "true"},
 		{token.FALSE, "false"},
 		{token.NULL, "null"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
+		{token.FLOAT_TYPE, "float"},
 		{token.STRING_TYPE, "string"},
 		{token.BOOLEAN_TYPE, "boolean"},
 		{token.VOID_TYPE, "void"},
@@ -380,11 +381,11 @@ let y = 10;`
 }
 
 func TestNextToken_CompleteProgram(t *testing.T) {
-	input := `function add(a: number, b: number): number {
+	input := `function add(a: int, b: int): int {
 	return a + b;
 }
 
-let result: number = add(1, 2);
+let result: int = add(1, 2);
 println(result);`
 
 	tests := []struct {
@@ -396,14 +397,14 @@ println(result);`
 		{token.LPAREN, "("},
 		{token.IDENT, "a"},
 		{token.COLON, ":"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
 		{token.COMMA, ","},
 		{token.IDENT, "b"},
 		{token.COLON, ":"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
 		{token.RPAREN, ")"},
 		{token.COLON, ":"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
 		{token.LBRACE, "{"},
 		{token.RETURN, "return"},
 		{token.IDENT, "a"},
@@ -414,7 +415,7 @@ println(result);`
 		{token.LET, "let"},
 		{token.IDENT, "result"},
 		{token.COLON, ":"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
 		{token.ASSIGN, "="},
 		{token.IDENT, "add"},
 		{token.LPAREN, "("},
@@ -480,10 +481,10 @@ func TestNextToken_Pipe(t *testing.T) {
 
 func TestNextToken_ClassDeclaration(t *testing.T) {
 	input := `class Point {
-	x: number;
-	y: number;
+	x: int;
+	y: int;
 
-	constructor(x: number, y: number) {
+	constructor(x: int, y: int) {
 		this.x = x;
 		this.y = y;
 	}
@@ -498,21 +499,21 @@ func TestNextToken_ClassDeclaration(t *testing.T) {
 		{token.LBRACE, "{"},
 		{token.IDENT, "x"},
 		{token.COLON, ":"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
 		{token.SEMICOLON, ";"},
 		{token.IDENT, "y"},
 		{token.COLON, ":"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
 		{token.SEMICOLON, ";"},
 		{token.CONSTRUCTOR, "constructor"},
 		{token.LPAREN, "("},
 		{token.IDENT, "x"},
 		{token.COLON, ":"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
 		{token.COMMA, ","},
 		{token.IDENT, "y"},
 		{token.COLON, ":"},
-		{token.NUMBER_TYPE, "number"},
+		{token.INT_TYPE, "int"},
 		{token.RPAREN, ")"},
 		{token.LBRACE, "{"},
 		{token.THIS, "this"},

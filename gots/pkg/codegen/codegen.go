@@ -1,0 +1,1335 @@
+// Package codegen generates Go source code from a typed AST.
+package codegen
+
+import (
+	"bytes"
+	"fmt"
+	"go/format"
+	"strings"
+
+	"github.com/zhy0216/quickts/gots/pkg/typed"
+	"github.com/zhy0216/quickts/gots/pkg/types"
+)
+
+// Generator transforms typed AST into Go source code.
+type Generator struct {
+	buf            *bytes.Buffer
+	indent         int
+	imports        map[string]bool
+	currentRetType types.Type // Track return type for type assertions
+}
+
+// Generate produces Go source code from a typed program.
+func Generate(prog *typed.Program) ([]byte, error) {
+	g := &Generator{
+		buf:     new(bytes.Buffer),
+		imports: make(map[string]bool),
+	}
+
+	// First pass: collect required imports
+	g.collectImports(prog)
+
+	// Generate the code
+	g.genProgram(prog)
+
+	// Format the output
+	src := g.buf.Bytes()
+	formatted, err := format.Source(src)
+	if err != nil {
+		// Return unformatted source for debugging
+		return src, fmt.Errorf("format error: %v\n%s", err, src)
+	}
+
+	return formatted, nil
+}
+
+func (g *Generator) collectImports(prog *typed.Program) {
+	// fmt is always needed for print
+	g.imports["fmt"] = true
+	// reflect is needed for dynamic function calls
+	g.imports["reflect"] = true
+
+	// Check for math functions
+	for _, fn := range prog.Functions {
+		g.collectImportsFromBlock(fn.Body)
+	}
+	for _, stmt := range prog.TopLevel {
+		g.collectImportsFromStmt(stmt)
+	}
+	for _, class := range prog.Classes {
+		if class.Constructor != nil {
+			g.collectImportsFromBlock(class.Constructor.Body)
+		}
+		for _, method := range class.Methods {
+			g.collectImportsFromBlock(method.Body)
+		}
+	}
+}
+
+func (g *Generator) collectImportsFromBlock(block *typed.BlockStmt) {
+	if block == nil {
+		return
+	}
+	for _, stmt := range block.Stmts {
+		g.collectImportsFromStmt(stmt)
+	}
+}
+
+func (g *Generator) collectImportsFromStmt(stmt typed.Stmt) {
+	switch s := stmt.(type) {
+	case *typed.ExprStmt:
+		g.collectImportsFromExpr(s.Expr)
+	case *typed.VarDecl:
+		if s.Init != nil {
+			g.collectImportsFromExpr(s.Init)
+		}
+	case *typed.BlockStmt:
+		g.collectImportsFromBlock(s)
+	case *typed.IfStmt:
+		g.collectImportsFromExpr(s.Condition)
+		g.collectImportsFromBlock(s.Then)
+		if s.Else != nil {
+			g.collectImportsFromStmt(s.Else)
+		}
+	case *typed.WhileStmt:
+		g.collectImportsFromExpr(s.Condition)
+		g.collectImportsFromBlock(s.Body)
+	case *typed.ForStmt:
+		if s.Condition != nil {
+			g.collectImportsFromExpr(s.Condition)
+		}
+		if s.Update != nil {
+			g.collectImportsFromExpr(s.Update)
+		}
+		g.collectImportsFromBlock(s.Body)
+	case *typed.ForOfStmt:
+		g.collectImportsFromExpr(s.Iterable)
+		g.collectImportsFromBlock(s.Body)
+	case *typed.SwitchStmt:
+		g.collectImportsFromExpr(s.Discriminant)
+		for _, c := range s.Cases {
+			if c.Test != nil {
+				g.collectImportsFromExpr(c.Test)
+			}
+			for _, cs := range c.Stmts {
+				g.collectImportsFromStmt(cs)
+			}
+		}
+	case *typed.ReturnStmt:
+		if s.Value != nil {
+			g.collectImportsFromExpr(s.Value)
+		}
+	case *typed.FuncDecl:
+		g.collectImportsFromBlock(s.Body)
+	case *typed.ClassDecl:
+		if s.Constructor != nil {
+			g.collectImportsFromBlock(s.Constructor.Body)
+		}
+		for _, m := range s.Methods {
+			g.collectImportsFromBlock(m.Body)
+		}
+	}
+}
+
+func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
+	if expr == nil {
+		return
+	}
+
+	switch e := expr.(type) {
+	case *typed.BuiltinCall:
+		switch e.Name {
+		case "sqrt", "floor", "ceil", "abs":
+			g.imports["math"] = true
+		}
+		for _, arg := range e.Args {
+			g.collectImportsFromExpr(arg)
+		}
+	case *typed.BinaryExpr:
+		// Modulo for float64 uses math.Mod
+		if e.Op == "%" {
+			leftType := types.Unwrap(e.Left.Type())
+			if lp, ok := leftType.(*types.Primitive); ok && lp.Kind == types.KindFloat {
+				g.imports["math"] = true
+			}
+		}
+		g.collectImportsFromExpr(e.Left)
+		g.collectImportsFromExpr(e.Right)
+	case *typed.UnaryExpr:
+		g.collectImportsFromExpr(e.Operand)
+	case *typed.CallExpr:
+		g.collectImportsFromExpr(e.Callee)
+		for _, arg := range e.Args {
+			g.collectImportsFromExpr(arg)
+		}
+	case *typed.IndexExpr:
+		g.collectImportsFromExpr(e.Object)
+		g.collectImportsFromExpr(e.Index)
+	case *typed.PropertyExpr:
+		g.collectImportsFromExpr(e.Object)
+	case *typed.ArrayLit:
+		for _, elem := range e.Elements {
+			g.collectImportsFromExpr(elem)
+		}
+	case *typed.ObjectLit:
+		for _, prop := range e.Properties {
+			g.collectImportsFromExpr(prop.Value)
+		}
+	case *typed.FuncExpr:
+		g.collectImportsFromBlock(e.Body)
+		if e.BodyExpr != nil {
+			g.collectImportsFromExpr(e.BodyExpr)
+		}
+	case *typed.NewExpr:
+		for _, arg := range e.Args {
+			g.collectImportsFromExpr(arg)
+		}
+	case *typed.SuperExpr:
+		for _, arg := range e.Args {
+			g.collectImportsFromExpr(arg)
+		}
+	case *typed.AssignExpr:
+		g.collectImportsFromExpr(e.Target)
+		g.collectImportsFromExpr(e.Value)
+	case *typed.CompoundAssignExpr:
+		g.collectImportsFromExpr(e.Target)
+		g.collectImportsFromExpr(e.Value)
+	case *typed.UpdateExpr:
+		g.collectImportsFromExpr(e.Operand)
+	}
+}
+
+func (g *Generator) genProgram(prog *typed.Program) {
+	g.writeln("package main")
+	g.writeln("")
+
+	// Write imports
+	if len(g.imports) > 0 {
+		if len(g.imports) == 1 {
+			for pkg := range g.imports {
+				g.writeln("import %q", pkg)
+			}
+		} else {
+			g.writeln("import (")
+			g.indent++
+			for pkg := range g.imports {
+				g.writeln("%q", pkg)
+			}
+			g.indent--
+			g.writeln(")")
+		}
+		g.writeln("")
+	}
+
+	// Generate runtime helpers
+	g.genRuntime()
+	g.writeln("")
+
+	// Generate classes as structs
+	for _, class := range prog.Classes {
+		g.genClass(class)
+		g.writeln("")
+	}
+
+	// Generate top-level functions
+	for _, fn := range prog.Functions {
+		g.genFuncDecl(fn)
+		g.writeln("")
+	}
+
+	// Generate main function
+	g.writeln("func main() {")
+	g.indent++
+	for _, stmt := range prog.TopLevel {
+		g.genStmt(stmt)
+	}
+	g.indent--
+	g.writeln("}")
+}
+
+func (g *Generator) genRuntime() {
+	// Generate runtime helper functions
+	g.writeln("// Runtime helpers")
+	g.writeln("")
+
+	// len helper - returns int
+	g.writeln("func gts_len(v interface{}) int {")
+	g.indent++
+	g.writeln("switch x := v.(type) {")
+	g.writeln("case string:")
+	g.indent++
+	g.writeln("return len(x)")
+	g.indent--
+	g.writeln("case []interface{}:")
+	g.indent++
+	g.writeln("return len(x)")
+	g.indent--
+	g.writeln("case []int:")
+	g.indent++
+	g.writeln("return len(x)")
+	g.indent--
+	g.writeln("case []float64:")
+	g.indent++
+	g.writeln("return len(x)")
+	g.indent--
+	g.writeln("case []string:")
+	g.indent++
+	g.writeln("return len(x)")
+	g.indent--
+	g.writeln("case []bool:")
+	g.indent++
+	g.writeln("return len(x)")
+	g.indent--
+	g.writeln("default:")
+	g.indent++
+	g.writeln("return 0")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// typeof helper
+	g.writeln("func gts_typeof(v interface{}) string {")
+	g.indent++
+	g.writeln("if v == nil {")
+	g.indent++
+	g.writeln("return \"null\"")
+	g.indent--
+	g.writeln("}")
+	g.writeln("switch v.(type) {")
+	g.writeln("case float64:")
+	g.indent++
+	g.writeln("return \"number\"")
+	g.indent--
+	g.writeln("case string:")
+	g.indent++
+	g.writeln("return \"string\"")
+	g.indent--
+	g.writeln("case bool:")
+	g.indent++
+	g.writeln("return \"boolean\"")
+	g.indent--
+	g.writeln("default:")
+	g.indent++
+	g.writeln("return \"object\"")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// tostring helper
+	g.writeln("func gts_tostring(v interface{}) string {")
+	g.indent++
+	g.writeln("return fmt.Sprintf(\"%%v\", v)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// toint helper
+	g.writeln("func gts_toint(v interface{}) int {")
+	g.indent++
+	g.writeln("switch x := v.(type) {")
+	g.writeln("case int:")
+	g.indent++
+	g.writeln("return x")
+	g.indent--
+	g.writeln("case float64:")
+	g.indent++
+	g.writeln("return int(x)")
+	g.indent--
+	g.writeln("case string:")
+	g.indent++
+	g.writeln("var n int")
+	g.writeln("fmt.Sscanf(x, \"%%d\", &n)")
+	g.writeln("return n")
+	g.indent--
+	g.writeln("case bool:")
+	g.indent++
+	g.writeln("if x { return 1 }")
+	g.writeln("return 0")
+	g.indent--
+	g.writeln("default:")
+	g.indent++
+	g.writeln("return 0")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// tofloat helper
+	g.writeln("func gts_tofloat(v interface{}) float64 {")
+	g.indent++
+	g.writeln("switch x := v.(type) {")
+	g.writeln("case float64:")
+	g.indent++
+	g.writeln("return x")
+	g.indent--
+	g.writeln("case int:")
+	g.indent++
+	g.writeln("return float64(x)")
+	g.indent--
+	g.writeln("case string:")
+	g.indent++
+	g.writeln("var n float64")
+	g.writeln("fmt.Sscanf(x, \"%%f\", &n)")
+	g.writeln("return n")
+	g.indent--
+	g.writeln("case bool:")
+	g.indent++
+	g.writeln("if x { return 1 }")
+	g.writeln("return 0")
+	g.indent--
+	g.writeln("default:")
+	g.indent++
+	g.writeln("return 0")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_call - dynamic function caller using reflection
+	g.writeln("func gts_call(fn interface{}, args ...interface{}) interface{} {")
+	g.indent++
+	g.writeln("v := reflect.ValueOf(fn)")
+	g.writeln("in := make([]reflect.Value, len(args))")
+	g.writeln("fnType := v.Type()")
+	g.writeln("for i, arg := range args {")
+	g.indent++
+	g.writeln("if i < fnType.NumIn() {")
+	g.indent++
+	g.writeln("// Convert argument to expected type")
+	g.writeln("expectedType := fnType.In(i)")
+	g.writeln("argVal := reflect.ValueOf(arg)")
+	g.writeln("if argVal.Type().ConvertibleTo(expectedType) {")
+	g.indent++
+	g.writeln("in[i] = argVal.Convert(expectedType)")
+	g.indent--
+	g.writeln("} else {")
+	g.indent++
+	g.writeln("in[i] = argVal")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("} else {")
+	g.indent++
+	g.writeln("in[i] = reflect.ValueOf(arg)")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("out := v.Call(in)")
+	g.writeln("if len(out) > 0 {")
+	g.indent++
+	g.writeln("return out[0].Interface()")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return nil")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_tobool - convert any value to boolean for conditions
+	g.writeln("func gts_tobool(v interface{}) bool {")
+	g.indent++
+	g.writeln("if v == nil {")
+	g.indent++
+	g.writeln("return false")
+	g.indent--
+	g.writeln("}")
+	g.writeln("switch x := v.(type) {")
+	g.writeln("case bool:")
+	g.indent++
+	g.writeln("return x")
+	g.indent--
+	g.writeln("case float64:")
+	g.indent++
+	g.writeln("return x != 0")
+	g.indent--
+	g.writeln("case string:")
+	g.indent++
+	g.writeln("return x != \"\"")
+	g.indent--
+	g.writeln("default:")
+	g.indent++
+	g.writeln("return true")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_toarr_float - convert []interface{} to []float64
+	g.writeln("func gts_toarr_float(v []interface{}) []float64 {")
+	g.indent++
+	g.writeln("result := make([]float64, len(v))")
+	g.writeln("for i, x := range v {")
+	g.indent++
+	g.writeln("result[i] = gts_tofloat(x)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return result")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_toarr_int - convert []interface{} to []int
+	g.writeln("func gts_toarr_int(v []interface{}) []int {")
+	g.indent++
+	g.writeln("result := make([]int, len(v))")
+	g.writeln("for i, x := range v {")
+	g.indent++
+	g.writeln("result[i] = gts_toint(x)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return result")
+	g.indent--
+	g.writeln("}")
+}
+
+func (g *Generator) genClass(class *typed.ClassDecl) {
+	name := exportName(class.Name)
+
+	// Generate struct
+	g.writeln("type %s struct {", name)
+	g.indent++
+
+	// Embed super class if present
+	if class.Super != "" {
+		g.writeln("%s", exportName(class.Super))
+	}
+
+	// Generate fields
+	for _, field := range class.Fields {
+		g.writeln("%s %s", exportName(field.Name), g.goType(field.Type))
+	}
+
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Generate constructor function
+	if class.Constructor != nil {
+		params := make([]string, len(class.Constructor.Params))
+		for i, p := range class.Constructor.Params {
+			params[i] = fmt.Sprintf("%s %s", goName(p.Name), g.goType(p.Type))
+		}
+
+		g.writeln("func New%s(%s) *%s {", name, strings.Join(params, ", "), name)
+		g.indent++
+		g.writeln("this := &%s{}", name)
+
+		// Generate constructor body
+		for _, stmt := range class.Constructor.Body.Stmts {
+			g.genStmt(stmt)
+		}
+
+		g.writeln("return this")
+		g.indent--
+		g.writeln("}")
+		g.writeln("")
+	} else {
+		// Default constructor
+		g.writeln("func New%s() *%s {", name, name)
+		g.indent++
+		g.writeln("return &%s{}", name)
+		g.indent--
+		g.writeln("}")
+		g.writeln("")
+	}
+
+	// Generate methods
+	for _, method := range class.Methods {
+		params := make([]string, len(method.Params))
+		for i, p := range method.Params {
+			params[i] = fmt.Sprintf("%s %s", goName(p.Name), g.goType(p.Type))
+		}
+
+		returnType := g.goType(method.ReturnType)
+		if returnType == "" {
+			g.writeln("func (this *%s) %s(%s) {", name, exportName(method.Name), strings.Join(params, ", "))
+		} else {
+			g.writeln("func (this *%s) %s(%s) %s {", name, exportName(method.Name), strings.Join(params, ", "), returnType)
+		}
+		g.indent++
+
+		for _, stmt := range method.Body.Stmts {
+			g.genStmt(stmt)
+		}
+
+		g.indent--
+		g.writeln("}")
+		g.writeln("")
+	}
+}
+
+func (g *Generator) genFuncDecl(fn *typed.FuncDecl) {
+	params := make([]string, len(fn.Params))
+	for i, p := range fn.Params {
+		params[i] = fmt.Sprintf("%s %s", goName(p.Name), g.goType(p.Type))
+	}
+
+	returnType := g.goType(fn.ReturnType)
+
+	// Track current return type for type assertions
+	savedRetType := g.currentRetType
+	g.currentRetType = fn.ReturnType
+
+	if returnType == "" {
+		g.writeln("func %s(%s) {", goName(fn.Name), strings.Join(params, ", "))
+	} else {
+		g.writeln("func %s(%s) %s {", goName(fn.Name), strings.Join(params, ", "), returnType)
+	}
+	g.indent++
+
+	for _, stmt := range fn.Body.Stmts {
+		g.genStmt(stmt)
+	}
+
+	g.indent--
+	g.writeln("}")
+
+	g.currentRetType = savedRetType
+}
+
+// ----------------------------------------------------------------------------
+// Statement Generation
+// ----------------------------------------------------------------------------
+
+func (g *Generator) genStmt(stmt typed.Stmt) {
+	switch s := stmt.(type) {
+	case *typed.ExprStmt:
+		g.writeln("%s", g.genExpr(s.Expr))
+
+	case *typed.VarDecl:
+		g.genVarDecl(s)
+
+	case *typed.BlockStmt:
+		g.writeln("{")
+		g.indent++
+		for _, inner := range s.Stmts {
+			g.genStmt(inner)
+		}
+		g.indent--
+		g.writeln("}")
+
+	case *typed.IfStmt:
+		g.genIfStmt(s)
+
+	case *typed.WhileStmt:
+		// Check if condition is any type (interface{}) and needs gts_tobool
+		condType := types.Unwrap(s.Condition.Type())
+		condExpr := g.genExpr(s.Condition)
+		if prim, ok := condType.(*types.Primitive); ok && prim.Kind == types.KindAny {
+			condExpr = fmt.Sprintf("gts_tobool(%s)", condExpr)
+		}
+		g.writeln("for %s {", condExpr)
+		g.indent++
+		for _, inner := range s.Body.Stmts {
+			g.genStmt(inner)
+		}
+		g.indent--
+		g.writeln("}")
+
+	case *typed.ForStmt:
+		g.genForStmt(s)
+
+	case *typed.ForOfStmt:
+		g.genForOfStmt(s)
+
+	case *typed.SwitchStmt:
+		g.genSwitchStmt(s)
+
+	case *typed.ReturnStmt:
+		if s.Value != nil {
+			retExpr := g.genExpr(s.Value)
+			// Check if we need type assertion/conversion
+			if g.currentRetType != nil {
+				valType := types.Unwrap(s.Value.Type())
+				expectedType := types.Unwrap(g.currentRetType)
+
+				// If value is any but expected is concrete
+				if prim, ok := valType.(*types.Primitive); ok && prim.Kind == types.KindAny {
+					expectedGoType := g.goType(expectedType)
+					if expectedGoType != "interface{}" {
+						// Check if this is a binary arithmetic expression - if so, we've already
+						// handled type assertions for the operands, so the result is already typed
+						needsAssertion := true
+						if binExpr, ok := s.Value.(*typed.BinaryExpr); ok {
+							switch binExpr.Op {
+							case "+", "-", "*", "/", "%", "<", ">", "<=", ">=":
+								// Skip - we've already asserted operands in genBinaryExpr
+								needsAssertion = false
+							}
+						}
+						if needsAssertion {
+							retExpr = fmt.Sprintf("%s.(%s)", retExpr, expectedGoType)
+						}
+					}
+				}
+				// If value is []any but expected is []concrete
+				if valArr, ok := valType.(*types.Array); ok {
+					if valElem, ok := valArr.Element.(*types.Primitive); ok && valElem.Kind == types.KindAny {
+						if expArr, ok := expectedType.(*types.Array); ok {
+							if expElem, ok := expArr.Element.(*types.Primitive); ok {
+								if expElem.Kind == types.KindInt {
+									retExpr = fmt.Sprintf("gts_toarr_int(%s)", retExpr)
+								} else if expElem.Kind == types.KindFloat {
+									retExpr = fmt.Sprintf("gts_toarr_float(%s)", retExpr)
+								}
+							}
+						}
+					}
+				}
+			}
+			g.writeln("return %s", retExpr)
+		} else {
+			g.writeln("return")
+		}
+
+	case *typed.BreakStmt:
+		g.writeln("break")
+
+	case *typed.ContinueStmt:
+		g.writeln("continue")
+
+	case *typed.FuncDecl:
+		g.genFuncDecl(s)
+
+	case *typed.ClassDecl:
+		g.genClass(s)
+	}
+}
+
+func (g *Generator) genVarDecl(decl *typed.VarDecl) {
+	if decl.Init != nil {
+		// Use explicit type declaration for clarity
+		goType := g.goType(decl.VarType)
+
+		// Handle empty array literals - use the declared type's element type
+		initExpr := g.genExprWithContext(decl.Init, decl.VarType)
+
+		if goType != "" {
+			// Always use explicit type to ensure correct typing
+			// This is especially important for interface{} types
+			g.writeln("var %s %s = %s", goName(decl.Name), goType, initExpr)
+		} else {
+			g.writeln("%s := %s", goName(decl.Name), initExpr)
+		}
+	} else {
+		g.writeln("var %s %s", goName(decl.Name), g.goType(decl.VarType))
+	}
+}
+
+// genExprWithContext generates an expression with knowledge of the target type context
+func (g *Generator) genExprWithContext(expr typed.Expr, targetType types.Type) string {
+	// Handle array literals where the expression type is any[] but target is concrete[]
+	if arrLit, ok := expr.(*typed.ArrayLit); ok {
+		if targetArr, ok := targetType.(*types.Array); ok {
+			exprArr := arrLit.ExprType.(*types.Array)
+			if exprElem, ok := exprArr.Element.(*types.Primitive); ok && exprElem.Kind == types.KindAny {
+				// Use target element type instead
+				elements := make([]string, len(arrLit.Elements))
+				for i, elem := range arrLit.Elements {
+					elements[i] = g.genExpr(elem)
+				}
+				return fmt.Sprintf("[]%s{%s}", g.goType(targetArr.Element), strings.Join(elements, ", "))
+			}
+		}
+	}
+	return g.genExpr(expr)
+}
+
+func (g *Generator) genIfStmt(stmt *typed.IfStmt) {
+	// Check if condition is any type (interface{}) and needs gts_tobool
+	condType := types.Unwrap(stmt.Condition.Type())
+	condExpr := g.genExpr(stmt.Condition)
+	if prim, ok := condType.(*types.Primitive); ok && prim.Kind == types.KindAny {
+		condExpr = fmt.Sprintf("gts_tobool(%s)", condExpr)
+	}
+	g.writeln("if %s {", condExpr)
+	g.indent++
+	for _, inner := range stmt.Then.Stmts {
+		g.genStmt(inner)
+	}
+	g.indent--
+
+	if stmt.Else != nil {
+		switch elseStmt := stmt.Else.(type) {
+		case *typed.IfStmt:
+			g.write("} else ")
+			g.genIfStmt(elseStmt)
+			return
+		case *typed.BlockStmt:
+			g.writeln("} else {")
+			g.indent++
+			for _, inner := range elseStmt.Stmts {
+				g.genStmt(inner)
+			}
+			g.indent--
+		}
+	}
+	g.writeln("}")
+}
+
+func (g *Generator) genForStmt(stmt *typed.ForStmt) {
+	// Go-style for loop
+	var init, cond, update string
+
+	if stmt.Init != nil {
+		init = fmt.Sprintf("%s := %s", goName(stmt.Init.Name), g.genExpr(stmt.Init.Init))
+	}
+	if stmt.Condition != nil {
+		cond = g.genExpr(stmt.Condition)
+	}
+	if stmt.Update != nil {
+		update = g.genExpr(stmt.Update)
+	}
+
+	g.writeln("for %s; %s; %s {", init, cond, update)
+	g.indent++
+	for _, inner := range stmt.Body.Stmts {
+		g.genStmt(inner)
+	}
+	g.indent--
+	g.writeln("}")
+}
+
+func (g *Generator) genForOfStmt(stmt *typed.ForOfStmt) {
+	g.writeln("for _, %s := range %s {", goName(stmt.Variable.Name), g.genExpr(stmt.Iterable))
+	g.indent++
+	for _, inner := range stmt.Body.Stmts {
+		g.genStmt(inner)
+	}
+	g.indent--
+	g.writeln("}")
+}
+
+func (g *Generator) genSwitchStmt(stmt *typed.SwitchStmt) {
+	g.writeln("switch %s {", g.genExpr(stmt.Discriminant))
+	for _, c := range stmt.Cases {
+		if c.Test != nil {
+			g.writeln("case %s:", g.genExpr(c.Test))
+		} else {
+			g.writeln("default:")
+		}
+		g.indent++
+		for _, inner := range c.Stmts {
+			g.genStmt(inner)
+		}
+		g.indent--
+	}
+	g.writeln("}")
+}
+
+// ----------------------------------------------------------------------------
+// Expression Generation
+// ----------------------------------------------------------------------------
+
+func (g *Generator) genExpr(expr typed.Expr) string {
+	if expr == nil {
+		return "nil"
+	}
+
+	switch e := expr.(type) {
+	case *typed.NumberLit:
+		return fmt.Sprintf("%v", e.Value)
+
+	case *typed.StringLit:
+		return fmt.Sprintf("%q", e.Value)
+
+	case *typed.BoolLit:
+		if e.Value {
+			return "true"
+		}
+		return "false"
+
+	case *typed.NullLit:
+		return "nil"
+
+	case *typed.Ident:
+		return goName(e.Name)
+
+	case *typed.BinaryExpr:
+		return g.genBinaryExpr(e)
+
+	case *typed.UnaryExpr:
+		return g.genUnaryExpr(e)
+
+	case *typed.CallExpr:
+		return g.genCallExpr(e)
+
+	case *typed.BuiltinCall:
+		return g.genBuiltinCall(e)
+
+	case *typed.IndexExpr:
+		return g.genIndexExpr(e)
+
+	case *typed.PropertyExpr:
+		return g.genPropertyExpr(e)
+
+	case *typed.ArrayLit:
+		return g.genArrayLit(e)
+
+	case *typed.ObjectLit:
+		return g.genObjectLit(e)
+
+	case *typed.FuncExpr:
+		return g.genFuncExpr(e)
+
+	case *typed.NewExpr:
+		return g.genNewExpr(e)
+
+	case *typed.ThisExpr:
+		return "this"
+
+	case *typed.SuperExpr:
+		return g.genSuperExpr(e)
+
+	case *typed.AssignExpr:
+		return g.genAssignExpr(e)
+
+	case *typed.CompoundAssignExpr:
+		return g.genCompoundAssignExpr(e)
+
+	case *typed.UpdateExpr:
+		return g.genUpdateExpr(e)
+	}
+
+	return "nil"
+}
+
+func (g *Generator) genBinaryExpr(expr *typed.BinaryExpr) string {
+	left := g.genExpr(expr.Left)
+	right := g.genExpr(expr.Right)
+
+	// For arithmetic operations, add type assertions if operands are any
+	leftType := types.Unwrap(expr.Left.Type())
+	rightType := types.Unwrap(expr.Right.Type())
+	leftIsAny := leftType.Equals(types.AnyType)
+	rightIsAny := rightType.Equals(types.AnyType)
+
+	// Helper to add type assertion for any type in arithmetic
+	assertNumeric := func(operandExpr string, operandType types.Type, otherType types.Type) string {
+		if !operandType.Equals(types.AnyType) {
+			return operandExpr
+		}
+		// If the other operand is int, assert to int; if float, assert to float64
+		if p, ok := otherType.(*types.Primitive); ok && p.Kind == types.KindInt {
+			return fmt.Sprintf("%s.(int)", operandExpr)
+		} else if p, ok := otherType.(*types.Primitive); ok && p.Kind == types.KindFloat {
+			return fmt.Sprintf("%s.(float64)", operandExpr)
+		}
+		// Both are any - default to int for Y combinator and similar patterns
+		return fmt.Sprintf("%s.(int)", operandExpr)
+	}
+
+	switch expr.Op {
+	case "??":
+		// Nullish coalescing - use helper or inline
+		return fmt.Sprintf("func() interface{} { if %s != nil { return %s }; return %s }()", left, left, right)
+	case "%":
+		// Modulo - works directly on int in Go, need math.Mod for float64
+		if lp, ok := leftType.(*types.Primitive); ok && lp.Kind == types.KindFloat {
+			return fmt.Sprintf("math.Mod(%s, %s)", left, right)
+		}
+		if leftIsAny || rightIsAny {
+			left = assertNumeric(left, leftType, rightType)
+			right = assertNumeric(right, rightType, leftType)
+		}
+		return fmt.Sprintf("(%s %% %s)", left, right)
+	case "+", "-", "*", "/":
+		// For arithmetic, assert any types to numeric
+		if leftIsAny || rightIsAny {
+			left = assertNumeric(left, leftType, rightType)
+			right = assertNumeric(right, rightType, leftType)
+		}
+		return fmt.Sprintf("(%s %s %s)", left, expr.Op, right)
+	case "<", ">", "<=", ">=":
+		// For comparisons, assert any types to numeric
+		if leftIsAny || rightIsAny {
+			left = assertNumeric(left, leftType, rightType)
+			right = assertNumeric(right, rightType, leftType)
+		}
+		return fmt.Sprintf("(%s %s %s)", left, expr.Op, right)
+	default:
+		return fmt.Sprintf("(%s %s %s)", left, expr.Op, right)
+	}
+}
+
+func (g *Generator) genUnaryExpr(expr *typed.UnaryExpr) string {
+	operand := g.genExpr(expr.Operand)
+	return fmt.Sprintf("(%s%s)", expr.Op, operand)
+}
+
+func (g *Generator) genCallExpr(expr *typed.CallExpr) string {
+	callee := g.genExpr(expr.Callee)
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+
+	// Check if the callee is a generic function (interface{} type)
+	// In that case, use gts_call for dynamic dispatch
+	calleeType := types.Unwrap(expr.Callee.Type())
+	if fn, ok := calleeType.(*types.Function); ok {
+		isGeneric := len(fn.Params) > 0 && fn.Params[0].Type.Equals(types.AnyType) && fn.ReturnType.Equals(types.AnyType)
+		if isGeneric {
+			call := fmt.Sprintf("gts_call(%s, %s)", callee, strings.Join(args, ", "))
+			// Add type assertion if the call result is used as a specific type
+			return g.addTypeAssertion(call, expr.ExprType)
+		}
+	}
+	// Also handle when the callee is directly an any type
+	if prim, ok := calleeType.(*types.Primitive); ok && prim.Kind == types.KindAny {
+		call := fmt.Sprintf("gts_call(%s, %s)", callee, strings.Join(args, ", "))
+		// Add type assertion if the call result is used as a specific type
+		return g.addTypeAssertion(call, expr.ExprType)
+	}
+
+	return fmt.Sprintf("%s(%s)", callee, strings.Join(args, ", "))
+}
+
+// addTypeAssertion wraps an interface{} expression with a type assertion if needed
+func (g *Generator) addTypeAssertion(expr string, targetType types.Type) string {
+	targetType = types.Unwrap(targetType)
+
+	// If target type is any/interface{}, no assertion needed
+	if prim, ok := targetType.(*types.Primitive); ok && prim.Kind == types.KindAny {
+		return expr
+	}
+
+	// Add type assertion for specific types
+	goType := g.goType(targetType)
+	if goType != "interface{}" {
+		return fmt.Sprintf("%s.(%s)", expr, goType)
+	}
+	return expr
+}
+
+func (g *Generator) genBuiltinCall(expr *typed.BuiltinCall) string {
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+
+	switch expr.Name {
+	case "println":
+		return fmt.Sprintf("fmt.Println(%s)", strings.Join(args, ", "))
+	case "print":
+		return fmt.Sprintf("fmt.Print(%s)", strings.Join(args, ", "))
+	case "len":
+		return fmt.Sprintf("gts_len(%s)", args[0])
+	case "push":
+		// Push modifies the first argument (slice)
+		// Get element type from the array to ensure proper type assertion
+		arrType := types.Unwrap(expr.Args[0].Type())
+		valueExpr := args[1]
+		if arr, ok := arrType.(*types.Array); ok {
+			// Check if value type is any but array element type is concrete
+			valType := types.Unwrap(expr.Args[1].Type())
+			if prim, ok := valType.(*types.Primitive); ok && prim.Kind == types.KindAny {
+				elemGoType := g.goType(arr.Element)
+				if elemGoType != "interface{}" {
+					valueExpr = fmt.Sprintf("%s.(%s)", valueExpr, elemGoType)
+				}
+			}
+		}
+		return fmt.Sprintf("%s = append(%s, %s)", args[0], args[0], valueExpr)
+	case "pop":
+		// Pop returns and removes the last element
+		return fmt.Sprintf("func() interface{} { n := len(%s); v := %s[n-1]; %s = %s[:n-1]; return v }()", args[0], args[0], args[0], args[0])
+	case "typeof":
+		return fmt.Sprintf("gts_typeof(%s)", args[0])
+	case "tostring":
+		return fmt.Sprintf("gts_tostring(%s)", args[0])
+	case "toint":
+		return fmt.Sprintf("gts_toint(%s)", args[0])
+	case "tofloat":
+		return fmt.Sprintf("gts_tofloat(%s)", args[0])
+	case "sqrt":
+		return fmt.Sprintf("math.Sqrt(%s)", args[0])
+	case "floor":
+		return fmt.Sprintf("math.Floor(%s)", args[0])
+	case "ceil":
+		return fmt.Sprintf("math.Ceil(%s)", args[0])
+	case "abs":
+		return fmt.Sprintf("math.Abs(%s)", args[0])
+	default:
+		return fmt.Sprintf("%s(%s)", expr.Name, strings.Join(args, ", "))
+	}
+}
+
+func (g *Generator) genIndexExpr(expr *typed.IndexExpr) string {
+	object := g.genExpr(expr.Object)
+	index := g.genExpr(expr.Index)
+
+	// Convert float64 index to int
+	return fmt.Sprintf("%s[int(%s)]", object, index)
+}
+
+func (g *Generator) genPropertyExpr(expr *typed.PropertyExpr) string {
+	object := g.genExpr(expr.Object)
+	return fmt.Sprintf("%s.%s", object, exportName(expr.Property))
+}
+
+func (g *Generator) genArrayLit(expr *typed.ArrayLit) string {
+	elements := make([]string, len(expr.Elements))
+	for i, elem := range expr.Elements {
+		elements[i] = g.genExpr(elem)
+	}
+
+	arrType := expr.ExprType.(*types.Array)
+	goElemType := g.goType(arrType.Element)
+
+	return fmt.Sprintf("[]%s{%s}", goElemType, strings.Join(elements, ", "))
+}
+
+func (g *Generator) genObjectLit(expr *typed.ObjectLit) string {
+	// Generate as a struct literal or map
+	// For now, use anonymous struct
+	if len(expr.Properties) == 0 {
+		return "struct{}{}"
+	}
+
+	var fields []string
+	var values []string
+
+	for _, prop := range expr.Properties {
+		fields = append(fields, fmt.Sprintf("%s %s", exportName(prop.Key), g.goType(prop.Value.Type())))
+		values = append(values, fmt.Sprintf("%s: %s", exportName(prop.Key), g.genExpr(prop.Value)))
+	}
+
+	return fmt.Sprintf("struct{%s}{%s}", strings.Join(fields, "; "), strings.Join(values, ", "))
+}
+
+func (g *Generator) genFuncExpr(expr *typed.FuncExpr) string {
+	params := make([]string, len(expr.Params))
+	for i, p := range expr.Params {
+		params[i] = fmt.Sprintf("%s %s", goName(p.Name), g.goType(p.Type))
+	}
+
+	funcType := expr.ExprType.(*types.Function)
+	returnType := g.goType(funcType.ReturnType)
+
+	var buf bytes.Buffer
+	if returnType == "" {
+		buf.WriteString(fmt.Sprintf("func(%s) {\n", strings.Join(params, ", ")))
+	} else {
+		buf.WriteString(fmt.Sprintf("func(%s) %s {\n", strings.Join(params, ", "), returnType))
+	}
+
+	// Save and restore current return type for nested function expressions
+	savedRetType := g.currentRetType
+	g.currentRetType = funcType.ReturnType
+
+	if expr.Body != nil {
+		for _, stmt := range expr.Body.Stmts {
+			buf.WriteString(g.genStmtToString(stmt))
+		}
+	} else if expr.BodyExpr != nil {
+		retExpr := g.genExpr(expr.BodyExpr)
+		// Add type assertion if body expression is any but return type is concrete
+		// However, skip this for binary arithmetic expressions where we've already
+		// asserted the operands (the generated code already produces the correct type)
+		valType := types.Unwrap(expr.BodyExpr.Type())
+		expectedType := types.Unwrap(funcType.ReturnType)
+		needsAssertion := false
+		if prim, ok := valType.(*types.Primitive); ok && prim.Kind == types.KindAny {
+			expectedGoType := g.goType(expectedType)
+			if expectedGoType != "interface{}" {
+				// Check if this is a binary arithmetic expression - if so, we've already
+				// handled type assertions for the operands, so the result is already typed
+				if binExpr, ok := expr.BodyExpr.(*typed.BinaryExpr); ok {
+					switch binExpr.Op {
+					case "+", "-", "*", "/", "%", "<", ">", "<=", ">=":
+						// Skip - we've already asserted operands in genBinaryExpr
+						needsAssertion = false
+					default:
+						needsAssertion = true
+					}
+				} else {
+					needsAssertion = true
+				}
+				if needsAssertion {
+					retExpr = fmt.Sprintf("%s.(%s)", retExpr, expectedGoType)
+				}
+			}
+		}
+		buf.WriteString(fmt.Sprintf("return %s\n", retExpr))
+	}
+
+	g.currentRetType = savedRetType
+
+	buf.WriteString("}")
+	return buf.String()
+}
+
+func (g *Generator) genStmtToString(stmt typed.Stmt) string {
+	var buf bytes.Buffer
+	saved := g.buf
+	g.buf = &buf
+	g.genStmt(stmt)
+	g.buf = saved
+	return buf.String()
+}
+
+func (g *Generator) genNewExpr(expr *typed.NewExpr) string {
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+	return fmt.Sprintf("New%s(%s)", exportName(expr.ClassName), strings.Join(args, ", "))
+}
+
+func (g *Generator) genSuperExpr(expr *typed.SuperExpr) string {
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+	// Super calls are handled specially in constructor - just assign parent fields
+	return fmt.Sprintf("/* super(%s) */", strings.Join(args, ", "))
+}
+
+func (g *Generator) genAssignExpr(expr *typed.AssignExpr) string {
+	target := g.genExpr(expr.Target)
+	value := g.genExpr(expr.Value)
+
+	// Add type assertion if value type is any but target type is concrete
+	valType := types.Unwrap(expr.Value.Type())
+	targetType := types.Unwrap(expr.Target.Type())
+	if prim, ok := valType.(*types.Primitive); ok && prim.Kind == types.KindAny {
+		goType := g.goType(targetType)
+		if goType != "interface{}" {
+			value = fmt.Sprintf("%s.(%s)", value, goType)
+		}
+	}
+
+	return fmt.Sprintf("%s = %s", target, value)
+}
+
+func (g *Generator) genCompoundAssignExpr(expr *typed.CompoundAssignExpr) string {
+	target := g.genExpr(expr.Target)
+	value := g.genExpr(expr.Value)
+	return fmt.Sprintf("%s %s %s", target, expr.Op, value)
+}
+
+func (g *Generator) genUpdateExpr(expr *typed.UpdateExpr) string {
+	operand := g.genExpr(expr.Operand)
+	if expr.Prefix {
+		return fmt.Sprintf("%s%s", expr.Op, operand)
+	}
+	return fmt.Sprintf("%s%s", operand, expr.Op)
+}
+
+// ----------------------------------------------------------------------------
+// Type Mapping
+// ----------------------------------------------------------------------------
+
+func (g *Generator) goType(t types.Type) string {
+	if t == nil {
+		return ""
+	}
+
+	t = types.Unwrap(t)
+
+	switch typ := t.(type) {
+	case *types.Primitive:
+		switch typ.Kind {
+		case types.KindInt:
+			return "int"
+		case types.KindFloat:
+			return "float64"
+		case types.KindString:
+			return "string"
+		case types.KindBoolean:
+			return "bool"
+		case types.KindVoid:
+			return ""
+		case types.KindNull:
+			return "interface{}"
+		case types.KindAny:
+			return "interface{}"
+		case types.KindNever:
+			return ""
+		}
+
+	case *types.Array:
+		return "[]" + g.goType(typ.Element)
+
+	case *types.Object:
+		// Anonymous struct
+		var fields []string
+		for name, prop := range typ.Properties {
+			fields = append(fields, fmt.Sprintf("%s %s", exportName(name), g.goType(prop.Type)))
+		}
+		return fmt.Sprintf("struct{%s}", strings.Join(fields, "; "))
+
+	case *types.Function:
+		// Check if this is a generic function type (all any params)
+		// If so, use interface{} to hold any function
+		isGeneric := len(typ.Params) > 0 && typ.Params[0].Type.Equals(types.AnyType) && typ.ReturnType.Equals(types.AnyType)
+		if isGeneric {
+			return "interface{}"
+		}
+		params := make([]string, len(typ.Params))
+		for i, p := range typ.Params {
+			params[i] = g.goType(p.Type)
+		}
+		retType := g.goType(typ.ReturnType)
+		if retType == "" {
+			return fmt.Sprintf("func(%s)", strings.Join(params, ", "))
+		}
+		return fmt.Sprintf("func(%s) %s", strings.Join(params, ", "), retType)
+
+	case *types.Nullable:
+		// Use pointer for nullable
+		inner := g.goType(typ.Inner)
+		return "*" + inner
+
+	case *types.Class:
+		return "*" + exportName(typ.Name)
+	}
+
+	return "interface{}"
+}
+
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+
+func (g *Generator) write(format string, args ...interface{}) {
+	fmt.Fprintf(g.buf, format, args...)
+}
+
+func (g *Generator) writeln(format string, args ...interface{}) {
+	for i := 0; i < g.indent; i++ {
+		g.buf.WriteString("\t")
+	}
+	fmt.Fprintf(g.buf, format, args...)
+	g.buf.WriteString("\n")
+}
+
+// goName converts a GTS name to a valid Go identifier.
+func goName(name string) string {
+	// Avoid Go reserved words
+	switch name {
+	case "type", "func", "var", "const", "package", "import", "return",
+		"if", "else", "for", "range", "switch", "case", "default",
+		"break", "continue", "goto", "fallthrough", "defer", "go",
+		"chan", "map", "struct", "interface", "select":
+		return name + "_"
+	}
+	return name
+}
+
+// exportName converts to Go exported name (capitalize first letter).
+func exportName(name string) string {
+	if len(name) == 0 {
+		return name
+	}
+	return strings.ToUpper(name[:1]) + name[1:]
+}

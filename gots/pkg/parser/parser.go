@@ -1028,8 +1028,10 @@ func (p *Parser) parseType() ast.Type {
 	var typ ast.Type
 
 	switch p.curToken.Type {
-	case token.NUMBER_TYPE:
-		typ = &ast.PrimitiveType{Kind: ast.TypeNumber}
+	case token.INT_TYPE:
+		typ = &ast.PrimitiveType{Kind: ast.TypeInt}
+	case token.FLOAT_TYPE:
+		typ = &ast.PrimitiveType{Kind: ast.TypeFloat}
 	case token.STRING_TYPE:
 		typ = &ast.PrimitiveType{Kind: ast.TypeString}
 	case token.BOOLEAN_TYPE:

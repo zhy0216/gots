@@ -99,7 +99,8 @@ const (
 	OF          // of
 
 	// Type keywords
-	NUMBER_TYPE  // number
+	INT_TYPE     // int
+	FLOAT_TYPE   // float
 	STRING_TYPE  // string
 	BOOLEAN_TYPE // boolean
 	VOID_TYPE    // void
@@ -215,7 +216,8 @@ var typeStrings = map[Type]string{
 	OF:          "of",
 
 	// Type keywords
-	NUMBER_TYPE:  "number",
+	INT_TYPE:     "int",
+	FLOAT_TYPE:   "float",
 	STRING_TYPE:  "string",
 	BOOLEAN_TYPE: "boolean",
 	VOID_TYPE:    "void",
@@ -248,7 +250,8 @@ var keywords = map[string]Type{
 	"true":        TRUE,
 	"false":       FALSE,
 	"null":        NULL,
-	"number":      NUMBER_TYPE,
+	"int":         INT_TYPE,
+	"float":       FLOAT_TYPE,
 	"string":      STRING_TYPE,
 	"boolean":     BOOLEAN_TYPE,
 	"void":        VOID_TYPE,
@@ -268,7 +271,7 @@ func IsKeyword(t Type) bool {
 	case LET, CONST, FUNCTION, RETURN, IF, ELSE, WHILE, FOR,
 		BREAK, CONTINUE, CLASS, EXTENDS, NEW, THIS, SUPER,
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL,
-		NUMBER_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE:
+		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE:
 		return true
 	}
 	return false

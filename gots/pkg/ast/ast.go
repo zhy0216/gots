@@ -634,14 +634,15 @@ func (t *TypeAliasDecl) String() string {
 type PrimitiveKind int
 
 const (
-	TypeNumber PrimitiveKind = iota
+	TypeInt PrimitiveKind = iota
+	TypeFloat
 	TypeString
 	TypeBoolean
 	TypeVoid
 	TypeNull
 )
 
-// PrimitiveType represents a primitive type (number, string, boolean, void, null).
+// PrimitiveType represents a primitive type (int, float, string, boolean, void, null).
 type PrimitiveType struct {
 	Kind PrimitiveKind
 }
@@ -650,8 +651,10 @@ func (p *PrimitiveType) typeNode()          {}
 func (p *PrimitiveType) TokenLiteral() string { return p.String() }
 func (p *PrimitiveType) String() string {
 	switch p.Kind {
-	case TypeNumber:
-		return "number"
+	case TypeInt:
+		return "int"
+	case TypeFloat:
+		return "float"
 	case TypeString:
 		return "string"
 	case TypeBoolean:

@@ -66,14 +66,14 @@ func searchSubstring(s, substr string) bool {
 // ----------------------------------------------------------------------------
 
 func TestNumberLiteral(t *testing.T) {
-	expectNoErrors(t, `let x: number = 42;`)
-	expectNoErrors(t, `let x: number = 3.14;`)
-	expectError(t, `let x: string = 42;`, "cannot assign number to string")
+	expectNoErrors(t, `let x: int = 42;`)
+	expectNoErrors(t, `let x: float = 3.14;`)
+	expectError(t, `let x: string = 42;`, "cannot assign int to string")
 }
 
 func TestStringLiteral(t *testing.T) {
 	expectNoErrors(t, `let x: string = "hello";`)
-	expectError(t, `let x: number = "hello";`, "cannot assign string to number")
+	expectError(t, `let x: int = "hello";`, "cannot assign string to int")
 }
 
 func TestBooleanLiteral(t *testing.T) {
@@ -89,18 +89,18 @@ func TestNullLiteral(t *testing.T) {
 
 func TestBinaryExpressions(t *testing.T) {
 	// Arithmetic
-	expectNoErrors(t, `let x: number = 1 + 2;`)
-	expectNoErrors(t, `let x: number = 3 - 1;`)
-	expectNoErrors(t, `let x: number = 2 * 3;`)
-	expectNoErrors(t, `let x: number = 6 / 2;`)
-	expectNoErrors(t, `let x: number = 7 % 3;`)
+	expectNoErrors(t, `let x: int = 1 + 2;`)
+	expectNoErrors(t, `let x: int = 3 - 1;`)
+	expectNoErrors(t, `let x: int = 2 * 3;`)
+	expectNoErrors(t, `let x: float = 6 / 2;`)
+	expectNoErrors(t, `let x: int = 7 % 3;`)
 
 	// String concatenation
 	expectNoErrors(t, `let x: string = "hello" + " world";`)
 
 	// Type errors in arithmetic
-	expectError(t, `let x: number = "a" - 1;`, "requires numbers")
-	expectError(t, `let x: number = true * 2;`, "requires numbers")
+	expectError(t, `let x: int = "a" - 1;`, "requires numbers")
+	expectError(t, `let x: int = true * 2;`, "requires numbers")
 
 	// Comparison
 	expectNoErrors(t, `let x: boolean = 1 < 2;`)
@@ -119,9 +119,9 @@ func TestBinaryExpressions(t *testing.T) {
 }
 
 func TestUnaryExpressions(t *testing.T) {
-	expectNoErrors(t, `let x: number = -5;`)
+	expectNoErrors(t, `let x: int = -5;`)
 	expectNoErrors(t, `let x: boolean = !true;`)
-	expectError(t, `let x: number = -"hello";`, "requires number")
+	expectError(t, `let x: int = -"hello";`, "requires number")
 	expectError(t, `let x: boolean = !42;`, "requires boolean")
 }
 
@@ -130,24 +130,24 @@ func TestUnaryExpressions(t *testing.T) {
 // ----------------------------------------------------------------------------
 
 func TestVariableDeclaration(t *testing.T) {
-	expectNoErrors(t, `let x: number = 1;`)
-	expectNoErrors(t, `const PI: number = 3.14;`)
-	expectError(t, `let x: number = "hello";`, "cannot assign string to number")
+	expectNoErrors(t, `let x: int = 1;`)
+	expectNoErrors(t, `const PI: float = 3.14;`)
+	expectError(t, `let x: int = "hello";`, "cannot assign string to int")
 }
 
 func TestVariableUsage(t *testing.T) {
 	expectNoErrors(t, `
-		let x: number = 1;
-		let y: number = x + 2;
+		let x: int = 1;
+		let y: int = x + 2;
 	`)
-	expectError(t, `let x: number = y;`, "undefined variable")
+	expectError(t, `let x: int = y;`, "undefined variable")
 }
 
 func TestVariableScoping(t *testing.T) {
 	expectNoErrors(t, `
-		let x: number = 1;
+		let x: int = 1;
 		{
-			let y: number = x + 1;
+			let y: int = x + 1;
 		}
 	`)
 }
@@ -158,36 +158,36 @@ func TestVariableScoping(t *testing.T) {
 
 func TestIfStatement(t *testing.T) {
 	expectNoErrors(t, `
-		let x: number = 1;
+		let x: int = 1;
 		if (x > 0) {
-			let y: number = 2;
+			let y: int = 2;
 		}
 	`)
 	expectError(t, `
 		if (42) {
-			let x: number = 1;
+			let x: int = 1;
 		}
 	`, "must be boolean")
 }
 
 func TestWhileStatement(t *testing.T) {
 	expectNoErrors(t, `
-		let x: number = 0;
+		let x: int = 0;
 		while (x < 10) {
 			x = x + 1;
 		}
 	`)
 	expectError(t, `
 		while ("true") {
-			let x: number = 1;
+			let x: int = 1;
 		}
 	`, "must be boolean")
 }
 
 func TestForStatement(t *testing.T) {
 	expectNoErrors(t, `
-		let sum: number = 0;
-		let i: number = 0;
+		let sum: int = 0;
+		let i: int = 0;
 		while (i < 10) {
 			sum = sum + i;
 			i = i + 1;
@@ -216,7 +216,7 @@ func TestBreakContinue(t *testing.T) {
 
 func TestFunctionDeclaration(t *testing.T) {
 	expectNoErrors(t, `
-		function add(a: number, b: number): number {
+		function add(a: int, b: int): int {
 			return a + b;
 		}
 	`)
@@ -224,36 +224,36 @@ func TestFunctionDeclaration(t *testing.T) {
 
 func TestFunctionCall(t *testing.T) {
 	expectNoErrors(t, `
-		function add(a: number, b: number): number {
+		function add(a: int, b: int): int {
 			return a + b;
 		}
-		let x: number = add(1, 2);
+		let x: int = add(1, 2);
 	`)
 
 	expectError(t, `
-		function add(a: number, b: number): number {
+		function add(a: int, b: int): int {
 			return a + b;
 		}
-		let x: number = add(1);
+		let x: int = add(1);
 	`, "expected 2 arguments")
 
 	expectError(t, `
-		function add(a: number, b: number): number {
+		function add(a: int, b: int): int {
 			return a + b;
 		}
-		let x: number = add("a", 2);
-	`, "cannot pass string as number")
+		let x: int = add("a", 2);
+	`, "cannot pass string as int")
 }
 
 func TestReturnType(t *testing.T) {
 	expectError(t, `
-		function foo(): number {
+		function foo(): int {
 			return "hello";
 		}
 	`, "cannot return string")
 
 	expectError(t, `
-		function foo(): number {
+		function foo(): int {
 			return;
 		}
 	`, "missing return value")
@@ -268,28 +268,28 @@ func TestReturnOutsideFunction(t *testing.T) {
 // ----------------------------------------------------------------------------
 
 func TestArrayLiteral(t *testing.T) {
-	expectNoErrors(t, `let arr: number[] = [1, 2, 3];`)
+	expectNoErrors(t, `let arr: int[] = [1, 2, 3];`)
 	expectNoErrors(t, `let arr: string[] = ["a", "b"];`)
 }
 
 func TestArrayIndexing(t *testing.T) {
 	expectNoErrors(t, `
-		let arr: number[] = [1, 2, 3];
-		let x: number = arr[0];
+		let arr: int[] = [1, 2, 3];
+		let x: int = arr[0];
 	`)
 	expectError(t, `
-		let arr: number[] = [1, 2, 3];
-		let x: number = arr["a"];
-	`, "must be number")
+		let arr: int[] = [1, 2, 3];
+		let x: int = arr["a"];
+	`, "must be int")
 }
 
 func TestArrayAssignment(t *testing.T) {
 	expectNoErrors(t, `
-		let arr: number[] = [1, 2, 3];
+		let arr: int[] = [1, 2, 3];
 		arr[0] = 42;
 	`)
 	expectError(t, `
-		let arr: number[] = [1, 2, 3];
+		let arr: int[] = [1, 2, 3];
 		arr[0] = "hello";
 	`, "cannot assign string")
 }
@@ -300,18 +300,18 @@ func TestArrayAssignment(t *testing.T) {
 
 func TestObjectLiteral(t *testing.T) {
 	expectNoErrors(t, `
-		let point: { x: number, y: number } = { x: 1, y: 2 };
+		let point: { x: int, y: int } = { x: 1, y: 2 };
 	`)
 }
 
 func TestObjectPropertyAccess(t *testing.T) {
 	expectNoErrors(t, `
-		let point: { x: number, y: number } = { x: 1, y: 2 };
-		let x: number = point.x;
+		let point: { x: int, y: int } = { x: 1, y: 2 };
+		let x: int = point.x;
 	`)
 	expectError(t, `
-		let point: { x: number, y: number } = { x: 1, y: 2 };
-		let z: number = point.z;
+		let point: { x: int, y: int } = { x: 1, y: 2 };
+		let z: int = point.z;
 	`, "does not exist")
 }
 
@@ -322,10 +322,10 @@ func TestObjectPropertyAccess(t *testing.T) {
 func TestClassDeclaration(t *testing.T) {
 	expectNoErrors(t, `
 		class Point {
-			x: number;
-			y: number;
+			x: int;
+			y: int;
 
-			constructor(x: number, y: number) {
+			constructor(x: int, y: int) {
 				this.x = x;
 				this.y = y;
 			}
@@ -340,9 +340,9 @@ func TestClassDeclaration(t *testing.T) {
 func TestNewExpression(t *testing.T) {
 	expectNoErrors(t, `
 		class Point {
-			x: number;
-			y: number;
-			constructor(x: number, y: number) {
+			x: int;
+			y: int;
+			constructor(x: int, y: int) {
 				this.x = x;
 				this.y = y;
 			}
@@ -352,29 +352,29 @@ func TestNewExpression(t *testing.T) {
 
 	expectError(t, `
 		class Point {
-			x: number;
-			constructor(x: number) {
+			x: int;
+			constructor(x: int) {
 				this.x = x;
 			}
 		}
 		let p: Point = new Point("hello");
-	`, "cannot pass string as number")
+	`, "cannot pass string as int")
 }
 
 func TestThisExpression(t *testing.T) {
 	expectNoErrors(t, `
 		class Counter {
-			value: number;
+			value: int;
 			constructor() {
 				this.value = 0;
 			}
-			get(): number {
+			get(): int {
 				return this.value;
 			}
 		}
 	`)
 
-	expectError(t, `let x: number = this.value;`, "this' outside of class")
+	expectError(t, `let x: int = this.value;`, "this' outside of class")
 }
 
 func TestInheritance(t *testing.T) {
@@ -404,7 +404,7 @@ func TestInheritance(t *testing.T) {
 
 func TestTypeAlias(t *testing.T) {
 	expectNoErrors(t, `
-		type Point = { x: number, y: number };
+		type Point = { x: int, y: int };
 		let p: Point = { x: 1, y: 2 };
 	`)
 }
@@ -429,8 +429,8 @@ func TestNullTypeNarrowing(t *testing.T) {
 
 func TestNullPropertyAccess(t *testing.T) {
 	expectError(t, `
-		let obj: { x: number } | null = null;
-		let x: number = obj.x;
+		let obj: { x: int } | null = null;
+		let x: int = obj.x;
 	`, "cannot access property on potentially null")
 }
 
@@ -440,7 +440,7 @@ func TestNullPropertyAccess(t *testing.T) {
 
 func TestFunctionExpression(t *testing.T) {
 	expectNoErrors(t, `
-		let add: (number, number) => number = function(a: number, b: number): number {
+		let add: (int, int) => int = function(a: int, b: int): int {
 			return a + b;
 		};
 	`)
@@ -448,15 +448,15 @@ func TestFunctionExpression(t *testing.T) {
 
 func TestHigherOrderFunction(t *testing.T) {
 	expectNoErrors(t, `
-		function apply(f: (number) => number, x: number): number {
+		function apply(f: (int) => int, x: int): int {
 			return f(x);
 		}
 
-		let double: (number) => number = function(x: number): number {
+		let double: (int) => int = function(x: int): int {
 			return x * 2;
 		};
 
-		let result: number = apply(double, 5);
+		let result: int = apply(double, 5);
 	`)
 }
 
@@ -493,7 +493,7 @@ func TestTypeInferenceReassignment(t *testing.T) {
 }
 
 func TestTypeInferenceWithExplicitType(t *testing.T) {
-	expectNoErrors(t, `let x: number = 10;`)
+	expectNoErrors(t, `let x: int = 10;`)
 }
 
 // ============================================================
@@ -502,7 +502,7 @@ func TestTypeInferenceWithExplicitType(t *testing.T) {
 
 func TestCompoundAssignmentNumber(t *testing.T) {
 	expectNoErrors(t, `
-		let x: number = 10;
+		let x: int = 10;
 		x += 5;
 		x -= 3;
 		x *= 2;
@@ -520,7 +520,7 @@ func TestCompoundAssignmentString(t *testing.T) {
 
 func TestCompoundAssignmentTypeError(t *testing.T) {
 	expectError(t, `
-		let x: number = 10;
+		let x: int = 10;
 		x += "hello";
 	`, "requires numbers")
 }
@@ -531,13 +531,13 @@ func TestCompoundAssignmentTypeError(t *testing.T) {
 
 func TestArrowFunctionExpression(t *testing.T) {
 	expectNoErrors(t, `
-		let add = (a: number, b: number): number => a + b;
+		let add = (a: int, b: int): int => a + b;
 	`)
 }
 
 func TestArrowFunctionBlock(t *testing.T) {
 	expectNoErrors(t, `
-		let double = (x: number): number => {
+		let double = (x: int): int => {
 			return x * 2;
 		};
 	`)
@@ -545,7 +545,7 @@ func TestArrowFunctionBlock(t *testing.T) {
 
 func TestArrowFunctionNoParams(t *testing.T) {
 	expectNoErrors(t, `
-		let getZero = (): number => 0;
+		let getZero = (): int => 0;
 	`)
 }
 
@@ -555,7 +555,7 @@ func TestArrowFunctionNoParams(t *testing.T) {
 
 func TestIncrementDecrement(t *testing.T) {
 	expectNoErrors(t, `
-		let x: number = 10;
+		let x: int = 10;
 		x++;
 		x--;
 		++x;
@@ -576,9 +576,9 @@ func TestIncrementDecrementTypeError(t *testing.T) {
 
 func TestForOfArray(t *testing.T) {
 	expectNoErrors(t, `
-		let arr: number[] = [1, 2, 3];
+		let arr: int[] = [1, 2, 3];
 		for (let item of arr) {
-			let x: number = item;
+			let x: int = item;
 		}
 	`)
 }
@@ -598,16 +598,16 @@ func TestForOfString(t *testing.T) {
 
 func TestSwitchStatement(t *testing.T) {
 	expectNoErrors(t, `
-		let x: number = 1;
+		let x: int = 1;
 		switch (x) {
 			case 1:
-				let a: number = 1;
+				let a: int = 1;
 				break;
 			case 2:
-				let b: number = 2;
+				let b: int = 2;
 				break;
 			default:
-				let c: number = 0;
+				let c: int = 0;
 		}
 	`)
 }
@@ -618,7 +618,7 @@ func TestSwitchStatement(t *testing.T) {
 
 func TestNullishCoalescing(t *testing.T) {
 	expectNoErrors(t, `
-		let x: number | null = null;
-		let y: number = x ?? 0;
+		let x: int | null = null;
+		let y: int = x ?? 0;
 	`)
 }

@@ -11,7 +11,7 @@ func TestNodeInterface(t *testing.T) {
 	num := &NumberLiteral{Value: 42, Token: token.Token{Literal: "42"}}
 	str := &StringLiteral{Value: "hello", Token: token.Token{Literal: "hello"}}
 	id := &Identifier{Name: "foo", Token: token.Token{Literal: "foo"}}
-	primType := &PrimitiveType{Kind: TypeNumber}
+	primType := &PrimitiveType{Kind: TypeInt}
 
 	// Test that all node types implement the Node interface
 	var nodes []Node = []Node{
@@ -64,7 +64,7 @@ func TestExpressionInterface(t *testing.T) {
 	// Helper nodes
 	num := &NumberLiteral{Value: 42, Token: token.Token{Literal: "42"}}
 	id := &Identifier{Name: "foo", Token: token.Token{Literal: "foo"}}
-	primType := &PrimitiveType{Kind: TypeNumber}
+	primType := &PrimitiveType{Kind: TypeInt}
 
 	// Test that expression types implement Expression interface
 	var exprs []Expression = []Expression{
@@ -94,7 +94,7 @@ func TestExpressionInterface(t *testing.T) {
 func TestStatementInterface(t *testing.T) {
 	// Helper nodes
 	num := &NumberLiteral{Value: 42, Token: token.Token{Literal: "42"}}
-	primType := &PrimitiveType{Kind: TypeNumber}
+	primType := &PrimitiveType{Kind: TypeInt}
 
 	// Test that statement types implement Statement interface
 	var stmts []Statement = []Statement{
@@ -201,7 +201,7 @@ func TestVarDecl(t *testing.T) {
 	decl := &VarDecl{
 		Token:   token.Token{Type: token.LET, Literal: "let"},
 		Name:    "x",
-		VarType: &PrimitiveType{Kind: TypeNumber},
+		VarType: &PrimitiveType{Kind: TypeInt},
 		Value:   &NumberLiteral{Value: 42, Token: token.Token{Literal: "42"}},
 		IsConst: false,
 	}
@@ -210,7 +210,7 @@ func TestVarDecl(t *testing.T) {
 		t.Errorf("TokenLiteral() = %q, want %q", decl.TokenLiteral(), "let")
 	}
 
-	expected := "let x: number = 42"
+	expected := "let x: int = 42"
 	if decl.String() != expected {
 		t.Errorf("String() = %q, want %q", decl.String(), expected)
 	}
@@ -221,10 +221,10 @@ func TestFuncDecl(t *testing.T) {
 		Token: token.Token{Type: token.FUNCTION, Literal: "function"},
 		Name:  "add",
 		Params: []*Parameter{
-			{Name: "a", ParamType: &PrimitiveType{Kind: TypeNumber}},
-			{Name: "b", ParamType: &PrimitiveType{Kind: TypeNumber}},
+			{Name: "a", ParamType: &PrimitiveType{Kind: TypeInt}},
+			{Name: "b", ParamType: &PrimitiveType{Kind: TypeInt}},
 		},
-		ReturnType: &PrimitiveType{Kind: TypeNumber},
+		ReturnType: &PrimitiveType{Kind: TypeInt},
 		Body:       &Block{Statements: []Statement{}},
 	}
 
@@ -243,9 +243,9 @@ func TestFuncDecl(t *testing.T) {
 
 func TestTypeNodes(t *testing.T) {
 	// Primitive type
-	prim := &PrimitiveType{Kind: TypeNumber}
-	if prim.String() != "number" {
-		t.Errorf("PrimitiveType.String() = %q, want %q", prim.String(), "number")
+	prim := &PrimitiveType{Kind: TypeInt}
+	if prim.String() != "int" {
+		t.Errorf("PrimitiveType.String() = %q, want %q", prim.String(), "int")
 	}
 
 	// Array type
@@ -262,11 +262,11 @@ func TestTypeNodes(t *testing.T) {
 
 	// Function type
 	funcType := &FunctionType{
-		ParamTypes: []Type{&PrimitiveType{Kind: TypeNumber}},
+		ParamTypes: []Type{&PrimitiveType{Kind: TypeInt}},
 		ReturnType: &PrimitiveType{Kind: TypeString},
 	}
-	if funcType.String() != "(number) => string" {
-		t.Errorf("FunctionType.String() = %q, want %q", funcType.String(), "(number) => string")
+	if funcType.String() != "(int) => string" {
+		t.Errorf("FunctionType.String() = %q, want %q", funcType.String(), "(int) => string")
 	}
 }
 
@@ -276,7 +276,7 @@ func TestProgram(t *testing.T) {
 			&VarDecl{
 				Token:   token.Token{Type: token.LET, Literal: "let"},
 				Name:    "x",
-				VarType: &PrimitiveType{Kind: TypeNumber},
+				VarType: &PrimitiveType{Kind: TypeInt},
 				Value:   &NumberLiteral{Value: 5, Token: token.Token{Literal: "5"}},
 			},
 		},

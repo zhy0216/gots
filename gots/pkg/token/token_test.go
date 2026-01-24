@@ -71,7 +71,8 @@ func TestTokenTypeString(t *testing.T) {
 		{TYPE, "type"},
 
 		// Type keywords
-		{NUMBER_TYPE, "number"},
+		{INT_TYPE, "int"},
+		{FLOAT_TYPE, "float"},
 		{STRING_TYPE, "string"},
 		{BOOLEAN_TYPE, "boolean"},
 		{VOID_TYPE, "void"},
@@ -122,7 +123,8 @@ func TestLookupIdent(t *testing.T) {
 		{"null", NULL},
 
 		// Type keywords
-		{"number", NUMBER_TYPE},
+		{"int", INT_TYPE},
+		{"float", FLOAT_TYPE},
 		{"string", STRING_TYPE},
 		{"boolean", BOOLEAN_TYPE},
 		{"void", VOID_TYPE},
@@ -174,7 +176,7 @@ func TestIsKeyword(t *testing.T) {
 		LET, CONST, FUNCTION, RETURN, IF, ELSE, WHILE, FOR,
 		BREAK, CONTINUE, CLASS, EXTENDS, NEW, THIS, SUPER,
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL,
-		NUMBER_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
+		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
 	}
 
 	nonKeywords := []Type{

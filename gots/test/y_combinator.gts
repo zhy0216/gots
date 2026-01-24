@@ -15,7 +15,7 @@ class FuncWrapper {
 // Mathematical form: Z = λf. (λx. f(λv. x(x)(v))) (λx. f(λv. x(x)(v)))
 function Y(f: Function): Function {
     let wrapper: FuncWrapper = new FuncWrapper(function(x: FuncWrapper): Function {
-        return f(function(v: number): number {
+        return f(function(v: int): int {
             return x.call(x)(v)
         })
     })
@@ -25,7 +25,7 @@ function Y(f: Function): Function {
 // Factorial using Y combinator - no explicit recursion!
 // The function doesn't call itself by name; recursion is achieved through Y
 let factorial: Function = Y(function(rec: Function): Function {
-    return function(n: number): number {
+    return function(n: int): int {
         if (n <= 1) {
             return 1
         }
@@ -41,7 +41,7 @@ println(factorial(10)) // 3628800
 
 // Fibonacci using Y combinator
 let fib: Function = Y(function(rec: Function): Function {
-    return function(n: number): number {
+    return function(n: int): int {
         if (n < 2) {
             return n
         }
