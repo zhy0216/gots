@@ -1,0 +1,18 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import DocsSidebar from '../components/docs/DocsSidebar.astro';
+import DocsContent from '../components/docs/DocsContent.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<Layout title="goTS Documentation - Language Reference">
+  <div class="flex flex-col min-h-full">
+    <Header />
+    <main class="flex-1 flex">
+      <DocsSidebar />
+      <DocsContent />
+    </main>
+    <Footer />
+  </div>
+</Layout>

@@ -1,0 +1,192 @@
+---
+import { Type, Braces, FileCode } from 'lucide-astro';
+
+const primitiveTypes = [
+  {
+    name: 'int - Integer Type',
+    description: 'Represents integer values. Maps to Go\'s int type. Used for whole numbers and array indexing.'
+  },
+  {
+    name: 'float - Floating Point',
+    description: 'Represents floating-point numbers. Maps to Go\'s float64 type. Division (/) always returns float.'
+  },
+  {
+    name: 'string - String Type',
+    description: 'Sequences of characters. Maps to Go\'s string type. Supports concatenation with + operator.'
+  },
+  {
+    name: 'boolean - Boolean Type',
+    description: 'Represents logical values true and false. Maps to Go\'s bool type.'
+  }
+];
+
+const builtinFunctions = [
+  [
+    { name: 'println(value)', desc: 'Print value with newline' },
+    { name: 'len(arr)', desc: 'Get array or string length' },
+    { name: 'push(arr, val)', desc: 'Append value to array' }
+  ],
+  [
+    { name: 'tostring(val)', desc: 'Convert to string' },
+    { name: 'toint(val)', desc: 'Convert to integer' },
+    { name: 'sqrt(n)', desc: 'Square root' }
+  ]
+];
+
+const cliCommands = [
+  {
+    cmd: 'gots run program.gts',
+    desc: 'Compile and execute a goTS program immediately'
+  },
+  {
+    cmd: 'gots build program.gts -o myapp',
+    desc: 'Compile to a native binary with optional custom output name'
+  },
+  {
+    cmd: 'gots emit-go program.gts',
+    desc: 'Generate Go source code without compiling to binary'
+  },
+  {
+    cmd: 'gots repl',
+    desc: 'Start an interactive REPL for testing and experimentation'
+  }
+];
+---
+
+<div class="flex-1 px-20 py-12">
+  <div class="max-w-4xl mx-auto flex flex-col gap-8">
+    <!-- Header -->
+    <header class="flex flex-col gap-4">
+      <h1 class="text-4xl font-bold text-[var(--color-text-white)]">goTS Language Reference</h1>
+      <p class="text-base text-[var(--color-text-gray)] leading-relaxed max-w-3xl">
+        goTS (Go-TypeScript) is a statically-typed programming language with TypeScript-like syntax that compiles to Go.
+        It provides a familiar development experience for TypeScript developers while leveraging the Go ecosystem and toolchain.
+      </p>
+    </header>
+
+    <!-- What is goTS? -->
+    <section class="flex flex-col gap-4">
+      <h2 class="text-2xl font-semibold text-[var(--color-text-white)]">What is goTS?</h2>
+      <p class="text-[15px] text-[var(--color-text-gray-light)] leading-relaxed">
+        goTS is designed to be a strict subset of TypeScript with the following characteristics: Valid goTS code should be
+        syntactically valid TypeScript, goTS enforces stricter rules (e.g., all variables require explicit type annotations),
+        and goTS uses int and float as distinct numeric types.
+      </p>
+    </section>
+
+    <!-- CLI Usage -->
+    <section class="flex flex-col gap-4">
+      <h2 class="text-2xl font-semibold text-[var(--color-text-white)]">CLI Usage</h2>
+
+      <div class="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)]">
+        <!-- Code Header -->
+        <div class="flex justify-between items-center px-4 py-3 bg-[var(--color-bg-card-header)]">
+          <span class="font-mono text-xs font-medium text-[var(--color-text-muted)]">example.gts</span>
+          <span class="px-2 py-1 rounded text-[10px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary-muted)] font-mono">.gts</span>
+        </div>
+
+        <!-- Code Body -->
+        <div class="p-5 flex flex-col gap-1">
+          <code class="font-mono text-[13px] text-[var(--color-text-gray-light)] leading-relaxed">// Variables with explicit type annotations</code>
+          <code class="font-mono text-[13px] text-[var(--color-text-gray-light)] leading-relaxed">let x: int = 42</code>
+          <code class="font-mono text-[13px] text-[var(--color-text-gray-light)] leading-relaxed">let pi: float = 3.14159</code>
+          <code class="font-mono text-[13px] text-[var(--color-text-gray-light)] leading-relaxed">let name: string = "goTS"</code>
+          <code class="font-mono text-[13px] text-[var(--color-text-gray-light)] leading-relaxed">println("Hello from " + name + "!")</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- Type System -->
+    <section class="flex flex-col gap-4">
+      <h2 class="text-2xl font-semibold text-[var(--color-text-white)]">Type System</h2>
+
+      <div class="flex gap-4">
+        <div class="flex flex-col gap-3 p-5 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border)] flex-1">
+          <Type class="w-6 h-6 text-[var(--color-primary)]" />
+          <h3 class="text-[15px] font-semibold text-[var(--color-text-white)]">Static Type Safety</h3>
+          <p class="text-[13px] text-[var(--color-text-gray)] leading-relaxed">
+            All types are checked at compile time. Mandatory type annotations for variables, parameters, and return types.
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-3 p-5 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border)] flex-1">
+          <Braces class="w-6 h-6 text-[var(--color-primary)]" />
+          <h3 class="text-[15px] font-semibold text-[var(--color-text-white)]">Go Interoperability</h3>
+          <p class="text-[13px] text-[var(--color-text-gray)] leading-relaxed">
+            Compiles to idiomatic Go code that integrates seamlessly with the Go toolchain and ecosystem.
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-3 p-5 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border)] flex-1">
+          <FileCode class="w-6 h-6 text-[var(--color-primary)]" />
+          <h3 class="text-[15px] font-semibold text-[var(--color-text-white)]">Native Binaries</h3>
+          <p class="text-[13px] text-[var(--color-text-gray)] leading-relaxed">
+            Generates efficient Go code that compiles to high-performance native binaries with zero runtime overhead.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compilation Pipeline -->
+    <section class="flex flex-col gap-4">
+      <h2 class="text-2xl font-semibold text-[var(--color-text-white)]">Compilation Pipeline</h2>
+      <code class="font-mono text-sm text-[var(--color-text-gray-light)] leading-relaxed">
+        Source (.gts) → Lexer → Parser → Type Checker → Go Code Generator → go build → Native Binary
+      </code>
+      <p class="text-[15px] text-[var(--color-text-gray)] leading-relaxed">
+        The compilation process transforms TypeScript-like source code through multiple phases: lexical analysis tokenizes the code,
+        parsing builds an AST, type checking validates types, code generation produces Go source, and finally the Go toolchain
+        compiles to native binaries.
+      </p>
+    </section>
+
+    <!-- Primitive Types -->
+    <section class="flex flex-col gap-4">
+      <h2 class="text-2xl font-semibold text-[var(--color-text-white)]">Primitive Types</h2>
+
+      <div class="flex flex-col gap-3">
+        {primitiveTypes.map(type => (
+          <div class="flex flex-col gap-1.5 p-5 rounded-lg bg-[var(--color-bg-card)] border border-[var(--color-border)]">
+            <h4 class="font-mono text-sm font-semibold text-[var(--color-primary)]">{type.name}</h4>
+            <p class="text-[13px] text-[var(--color-text-gray-light)] leading-relaxed">{type.description}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- Built-in Functions -->
+    <section class="flex flex-col gap-4">
+      <h2 class="text-2xl font-semibold text-[var(--color-text-white)]">Built-in Functions</h2>
+
+      <div class="flex gap-4">
+        {builtinFunctions.map(column => (
+          <div class="flex flex-col gap-3 flex-1">
+            {column.map(fn => (
+              <div class="flex flex-col gap-1 p-4 rounded-lg bg-[var(--color-bg-card)] border border-[var(--color-border)]">
+                <code class="font-mono text-[13px] font-semibold text-[var(--color-primary)]">{fn.name}</code>
+                <p class="text-xs text-[var(--color-text-gray)]">{fn.desc}</p>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- Command Line Interface -->
+    <section class="flex flex-col gap-4">
+      <h2 class="text-2xl font-semibold text-[var(--color-text-white)]">Command Line Interface</h2>
+      <p class="text-[15px] text-[var(--color-text-gray-light)] leading-relaxed">
+        The goTS CLI provides several commands for building, running, and working with goTS programs:
+      </p>
+
+      <div class="flex flex-col gap-3">
+        {cliCommands.map(item => (
+          <div class="flex flex-col gap-1.5 p-5 rounded-lg bg-[var(--color-bg-card)] border border-[var(--color-border)]">
+            <code class="font-mono text-sm font-semibold text-[var(--color-primary)]">{item.cmd}</code>
+            <p class="text-[13px] text-[var(--color-text-gray-light)]">{item.desc}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  </div>
+</div>

@@ -5,6 +5,7 @@
     "": {
       "name": "website",
       "dependencies": {
+        "@astrojs/prism": "^3.3.0",
         "@tailwindcss/vite": "^4.1.18",
         "astro": "^5.16.15",
         "lucide-astro": "^0.556.0",

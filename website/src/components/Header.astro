@@ -1,24 +1,27 @@
 ---
 import { Terminal, Github } from 'lucide-astro';
+
+const pathname = Astro.url.pathname;
+const isDocsPage = pathname.startsWith('/docs');
 ---
 
 <header class="flex items-center justify-between h-[72px] px-20 bg-[var(--color-bg-dark)]">
   <!-- Logo -->
-  <div class="flex items-center gap-2">
+  <a href="/" class="flex items-center gap-2">
     <div class="w-8 h-8 rounded-md bg-[var(--color-primary)]"></div>
     <span class="font-mono text-xl font-semibold text-[var(--color-text-white)]">goTS</span>
-  </div>
+  </a>
 
   <!-- Navigation -->
   <nav class="flex items-center gap-8">
-    <a href="#" class="text-sm font-medium text-[var(--color-text-gray-light)] hover:text-[var(--color-text-white)] transition-colors">Docs</a>
+    <a href="/docs" class={`text-sm font-medium transition-colors ${isDocsPage ? 'text-[var(--color-text-white)]' : 'text-[var(--color-text-gray-light)] hover:text-[var(--color-text-white)]'}`}>Docs</a>
     <a href="#" class="text-sm font-medium text-[var(--color-text-gray-light)] hover:text-[var(--color-text-white)] transition-colors">Examples</a>
     <a href="#" class="text-sm font-medium text-[var(--color-text-gray-light)] hover:text-[var(--color-text-white)] transition-colors">Playground</a>
-    <a href="#" class="text-sm font-medium text-[var(--color-text-gray-light)] hover:text-[var(--color-text-white)] transition-colors">GitHub</a>
+    <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="text-sm font-medium text-[var(--color-text-gray-light)] hover:text-[var(--color-text-white)] transition-colors">GitHub</a>
   </nav>
 
   <!-- CTA Button -->
-  <a href="#getting-started" class="flex items-center gap-2 px-5 py-2.5 rounded-md bg-[var(--color-primary)] text-sm font-medium text-[var(--color-text-white)] hover:opacity-90 transition-opacity">
+  <a href="/docs" class="flex items-center gap-2 px-5 py-2.5 rounded-md bg-[var(--color-primary)] text-sm font-medium text-[var(--color-text-white)] hover:opacity-90 transition-opacity">
     Get Started
   </a>
 </header>
