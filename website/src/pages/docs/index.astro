@@ -1,0 +1,18 @@
+---
+import { getCollection } from 'astro:content';
+
+// Get all docs and find the first one by order
+const docsEntries = await getCollection('docs');
+const sortedDocs = docsEntries.sort((a, b) =>
+  (a.data.order || 999) - (b.data.order || 999)
+);
+
+// Redirect to the first doc entry
+const firstDoc = sortedDocs[0];
+if (firstDoc) {
+  return Astro.redirect(`/docs/${firstDoc.slug}`);
+}
+---
+
+<!-- Fallback if no docs exist -->
+<meta http-equiv="refresh" content="0; url=/" />

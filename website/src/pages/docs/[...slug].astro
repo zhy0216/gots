@@ -1,0 +1,82 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import DocsSidebar from '../../components/docs/DocsSidebar.astro';
+import Footer from '../../components/Footer.astro';
+
+export async function getStaticPaths() {
+  const docsEntries = await getCollection('docs');
+  return docsEntries.map(entry => ({
+    params: { slug: entry.slug },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await entry.render();
+const currentSlug = Astro.params.slug || '';
+---
+
+<Layout title={`${entry.data.title} - goTS Documentation`}>
+  <div class="flex flex-col min-h-full">
+    <Header />
+    <main class="flex-1 flex">
+      <DocsSidebar currentSlug={currentSlug} />
+      <div class="flex-1 px-20 py-12">
+        <article class="max-w-4xl mx-auto prose prose-invert prose-headings:text-[var(--color-text-white)] prose-p:text-[var(--color-text-gray-light)] prose-a:text-[var(--color-primary)] prose-code:text-[var(--color-primary)] prose-pre:bg-[var(--color-bg-card)] prose-pre:border prose-pre:border-[var(--color-border)]">
+          <h1 class="text-4xl font-bold text-[var(--color-text-white)] mb-4">{entry.data.title}</h1>
+          {entry.data.description && (
+            <p class="text-lg text-[var(--color-text-gray)] mb-8">{entry.data.description}</p>
+          )}
+          <Content />
+        </article>
+      </div>
+    </main>
+    <Footer />
+  </div>
+</Layout>
+
+<style is:global>
+  /* Enhanced markdown styling */
+  .prose code {
+    background-color: var(--color-bg-card);
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+  }
+
+  .prose pre {
+    padding: 1rem;
+    border-radius: 0.75rem;
+    overflow-x: auto;
+  }
+
+  .prose pre code {
+    background-color: transparent;
+    padding: 0;
+  }
+
+  .prose h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 3rem;
+    margin-bottom: 1rem;
+  }
+
+  .prose h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .prose ul, .prose ol {
+    color: var(--color-text-gray-light);
+  }
+
+  .prose strong {
+    color: var(--color-text-white);
+    font-weight: 600;
+  }
+</style>
