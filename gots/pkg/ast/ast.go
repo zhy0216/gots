@@ -2,6 +2,7 @@
 package ast
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -79,6 +80,30 @@ type StringLiteral struct {
 func (s *StringLiteral) expressionNode()      {}
 func (s *StringLiteral) TokenLiteral() string { return s.Token.Literal }
 func (s *StringLiteral) String() string       { return fmt.Sprintf("%q", s.Value) }
+
+// TemplateLiteral represents a template literal (e.g., `Hello, ${name}!`).
+type TemplateLiteral struct {
+	Token       token.Token  // The TEMPLATE_LITERAL, TEMPLATE_HEAD, or TEMPLATE_MIDDLE token
+	Parts       []string     // Static string parts
+	Expressions []Expression // Interpolated expressions
+}
+
+func (t *TemplateLiteral) expressionNode()      {}
+func (t *TemplateLiteral) TokenLiteral() string { return t.Token.Literal }
+func (t *TemplateLiteral) String() string {
+	var out strings.Builder
+	out.WriteString("`")
+	for i, part := range t.Parts {
+		out.WriteString(part)
+		if i < len(t.Expressions) {
+			out.WriteString("${")
+			out.WriteString(t.Expressions[i].String())
+			out.WriteString("}")
+		}
+	}
+	out.WriteString("`")
+	return out.String()
+}
 
 // BoolLiteral represents a boolean literal (true/false).
 type BoolLiteral struct {
@@ -390,6 +415,8 @@ type VarDecl struct {
 	VarType Type
 	Value   Expression
 	IsConst bool
+	// Destructuring support
+	Pattern Pattern // Alternative to Name for destructuring
 }
 
 func (v *VarDecl) statementNode()       {}
@@ -399,8 +426,88 @@ func (v *VarDecl) String() string {
 	if v.IsConst {
 		keyword = "const"
 	}
+	if v.Pattern != nil {
+		return fmt.Sprintf("%s %s = %s", keyword, v.Pattern.String(), v.Value.String())
+	}
 	return fmt.Sprintf("%s %s: %s = %s", keyword, v.Name, v.VarType.String(), v.Value.String())
 }
+
+// ----------------------------------------------------------------------------
+// Patterns (for destructuring)
+// ----------------------------------------------------------------------------
+
+// Pattern is the interface for destructuring patterns.
+type Pattern interface {
+	Node
+	patternNode()
+}
+
+// ArrayPattern represents array destructuring: [a, b, c]
+type ArrayPattern struct {
+	Token    token.Token // The '[' token
+	Elements []Pattern   // Can be IdentPattern or nested patterns
+}
+
+func (a *ArrayPattern) patternNode()         {}
+func (a *ArrayPattern) TokenLiteral() string { return a.Token.Literal }
+func (a *ArrayPattern) String() string {
+	elements := make([]string, len(a.Elements))
+	for i, e := range a.Elements {
+		if e != nil {
+			elements[i] = e.String()
+		}
+	}
+	return fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+}
+
+// ObjectPattern represents object destructuring: {x, y} or {x: newX, y: newY}
+type ObjectPattern struct {
+	Token      token.Token // The '{' token
+	Properties []*PropertyPattern
+}
+
+func (o *ObjectPattern) patternNode()         {}
+func (o *ObjectPattern) TokenLiteral() string { return o.Token.Literal }
+func (o *ObjectPattern) String() string {
+	props := make([]string, len(o.Properties))
+	for i, p := range o.Properties {
+		props[i] = p.String()
+	}
+	return fmt.Sprintf("{%s}", strings.Join(props, ", "))
+}
+
+// PropertyPattern represents a property in object destructuring.
+type PropertyPattern struct {
+	Key   string  // Original property name
+	Value Pattern // Target pattern (can be IdentPattern or nested)
+}
+
+func (p *PropertyPattern) String() string {
+	if ident, ok := p.Value.(*IdentPattern); ok && ident.Name == p.Key {
+		return p.Key // Shorthand: {x} instead of {x: x}
+	}
+	return fmt.Sprintf("%s: %s", p.Key, p.Value.String())
+}
+
+// IdentPattern represents an identifier in a destructuring pattern.
+type IdentPattern struct {
+	Token token.Token
+	Name  string
+}
+
+func (i *IdentPattern) patternNode()         {}
+func (i *IdentPattern) TokenLiteral() string { return i.Token.Literal }
+func (i *IdentPattern) String() string       { return i.Name }
+
+// SpreadExpr represents a spread expression (...arr).
+type SpreadExpr struct {
+	Token    token.Token // The '...' token
+	Argument Expression  // The expression being spread
+}
+
+func (s *SpreadExpr) expressionNode()      {}
+func (s *SpreadExpr) TokenLiteral() string { return s.Token.Literal }
+func (s *SpreadExpr) String() string       { return fmt.Sprintf("...%s", s.Argument.String()) }
 
 // Block represents a block of statements.
 type Block struct {
@@ -676,6 +783,40 @@ func (t *TypeAliasDecl) statementNode()       {}
 func (t *TypeAliasDecl) TokenLiteral() string { return t.Token.Literal }
 func (t *TypeAliasDecl) String() string {
 	return fmt.Sprintf("type %s = %s;", t.Name, t.AliasType.String())
+}
+
+// EnumDecl represents an enum declaration.
+type EnumDecl struct {
+	Token   token.Token // The 'enum' token
+	Name    string
+	Members []*EnumMember
+}
+
+// EnumMember represents a single member of an enum.
+type EnumMember struct {
+	Name  string
+	Value Expression // nil if auto-assigned
+}
+
+func (e *EnumDecl) statementNode()       {}
+func (e *EnumDecl) TokenLiteral() string { return e.Token.Literal }
+func (e *EnumDecl) String() string {
+	var out bytes.Buffer
+	out.WriteString("enum ")
+	out.WriteString(e.Name)
+	out.WriteString(" { ")
+	for i, m := range e.Members {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(m.Name)
+		if m.Value != nil {
+			out.WriteString(" = ")
+			out.WriteString(m.Value.String())
+		}
+	}
+	out.WriteString(" }")
+	return out.String()
 }
 
 // ----------------------------------------------------------------------------

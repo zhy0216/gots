@@ -16,6 +16,9 @@ type Program struct {
 	// TypeAliases contains type alias declarations.
 	TypeAliases []*TypeAlias
 
+	// Enums contains enum declarations.
+	Enums []*EnumDecl
+
 	// Interfaces contains interface declarations.
 	Interfaces []*InterfaceDecl
 
@@ -36,6 +39,18 @@ type Program struct {
 type TypeAlias struct {
 	Name     string
 	Resolved types.Type
+}
+
+// EnumDecl represents a typed enum declaration.
+type EnumDecl struct {
+	Name    string
+	Members []*EnumMember
+}
+
+// EnumMember represents a member of an enum.
+type EnumMember struct {
+	Name  string
+	Value int // The numeric value of this member
 }
 
 // Capture represents a captured variable in a closure.

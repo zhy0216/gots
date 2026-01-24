@@ -257,6 +257,12 @@ func (g *Generator) genProgram(prog *typed.Program) {
 	g.genRuntime()
 	g.writeln("")
 
+	// Generate enums
+	for _, enum := range prog.Enums {
+		g.genEnum(enum)
+		g.writeln("")
+	}
+
 	// Generate interfaces
 	for _, iface := range prog.Interfaces {
 		g.genInterface(iface)
@@ -526,6 +532,27 @@ func (g *Generator) genRuntime() {
 	g.writeln("return result")
 	g.indent--
 	g.writeln("}")
+}
+
+// genEnum generates a Go type and const block for an enum.
+func (g *Generator) genEnum(enum *typed.EnumDecl) {
+	name := exportName(enum.Name)
+
+	// Generate the type definition
+	g.writeln("type %s int", name)
+	g.writeln("")
+
+	// Generate const block for enum members
+	if len(enum.Members) > 0 {
+		g.writeln("const (")
+		g.indent++
+		for _, member := range enum.Members {
+			memberName := name + exportName(member.Name)
+			g.writeln("%s %s = %d", memberName, name, member.Value)
+		}
+		g.indent--
+		g.writeln(")")
+	}
 }
 
 // genInterface generates a Go interface type from an InterfaceDecl.
@@ -811,6 +838,12 @@ func (g *Generator) genStmt(stmt typed.Stmt) {
 }
 
 func (g *Generator) genVarDecl(decl *typed.VarDecl) {
+	// Handle destructuring patterns
+	if decl.Pattern != nil {
+		g.genDestructuringDecl(decl)
+		return
+	}
+
 	if decl.Init != nil {
 		// Use explicit type declaration for clarity
 		goType := g.goType(decl.VarType)
@@ -827,6 +860,40 @@ func (g *Generator) genVarDecl(decl *typed.VarDecl) {
 		}
 	} else {
 		g.writeln("var %s %s", goName(decl.Name), g.goType(decl.VarType))
+	}
+}
+
+func (g *Generator) genDestructuringDecl(decl *typed.VarDecl) {
+	// Generate a temporary variable to hold the source value
+	tempVar := "_destructure_temp"
+	initExpr := g.genExprWithContext(decl.Init, decl.VarType)
+	g.writeln("%s := %s", tempVar, initExpr)
+
+	// Generate assignments for each pattern element
+	g.genPatternAssignments(decl.Pattern, tempVar)
+}
+
+func (g *Generator) genPatternAssignments(pattern typed.Pattern, source string) {
+	switch p := pattern.(type) {
+	case *typed.ArrayPattern:
+		for i, elem := range p.Elements {
+			if elem != nil {
+				elemSource := fmt.Sprintf("%s[%d]", source, i)
+				g.genPatternAssignments(elem, elemSource)
+			}
+		}
+	case *typed.ObjectPattern:
+		for _, prop := range p.Properties {
+			propSource := fmt.Sprintf("%s.%s", source, exportName(prop.Key))
+			g.genPatternAssignments(prop.Value, propSource)
+		}
+	case *typed.IdentPattern:
+		goType := g.goType(p.PatternType)
+		if goType != "" {
+			g.writeln("var %s %s = %s", goName(p.Name), goType, source)
+		} else {
+			g.writeln("%s := %s", goName(p.Name), source)
+		}
 	}
 }
 
@@ -857,7 +924,24 @@ func (g *Generator) genExprWithContext(expr typed.Expr, targetType types.Type) s
 		if targetArr, ok := targetType.(*types.Array); ok {
 			exprArr := arrLit.ExprType.(*types.Array)
 			if exprElem, ok := exprArr.Element.(*types.Primitive); ok && exprElem.Kind == types.KindAny {
-				// Use target element type instead
+				// Check for spread expressions - if present, delegate to genArrayLit
+				hasSpread := false
+				for _, elem := range arrLit.Elements {
+					if _, ok := elem.(*typed.SpreadExpr); ok {
+						hasSpread = true
+						break
+					}
+				}
+				if hasSpread {
+					// Create a temporary ArrayLit with the target type for proper spread handling
+					tempArr := &typed.ArrayLit{
+						Elements: arrLit.Elements,
+						ExprType: targetArr,
+					}
+					return g.genArrayLit(tempArr)
+				}
+
+				// Use target element type instead (no spreads)
 				elements := make([]string, len(arrLit.Elements))
 				for i, elem := range arrLit.Elements {
 					elements[i] = g.genExpr(elem)
@@ -1025,6 +1109,9 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 	case *typed.StringLit:
 		return fmt.Sprintf("%q", e.Value)
 
+	case *typed.TemplateLit:
+		return g.genTemplateLit(e)
+
 	case *typed.BoolLit:
 		if e.Value {
 			return "true"
@@ -1046,6 +1133,15 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 
 	case *typed.UnaryExpr:
 		return g.genUnaryExpr(e)
+
+	case *typed.SpreadExpr:
+		// For function call contexts, this returns arg...
+		// For array literals, genArrayLit handles it specially
+		return g.genExpr(e.Argument) + "..."
+
+	case *typed.EnumMemberExpr:
+		// Generate enum member constant name: EnumNameMemberName
+		return exportName(e.EnumName) + exportName(e.MemberName)
 
 	case *typed.CallExpr:
 		return g.genCallExpr(e)
@@ -1362,15 +1458,82 @@ func (g *Generator) genPropertyExpr(expr *typed.PropertyExpr) string {
 }
 
 func (g *Generator) genArrayLit(expr *typed.ArrayLit) string {
-	elements := make([]string, len(expr.Elements))
-	for i, elem := range expr.Elements {
-		elements[i] = g.genExpr(elem)
-	}
-
 	arrType := expr.ExprType.(*types.Array)
 	goElemType := g.goType(arrType.Element)
 
-	return fmt.Sprintf("[]%s{%s}", goElemType, strings.Join(elements, ", "))
+	// Check if there are any spread expressions
+	hasSpread := false
+	for _, elem := range expr.Elements {
+		if _, ok := elem.(*typed.SpreadExpr); ok {
+			hasSpread = true
+			break
+		}
+	}
+
+	// Simple case: no spread expressions
+	if !hasSpread {
+		elements := make([]string, len(expr.Elements))
+		for i, elem := range expr.Elements {
+			elements[i] = g.genExpr(elem)
+		}
+		return fmt.Sprintf("[]%s{%s}", goElemType, strings.Join(elements, ", "))
+	}
+
+	// Complex case: handle spread expressions using append
+	// Strategy: Build groups of consecutive non-spread elements, then use append
+	var result string
+	var currentGroup []string
+
+	flushGroup := func() {
+		if len(currentGroup) == 0 {
+			return
+		}
+		groupLit := fmt.Sprintf("[]%s{%s}", goElemType, strings.Join(currentGroup, ", "))
+		if result == "" {
+			result = groupLit
+		} else {
+			// Append the group as individual elements
+			result = fmt.Sprintf("append(%s, %s...)", result, groupLit)
+		}
+		currentGroup = nil
+	}
+
+	for _, elem := range expr.Elements {
+		if spread, ok := elem.(*typed.SpreadExpr); ok {
+			// Flush any accumulated non-spread elements first
+			flushGroup()
+
+			spreadArg := g.genExpr(spread.Argument)
+			if result == "" {
+				// First element is a spread - use append to create a new array (proper copy semantics)
+				result = fmt.Sprintf("append([]%s{}, %s...)", goElemType, spreadArg)
+			} else {
+				// Append the spread
+				result = fmt.Sprintf("append(%s, %s...)", result, spreadArg)
+			}
+		} else {
+			// Accumulate non-spread elements
+			currentGroup = append(currentGroup, g.genExpr(elem))
+		}
+	}
+
+	// Flush any remaining non-spread elements
+	if len(currentGroup) > 0 {
+		if result == "" {
+			// All elements are non-spread (shouldn't happen due to hasSpread check)
+			result = fmt.Sprintf("[]%s{%s}", goElemType, strings.Join(currentGroup, ", "))
+		} else {
+			// Append remaining elements
+			result = fmt.Sprintf("append(%s, %s)", result, strings.Join(currentGroup, ", "))
+		}
+	}
+
+	// Handle empty array with only spreads
+	if result == "" {
+		result = fmt.Sprintf("[]%s{}", goElemType)
+	}
+
+	return result
 }
 
 func (g *Generator) genObjectLit(expr *typed.ObjectLit) string {
@@ -1810,6 +1973,9 @@ func (g *Generator) goType(t types.Type) string {
 	case *types.Set:
 		return fmt.Sprintf("map[%s]struct{}", g.goType(typ.Element))
 
+	case *types.Enum:
+		return exportName(typ.Name)
+
 	case *types.Object:
 		// Anonymous struct
 		var fields []string
@@ -1888,6 +2054,38 @@ func (g *Generator) writeln(format string, args ...interface{}) {
 	}
 	fmt.Fprintf(g.buf, format, args...)
 	g.buf.WriteString("\n")
+}
+
+// genTemplateLit generates Go code for a template literal.
+// Template literals like `Hello, ${name}!` become fmt.Sprintf("Hello, %v!", name)
+func (g *Generator) genTemplateLit(e *typed.TemplateLit) string {
+	// If there are no expressions, it's just a simple string
+	if len(e.Expressions) == 0 {
+		return fmt.Sprintf("%q", e.Parts[0])
+	}
+
+	// Build the format string with %v placeholders
+	var formatParts []string
+	for i, part := range e.Parts {
+		// Escape % characters in the static parts
+		escaped := strings.ReplaceAll(part, "%", "%%")
+		formatParts = append(formatParts, escaped)
+		if i < len(e.Expressions) {
+			formatParts = append(formatParts, "%v")
+		}
+	}
+	formatStr := strings.Join(formatParts, "")
+
+	// Generate the expression arguments
+	args := make([]string, len(e.Expressions))
+	for i, expr := range e.Expressions {
+		args[i] = g.genExpr(expr)
+	}
+
+	// Mark fmt as used
+	g.imports["fmt"] = true
+
+	return fmt.Sprintf("fmt.Sprintf(%q, %s)", formatStr, strings.Join(args, ", "))
 }
 
 // goName converts a GTS name to a valid Go identifier.

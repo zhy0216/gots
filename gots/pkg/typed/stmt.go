@@ -22,9 +22,53 @@ type VarDecl struct {
 	VarType types.Type
 	Init    Expr // nil if no initializer
 	IsConst bool
+	Pattern Pattern // Alternative to Name for destructuring
 }
 
 func (v *VarDecl) stmtNode() {}
+
+// ----------------------------------------------------------------------------
+// Patterns (for destructuring)
+// ----------------------------------------------------------------------------
+
+// Pattern is the interface for destructuring patterns.
+type Pattern interface {
+	patternNode()
+	Type() types.Type
+}
+
+// ArrayPattern represents array destructuring: [a, b, c]
+type ArrayPattern struct {
+	Elements    []Pattern
+	PatternType types.Type // The type of the array being destructured
+}
+
+func (a *ArrayPattern) patternNode()        {}
+func (a *ArrayPattern) Type() types.Type   { return a.PatternType }
+
+// ObjectPattern represents object destructuring: {x, y}
+type ObjectPattern struct {
+	Properties  []*PropertyPattern
+	PatternType types.Type // The type of the object being destructured
+}
+
+func (o *ObjectPattern) patternNode()       {}
+func (o *ObjectPattern) Type() types.Type  { return o.PatternType }
+
+// PropertyPattern represents a property in object destructuring.
+type PropertyPattern struct {
+	Key   string  // Original property name
+	Value Pattern // Target pattern (can be IdentPattern or nested)
+}
+
+// IdentPattern represents an identifier in a destructuring pattern.
+type IdentPattern struct {
+	Name        string
+	PatternType types.Type // The type of the bound variable
+}
+
+func (i *IdentPattern) patternNode()       {}
+func (i *IdentPattern) Type() types.Type  { return i.PatternType }
 
 // BlockStmt represents a block of statements.
 type BlockStmt struct {

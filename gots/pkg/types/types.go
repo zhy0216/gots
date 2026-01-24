@@ -143,6 +143,44 @@ func (s *Set) Equals(other Type) bool {
 }
 
 // ----------------------------------------------------------------------------
+// Enum Type
+// ----------------------------------------------------------------------------
+
+// EnumMember represents a member of an enum type.
+type EnumMember struct {
+	Name  string
+	Value int
+}
+
+// Enum represents an enum type (e.g., enum Color { Red, Green, Blue }).
+type Enum struct {
+	Name    string
+	Members []*EnumMember
+}
+
+func (e *Enum) typeNode() {}
+func (e *Enum) String() string {
+	return e.Name
+}
+
+func (e *Enum) Equals(other Type) bool {
+	if o, ok := other.(*Enum); ok {
+		return e.Name == o.Name
+	}
+	return false
+}
+
+// GetMember returns the member with the given name, or nil if not found.
+func (e *Enum) GetMember(name string) *EnumMember {
+	for _, m := range e.Members {
+		if m.Name == name {
+			return m
+		}
+	}
+	return nil
+}
+
+// ----------------------------------------------------------------------------
 // Interface Type
 // ----------------------------------------------------------------------------
 

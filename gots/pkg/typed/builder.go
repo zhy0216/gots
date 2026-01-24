@@ -17,6 +17,7 @@ type Builder struct {
 	classes         map[string]*types.Class
 	genericClasses  map[string]*types.GenericClass
 	interfaces      map[string]*types.Interface
+	enums           map[string]*types.Enum
 	goImports       []*GoImportDecl
 	moduleImports   []*ModuleImportDecl
 	exports         []string
@@ -93,6 +94,7 @@ func NewBuilder() *Builder {
 		classes:        make(map[string]*types.Class),
 		genericClasses: make(map[string]*types.GenericClass),
 		interfaces:     make(map[string]*types.Interface),
+		enums:          make(map[string]*types.Enum),
 		narrowing:      make(map[string]types.Type),
 		constVars:      make(map[string]bool),
 		typeParamScope: make(map[string]*types.TypeParameter),
@@ -188,6 +190,7 @@ func (b *Builder) Build(program *ast.Program) *Program {
 		GoImports:     b.goImports,
 		ModuleImports: b.moduleImports,
 		TypeAliases:   make([]*TypeAlias, 0),
+		Enums:         make([]*EnumDecl, 0),
 		Classes:       make([]*ClassDecl, 0),
 		Interfaces:    make([]*InterfaceDecl, 0),
 		Functions:     make([]*FuncDecl, 0),
@@ -216,6 +219,10 @@ func (b *Builder) Build(program *ast.Program) *Program {
 				Resolved: b.typeAliases[s.Name],
 			}
 			result.TypeAliases = append(result.TypeAliases, alias)
+
+		case *ast.EnumDecl:
+			enumDecl := b.buildEnumDecl(s)
+			result.Enums = append(result.Enums, enumDecl)
 
 		case *ast.ClassDecl:
 			classDecl := b.buildClassDecl(s)
@@ -251,6 +258,46 @@ func (b *Builder) collectTypeAlias(decl *ast.TypeAliasDecl) {
 func (b *Builder) resolveTypeAlias(decl *ast.TypeAliasDecl) {
 	alias := b.typeAliases[decl.Name].(*types.Alias)
 	alias.Resolved = b.resolveType(decl.AliasType)
+}
+
+func (b *Builder) buildEnumDecl(decl *ast.EnumDecl) *EnumDecl {
+	enumDecl := &EnumDecl{
+		Name:    decl.Name,
+		Members: make([]*EnumMember, len(decl.Members)),
+	}
+
+	// Create the types.Enum for type checking
+	enumType := &types.Enum{
+		Name:    decl.Name,
+		Members: make([]*types.EnumMember, len(decl.Members)),
+	}
+
+	// Assign values to enum members
+	// Start from 0, or use explicit values if provided
+	nextValue := 0
+	for i, member := range decl.Members {
+		value := nextValue
+		if member.Value != nil {
+			// If there's an explicit value, evaluate it
+			if numLit, ok := member.Value.(*ast.NumberLiteral); ok {
+				value = int(numLit.Value)
+			}
+		}
+		enumDecl.Members[i] = &EnumMember{
+			Name:  member.Name,
+			Value: value,
+		}
+		enumType.Members[i] = &types.EnumMember{
+			Name:  member.Name,
+			Value: value,
+		}
+		nextValue = value + 1
+	}
+
+	// Register the enum type
+	b.enums[decl.Name] = enumType
+
+	return enumDecl
 }
 
 func (b *Builder) collectClass(decl *ast.ClassDecl) {
@@ -719,6 +766,17 @@ func (b *Builder) buildVarDecl(decl *ast.VarDecl) *VarDecl {
 		varType = types.AnyType
 	}
 
+	// Handle destructuring patterns
+	if decl.Pattern != nil {
+		pattern := b.buildPattern(decl.Pattern, varType, decl.IsConst)
+		return &VarDecl{
+			VarType: varType,
+			Init:    init,
+			IsConst: decl.IsConst,
+			Pattern: pattern,
+		}
+	}
+
 	if decl.IsConst {
 		b.scope.defineConst(decl.Name, varType)
 	} else {
@@ -730,6 +788,77 @@ func (b *Builder) buildVarDecl(decl *ast.VarDecl) *VarDecl {
 		VarType: varType,
 		Init:    init,
 		IsConst: decl.IsConst,
+	}
+}
+
+func (b *Builder) buildPattern(pattern ast.Pattern, sourceType types.Type, isConst bool) Pattern {
+	switch p := pattern.(type) {
+	case *ast.ArrayPattern:
+		return b.buildArrayPattern(p, sourceType, isConst)
+	case *ast.ObjectPattern:
+		return b.buildObjectPattern(p, sourceType, isConst)
+	case *ast.IdentPattern:
+		return b.buildIdentPattern(p, sourceType, isConst)
+	default:
+		return nil
+	}
+}
+
+func (b *Builder) buildArrayPattern(pattern *ast.ArrayPattern, sourceType types.Type, isConst bool) *ArrayPattern {
+	var elemType types.Type = types.AnyType
+
+	if arrType, ok := sourceType.(*types.Array); ok {
+		elemType = arrType.Element
+	}
+
+	elements := make([]Pattern, len(pattern.Elements))
+	for i, elem := range pattern.Elements {
+		if elem != nil {
+			elements[i] = b.buildPattern(elem, elemType, isConst)
+		}
+	}
+
+	return &ArrayPattern{
+		Elements:    elements,
+		PatternType: sourceType,
+	}
+}
+
+func (b *Builder) buildObjectPattern(pattern *ast.ObjectPattern, sourceType types.Type, isConst bool) *ObjectPattern {
+	properties := make([]*PropertyPattern, len(pattern.Properties))
+
+	for i, prop := range pattern.Properties {
+		var propType types.Type = types.AnyType
+
+		// Try to get the property type from the source object type
+		if objType, ok := sourceType.(*types.Object); ok {
+			if p, exists := objType.Properties[prop.Key]; exists {
+				propType = p.Type
+			}
+		}
+
+		properties[i] = &PropertyPattern{
+			Key:   prop.Key,
+			Value: b.buildPattern(prop.Value, propType, isConst),
+		}
+	}
+
+	return &ObjectPattern{
+		Properties:  properties,
+		PatternType: sourceType,
+	}
+}
+
+func (b *Builder) buildIdentPattern(pattern *ast.IdentPattern, varType types.Type, isConst bool) *IdentPattern {
+	if isConst {
+		b.scope.defineConst(pattern.Name, varType)
+	} else {
+		b.scope.define(pattern.Name, varType)
+	}
+
+	return &IdentPattern{
+		Name:        pattern.Name,
+		PatternType: varType,
 	}
 }
 
@@ -1270,6 +1399,9 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 	case *ast.StringLiteral:
 		return &StringLit{Value: e.Value, ExprType: types.StringType}
 
+	case *ast.TemplateLiteral:
+		return b.buildTemplateLiteral(e)
+
 	case *ast.BoolLiteral:
 		return &BoolLit{Value: e.Value, ExprType: types.BooleanType}
 
@@ -1284,6 +1416,9 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 
 	case *ast.UnaryExpr:
 		return b.buildUnaryExpr(e)
+
+	case *ast.SpreadExpr:
+		return b.buildSpreadExpr(e)
 
 	case *ast.CallExpr:
 		return b.buildCallExpr(e)
@@ -1459,6 +1594,17 @@ func (b *Builder) buildUnaryExpr(expr *ast.UnaryExpr) Expr {
 		Op:       op,
 		Operand:  operand,
 		ExprType: resultType,
+	}
+}
+
+func (b *Builder) buildSpreadExpr(expr *ast.SpreadExpr) Expr {
+	argument := b.buildExpr(expr.Argument)
+
+	// The argument should be an array type
+	// The spread expression type is the same as the argument type
+	return &SpreadExpr{
+		Argument: argument,
+		ExprType: argument.Type(),
 	}
 }
 
@@ -1655,6 +1801,27 @@ func (b *Builder) buildIndexExpr(expr *ast.IndexExpr) Expr {
 }
 
 func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
+	// Check if this is enum member access (e.g., Color.Red)
+	if ident, ok := expr.Object.(*ast.Identifier); ok {
+		if enumType, ok := b.enums[ident.Name]; ok {
+			member := enumType.GetMember(expr.Property)
+			if member == nil {
+				b.error(expr.Token.Line, expr.Token.Column,
+					"enum %s does not have member %s", ident.Name, expr.Property)
+				return &EnumMemberExpr{
+					EnumName:   ident.Name,
+					MemberName: expr.Property,
+					ExprType:   enumType,
+				}
+			}
+			return &EnumMemberExpr{
+				EnumName:   ident.Name,
+				MemberName: expr.Property,
+				ExprType:   enumType,
+			}
+		}
+	}
+
 	object := b.buildExpr(expr.Object)
 	objectType := object.Type()
 
@@ -1772,17 +1939,32 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 	}
 }
 
+func (b *Builder) buildTemplateLiteral(expr *ast.TemplateLiteral) Expr {
+	expressions := make([]Expr, len(expr.Expressions))
+	for i, e := range expr.Expressions {
+		expressions[i] = b.buildExpr(e)
+	}
+
+	return &TemplateLit{
+		Parts:       expr.Parts,
+		Expressions: expressions,
+		ExprType:    types.StringType,
+	}
+}
+
 func (b *Builder) buildArrayLit(expr *ast.ArrayLiteral) Expr {
 	elements := make([]Expr, len(expr.Elements))
 	var elemType types.Type = types.AnyType
 
 	if len(expr.Elements) > 0 {
 		elements[0] = b.buildExpr(expr.Elements[0])
-		elemType = elements[0].Type()
+		// For spread expressions, get the element type of the spread array
+		elemType = getElementTypeForArrayLit(elements[0])
 
 		for i := 1; i < len(expr.Elements); i++ {
 			elements[i] = b.buildExpr(expr.Elements[i])
-			elemType = types.LeastUpperBound(elemType, elements[i].Type())
+			nextElemType := getElementTypeForArrayLit(elements[i])
+			elemType = types.LeastUpperBound(elemType, nextElemType)
 		}
 	}
 
@@ -1790,6 +1972,21 @@ func (b *Builder) buildArrayLit(expr *ast.ArrayLiteral) Expr {
 		Elements: elements,
 		ExprType: &types.Array{Element: elemType},
 	}
+}
+
+// getElementTypeForArrayLit extracts the appropriate element type from an expression
+// For spread expressions, it returns the element type of the spread array
+// For regular expressions, it returns the expression's type
+func getElementTypeForArrayLit(expr Expr) types.Type {
+	if spread, ok := expr.(*SpreadExpr); ok {
+		// If spreading an array, get its element type
+		if arrType, ok := types.Unwrap(spread.Argument.Type()).(*types.Array); ok {
+			return arrType.Element
+		}
+		// Fallback: return the spread's type
+		return spread.Argument.Type()
+	}
+	return expr.Type()
 }
 
 func (b *Builder) buildObjectLit(expr *ast.ObjectLiteral) Expr {

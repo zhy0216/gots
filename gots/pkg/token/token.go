@@ -15,6 +15,12 @@ const (
 	NUMBER // numeric literal
 	STRING // string literal
 
+	// Template literals
+	TEMPLATE_LITERAL // `simple template` (no interpolations)
+	TEMPLATE_HEAD    // `prefix ${   (starts a template with interpolations)
+	TEMPLATE_MIDDLE  // } middle ${  (between interpolations)
+	TEMPLATE_TAIL    // } suffix`    (ends a template with interpolations)
+
 	// Literal keywords
 	TRUE  // true
 	FALSE // false
@@ -74,6 +80,7 @@ const (
 	ARROW     // =>
 	PIPE      // |
 	QUESTION  // ?
+	ELLIPSIS  // ...
 
 	// Keywords
 	LET         // let
@@ -100,6 +107,7 @@ const (
 	TRY         // try
 	CATCH       // catch
 	THROW       // throw
+	ENUM        // enum
 
 	// Type keywords
 	INT_TYPE     // int
@@ -146,6 +154,12 @@ var typeStrings = map[Type]string{
 	IDENT:  "IDENT",
 	NUMBER: "NUMBER",
 	STRING: "STRING",
+
+	// Template literals
+	TEMPLATE_LITERAL: "TEMPLATE_LITERAL",
+	TEMPLATE_HEAD:    "TEMPLATE_HEAD",
+	TEMPLATE_MIDDLE:  "TEMPLATE_MIDDLE",
+	TEMPLATE_TAIL:    "TEMPLATE_TAIL",
 	TRUE:   "TRUE",
 	FALSE:  "FALSE",
 	NULL:   "NULL",
@@ -204,6 +218,7 @@ var typeStrings = map[Type]string{
 	ARROW:     "=>",
 	PIPE:      "|",
 	QUESTION:  "?",
+	ELLIPSIS:  "...",
 
 	// Keywords
 	LET:         "let",
@@ -230,6 +245,7 @@ var typeStrings = map[Type]string{
 	TRY:         "try",
 	CATCH:       "catch",
 	THROW:       "throw",
+	ENUM:        "enum",
 
 	// Type keywords
 	INT_TYPE:     "int",
@@ -276,6 +292,7 @@ var keywords = map[string]Type{
 	"try":         TRY,
 	"catch":       CATCH,
 	"throw":       THROW,
+	"enum":        ENUM,
 	"true":        TRUE,
 	"false":       FALSE,
 	"null":        NULL,
@@ -308,7 +325,7 @@ func IsKeyword(t Type) bool {
 	case LET, CONST, FUNCTION, RETURN, IF, ELSE, WHILE, FOR,
 		BREAK, CONTINUE, CLASS, EXTENDS, NEW, THIS, SUPER,
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL, SWITCH, CASE, DEFAULT, OF,
-		TRY, CATCH, THROW,
+		TRY, CATCH, THROW, ENUM,
 		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
 		MAP, SET, INTERFACE, IMPORT, FROM, EXPORT, DECLARE, MODULE:
 		return true

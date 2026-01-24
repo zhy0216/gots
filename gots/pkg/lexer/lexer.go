@@ -17,6 +17,10 @@ type Lexer struct {
 
 	peeked  *token.Token
 	hasPeek bool
+
+	// Template literal state
+	inTemplate      bool  // true when inside a template literal
+	templateBraces  int   // counts nested {} inside template expressions
 }
 
 // New creates a new Lexer for the given input.
@@ -49,6 +53,15 @@ func (l *Lexer) peekChar() byte {
 		return 0
 	}
 	return l.input[l.readPosition]
+}
+
+// peekCharAt returns the character at a given offset from current position.
+func (l *Lexer) peekCharAt(offset int) byte {
+	pos := l.position + offset
+	if pos >= len(l.input) {
+		return 0
+	}
+	return l.input[pos]
 }
 
 // NextToken returns the next token from the input.
@@ -114,8 +127,18 @@ func (l *Lexer) NextToken() token.Token {
 	case ')':
 		tok = l.newToken(token.RPAREN, l.ch)
 	case '{':
+		if l.inTemplate {
+			l.templateBraces++
+		}
 		tok = l.newToken(token.LBRACE, l.ch)
 	case '}':
+		if l.inTemplate && l.templateBraces == 0 {
+			// End of template expression, continue reading template
+			return l.readTemplateMiddleOrTail()
+		}
+		if l.inTemplate && l.templateBraces > 0 {
+			l.templateBraces--
+		}
 		tok = l.newToken(token.RBRACE, l.ch)
 	case '[':
 		tok = l.newToken(token.LBRACKET, l.ch)
@@ -128,7 +151,11 @@ func (l *Lexer) NextToken() token.Token {
 	case ',':
 		tok = l.newToken(token.COMMA, l.ch)
 	case '.':
-		tok = l.newToken(token.DOT, l.ch)
+		if l.peekChar() == '.' && l.peekCharAt(2) == '.' {
+			tok = l.makeThreeCharToken(token.ELLIPSIS)
+		} else {
+			tok = l.newToken(token.DOT, l.ch)
+		}
 	case '|':
 		if l.peekChar() == '|' {
 			tok = l.makeTwoCharToken(token.OR)
@@ -179,6 +206,8 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Line = l.line
 		tok.Column = l.column
 		return tok
+	case '`':
+		return l.readTemplateLiteral()
 	case 0:
 		tok.Type = token.EOF
 		tok.Literal = ""
@@ -237,6 +266,22 @@ func (l *Lexer) makeTwoCharToken(tokenType token.Type) token.Token {
 	return token.Token{
 		Type:    tokenType,
 		Literal: string(ch) + string(l.ch),
+		Line:    l.line,
+		Column:  col,
+	}
+}
+
+// makeThreeCharToken creates a token from three consecutive characters.
+func (l *Lexer) makeThreeCharToken(tokenType token.Type) token.Token {
+	col := l.column
+	literal := string(l.ch)
+	l.readChar()
+	literal += string(l.ch)
+	l.readChar()
+	literal += string(l.ch)
+	return token.Token{
+		Type:    tokenType,
+		Literal: literal,
 		Line:    l.line,
 		Column:  col,
 	}
@@ -371,4 +416,140 @@ func isLetter(ch byte) bool {
 // isDigit returns true if the character is a digit.
 func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
+}
+
+// readTemplateLiteral reads a template literal starting from the opening backtick.
+// Returns either TEMPLATE_LITERAL (no interpolations) or TEMPLATE_HEAD (has interpolations).
+func (l *Lexer) readTemplateLiteral() token.Token {
+	tok := token.Token{
+		Line:   l.line,
+		Column: l.column,
+	}
+
+	l.readChar() // skip opening backtick
+
+	var result []byte
+	for {
+		if l.ch == 0 {
+			// Unterminated template literal
+			break
+		}
+		if l.ch == '`' {
+			// End of simple template literal
+			tok.Type = token.TEMPLATE_LITERAL
+			tok.Literal = string(result)
+			l.readChar() // skip closing backtick
+			return tok
+		}
+		if l.ch == '$' && l.peekChar() == '{' {
+			// Start of interpolation
+			tok.Type = token.TEMPLATE_HEAD
+			tok.Literal = string(result)
+			l.readChar() // skip $
+			l.readChar() // skip {
+			l.inTemplate = true
+			l.templateBraces = 0
+			return tok
+		}
+		if l.ch == '\\' {
+			l.readChar()
+			switch l.ch {
+			case 'n':
+				result = append(result, '\n')
+			case 't':
+				result = append(result, '\t')
+			case 'r':
+				result = append(result, '\r')
+			case '\\':
+				result = append(result, '\\')
+			case '`':
+				result = append(result, '`')
+			case '$':
+				result = append(result, '$')
+			default:
+				result = append(result, l.ch)
+			}
+		} else {
+			if l.ch == '\n' {
+				l.line++
+				l.lineStart = l.position + 1
+			}
+			result = append(result, l.ch)
+		}
+		l.readChar()
+	}
+
+	// Unterminated template
+	tok.Type = token.ILLEGAL
+	tok.Literal = string(result)
+	return tok
+}
+
+// readTemplateMiddleOrTail reads the continuation of a template literal after an interpolation.
+// Called when we see } while inTemplate is true.
+// Returns either TEMPLATE_MIDDLE (more interpolations follow) or TEMPLATE_TAIL (end of template).
+func (l *Lexer) readTemplateMiddleOrTail() token.Token {
+	tok := token.Token{
+		Line:   l.line,
+		Column: l.column,
+	}
+
+	l.readChar() // skip the closing }
+
+	var result []byte
+	for {
+		if l.ch == 0 {
+			// Unterminated template literal
+			break
+		}
+		if l.ch == '`' {
+			// End of template literal
+			tok.Type = token.TEMPLATE_TAIL
+			tok.Literal = string(result)
+			l.readChar() // skip closing backtick
+			l.inTemplate = false
+			return tok
+		}
+		if l.ch == '$' && l.peekChar() == '{' {
+			// Another interpolation
+			tok.Type = token.TEMPLATE_MIDDLE
+			tok.Literal = string(result)
+			l.readChar() // skip $
+			l.readChar() // skip {
+			l.templateBraces = 0
+			return tok
+		}
+		if l.ch == '\\' {
+			l.readChar()
+			switch l.ch {
+			case 'n':
+				result = append(result, '\n')
+			case 't':
+				result = append(result, '\t')
+			case 'r':
+				result = append(result, '\r')
+			case '\\':
+				result = append(result, '\\')
+			case '`':
+				result = append(result, '`')
+			case '$':
+				result = append(result, '$')
+			default:
+				result = append(result, l.ch)
+			}
+		} else {
+			if l.ch == '\n' {
+				l.line++
+				l.lineStart = l.position + 1
+			}
+			result = append(result, l.ch)
+		}
+		l.readChar()
+	}
+
+	// Unterminated template
+	tok.Type = token.ILLEGAL
+	tok.Literal = string(result)
+	l.inTemplate = false
+	return tok
 }

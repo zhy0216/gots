@@ -29,6 +29,16 @@ type StringLit struct {
 func (s *StringLit) exprNode()        {}
 func (s *StringLit) Type() types.Type { return s.ExprType }
 
+// TemplateLit represents a template literal with interpolations.
+type TemplateLit struct {
+	Parts       []string     // Static string parts
+	Expressions []Expr       // Interpolated expressions
+	ExprType    types.Type   // Always string
+}
+
+func (t *TemplateLit) exprNode()        {}
+func (t *TemplateLit) Type() types.Type { return t.ExprType }
+
 // BoolLit represents a boolean literal.
 type BoolLit struct {
 	Value    bool
@@ -75,6 +85,15 @@ type UnaryExpr struct {
 
 func (u *UnaryExpr) exprNode()        {}
 func (u *UnaryExpr) Type() types.Type { return u.ExprType }
+
+// SpreadExpr represents a spread expression (...arg).
+type SpreadExpr struct {
+	Argument Expr
+	ExprType types.Type
+}
+
+func (s *SpreadExpr) exprNode()        {}
+func (s *SpreadExpr) Type() types.Type { return s.ExprType }
 
 // CallExpr represents a function call.
 type CallExpr struct {
@@ -251,6 +270,16 @@ type MethodCallExpr struct {
 
 func (m *MethodCallExpr) exprNode()        {}
 func (m *MethodCallExpr) Type() types.Type { return m.ExprType }
+
+// EnumMemberExpr represents access to an enum member (e.g., Color.Red).
+type EnumMemberExpr struct {
+	EnumName   string     // Name of the enum (e.g., "Color")
+	MemberName string     // Name of the member (e.g., "Red")
+	ExprType   types.Type // The enum type
+}
+
+func (e *EnumMemberExpr) exprNode()        {}
+func (e *EnumMemberExpr) Type() types.Type { return e.ExprType }
 
 // tokenOpToString converts token.Type to operator string.
 func TokenOpToString(op ast.Node) string {

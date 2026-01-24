@@ -100,6 +100,9 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.NEW, p.parseNewExpression)
 	p.registerPrefix(token.FUNCTION, p.parseFunctionExpression)
 	p.registerPrefix(token.SUPER, p.parseSuperExpression)
+	p.registerPrefix(token.TEMPLATE_LITERAL, p.parseTemplateLiteral)
+	p.registerPrefix(token.TEMPLATE_HEAD, p.parseTemplateLiteral)
+	p.registerPrefix(token.ELLIPSIS, p.parseSpreadExpression)
 
 	p.registerInfix(token.PLUS, p.parseBinaryExpression)
 	p.registerInfix(token.MINUS, p.parseBinaryExpression)
@@ -250,6 +253,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseTryStatement()
 	case token.THROW:
 		return p.parseThrowStatement()
+	case token.ENUM:
+		return p.parseEnumDeclaration()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -313,6 +318,51 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
+func (p *Parser) parseTemplateLiteral() ast.Expression {
+	lit := &ast.TemplateLiteral{Token: p.curToken}
+
+	// Simple template literal with no interpolations
+	if p.curToken.Type == token.TEMPLATE_LITERAL {
+		lit.Parts = []string{p.curToken.Literal}
+		lit.Expressions = []ast.Expression{}
+		return lit
+	}
+
+	// Template literal with interpolations
+	// Starts with TEMPLATE_HEAD
+	lit.Parts = []string{p.curToken.Literal}
+	lit.Expressions = []ast.Expression{}
+
+	for {
+		// Move past the TEMPLATE_HEAD or TEMPLATE_MIDDLE
+		p.nextToken()
+
+		// Parse the interpolated expression
+		expr := p.parseExpression(LOWEST)
+		if expr == nil {
+			return nil
+		}
+		lit.Expressions = append(lit.Expressions, expr)
+
+		// After the expression, we expect TEMPLATE_MIDDLE or TEMPLATE_TAIL
+		// The lexer handles the } and returns the appropriate token
+		p.nextToken()
+
+		if p.curToken.Type == token.TEMPLATE_TAIL {
+			lit.Parts = append(lit.Parts, p.curToken.Literal)
+			break
+		} else if p.curToken.Type == token.TEMPLATE_MIDDLE {
+			lit.Parts = append(lit.Parts, p.curToken.Literal)
+			// Continue parsing more expressions
+		} else {
+			p.errors = append(p.errors, fmt.Sprintf("expected TEMPLATE_MIDDLE or TEMPLATE_TAIL, got %s", p.curToken.Type))
+			return nil
+		}
+	}
+
+	return lit
+}
+
 func (p *Parser) parseBooleanLiteral() ast.Expression {
 	return &ast.BoolLiteral{Token: p.curToken, Value: p.curTokenIs(token.TRUE)}
 }
@@ -329,6 +379,15 @@ func (p *Parser) parseUnaryExpression() ast.Expression {
 
 	p.nextToken()
 	expr.Operand = p.parseExpression(PREFIX)
+
+	return expr
+}
+
+func (p *Parser) parseSpreadExpression() ast.Expression {
+	expr := &ast.SpreadExpr{Token: p.curToken}
+
+	p.nextToken()
+	expr.Argument = p.parseExpression(PREFIX)
 
 	return expr
 }
@@ -564,11 +623,19 @@ func (p *Parser) parseExpressionList(end token.Type) []ast.Expression {
 func (p *Parser) parseVarDeclaration(isConst bool) *ast.VarDecl {
 	decl := &ast.VarDecl{Token: p.curToken, IsConst: isConst}
 
-	if !p.expectPeek(token.IDENT) {
-		return nil
+	// Check for destructuring pattern
+	if p.peekTokenIs(token.LBRACKET) {
+		p.nextToken()
+		decl.Pattern = p.parseArrayPattern()
+	} else if p.peekTokenIs(token.LBRACE) {
+		p.nextToken()
+		decl.Pattern = p.parseObjectPattern()
+	} else {
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		decl.Name = p.curToken.Literal
 	}
-
-	decl.Name = p.curToken.Literal
 
 	// Type annotation is optional for type inference
 	if p.peekTokenIs(token.COLON) {
@@ -589,6 +656,95 @@ func (p *Parser) parseVarDeclaration(isConst bool) *ast.VarDecl {
 	}
 
 	return decl
+}
+
+func (p *Parser) parseArrayPattern() *ast.ArrayPattern {
+	pattern := &ast.ArrayPattern{Token: p.curToken}
+	pattern.Elements = []ast.Pattern{}
+
+	// Empty array pattern
+	if p.peekTokenIs(token.RBRACKET) {
+		p.nextToken()
+		return pattern
+	}
+
+	p.nextToken()
+	pattern.Elements = append(pattern.Elements, p.parsePatternElement())
+
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // consume ','
+		p.nextToken()
+		pattern.Elements = append(pattern.Elements, p.parsePatternElement())
+	}
+
+	if !p.expectPeek(token.RBRACKET) {
+		return nil
+	}
+
+	return pattern
+}
+
+func (p *Parser) parseObjectPattern() *ast.ObjectPattern {
+	pattern := &ast.ObjectPattern{Token: p.curToken}
+	pattern.Properties = []*ast.PropertyPattern{}
+
+	// Empty object pattern
+	if p.peekTokenIs(token.RBRACE) {
+		p.nextToken()
+		return pattern
+	}
+
+	p.nextToken()
+	pattern.Properties = append(pattern.Properties, p.parsePropertyPattern())
+
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // consume ','
+		p.nextToken()
+		pattern.Properties = append(pattern.Properties, p.parsePropertyPattern())
+	}
+
+	if !p.expectPeek(token.RBRACE) {
+		return nil
+	}
+
+	return pattern
+}
+
+func (p *Parser) parsePropertyPattern() *ast.PropertyPattern {
+	prop := &ast.PropertyPattern{}
+
+	if !p.curTokenIs(token.IDENT) {
+		p.errors = append(p.errors, fmt.Sprintf("expected identifier in object pattern, got %s", p.curToken.Type))
+		return nil
+	}
+
+	prop.Key = p.curToken.Literal
+
+	// Check for rename pattern: {x: newX}
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // consume ':'
+		p.nextToken()
+		prop.Value = p.parsePatternElement()
+	} else {
+		// Shorthand: {x} is equivalent to {x: x}
+		prop.Value = &ast.IdentPattern{Token: p.curToken, Name: p.curToken.Literal}
+	}
+
+	return prop
+}
+
+func (p *Parser) parsePatternElement() ast.Pattern {
+	switch p.curToken.Type {
+	case token.LBRACKET:
+		return p.parseArrayPattern()
+	case token.LBRACE:
+		return p.parseObjectPattern()
+	case token.IDENT:
+		return &ast.IdentPattern{Token: p.curToken, Name: p.curToken.Literal}
+	default:
+		p.errors = append(p.errors, fmt.Sprintf("unexpected token in pattern: %s", p.curToken.Type))
+		return nil
+	}
 }
 
 func (p *Parser) parseFunctionDeclaration() *ast.FuncDecl {
@@ -1056,6 +1212,70 @@ func (p *Parser) parseTypeAlias() *ast.TypeAliasDecl {
 	}
 
 	return decl
+}
+
+func (p *Parser) parseEnumDeclaration() *ast.EnumDecl {
+	decl := &ast.EnumDecl{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	decl.Name = p.curToken.Literal
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	decl.Members = p.parseEnumMembers()
+
+	return decl
+}
+
+func (p *Parser) parseEnumMembers() []*ast.EnumMember {
+	members := []*ast.EnumMember{}
+
+	// Handle empty enum
+	if p.peekTokenIs(token.RBRACE) {
+		p.nextToken()
+		return members
+	}
+
+	p.nextToken()
+
+	for {
+		member := &ast.EnumMember{}
+
+		if !p.curTokenIs(token.IDENT) {
+			p.errors = append(p.errors, fmt.Sprintf("expected enum member name, got %s", p.curToken.Type))
+			return members
+		}
+
+		member.Name = p.curToken.Literal
+
+		// Check for optional value assignment
+		if p.peekTokenIs(token.ASSIGN) {
+			p.nextToken() // consume =
+			p.nextToken() // move to value
+			member.Value = p.parseExpression(LOWEST)
+		}
+
+		members = append(members, member)
+
+		// Check for comma or end
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken() // consume comma
+			p.nextToken() // move to next member
+		} else if p.peekTokenIs(token.RBRACE) {
+			p.nextToken()
+			break
+		} else {
+			p.errors = append(p.errors, fmt.Sprintf("expected ',' or '}' in enum, got %s", p.peekToken.Type))
+			return members
+		}
+	}
+
+	return members
 }
 
 // Type parsing

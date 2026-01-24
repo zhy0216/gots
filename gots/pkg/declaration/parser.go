@@ -187,13 +187,9 @@ func (p *Parser) parseParameters() ([]*ast.Parameter, bool) {
 	p.nextToken()
 
 	for {
-		// Check for variadic parameter (...)
-		if p.curTokenIs(token.DOT) && p.peekTokenIs(token.DOT) {
-			p.nextToken() // skip first dot
-			p.nextToken() // skip second dot
-			if p.curTokenIs(token.DOT) {
-				p.nextToken() // skip third dot
-			}
+		// Check for variadic parameter (...) - now using ELLIPSIS token
+		if p.curTokenIs(token.ELLIPSIS) {
+			p.nextToken() // skip the ellipsis
 			variadic = true
 		}
 
