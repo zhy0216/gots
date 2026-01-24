@@ -2,6 +2,7 @@ package typed
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/zhy0216/quickts/gots/pkg/ast"
 	"github.com/zhy0216/quickts/gots/pkg/token"
@@ -10,16 +11,22 @@ import (
 
 // Builder transforms an AST into a TypedAST while performing type checking.
 type Builder struct {
-	errors       []*Error
-	scope        *Scope
-	typeAliases  map[string]types.Type
-	classes      map[string]*types.Class
-	currentFunc  *types.Function
-	currentClass *types.Class
-	narrowing    map[string]types.Type
-	loopDepth    int
-	scopeDepth   int
-	constVars    map[string]bool // Track which variables are const (scoped)
+	errors          []*Error
+	scope           *Scope
+	typeAliases     map[string]types.Type
+	classes         map[string]*types.Class
+	genericClasses  map[string]*types.GenericClass
+	interfaces      map[string]*types.Interface
+	goImports       []*GoImportDecl
+	moduleImports   []*ModuleImportDecl
+	exports         []string
+	currentFunc     *types.Function
+	currentClass    *types.Class
+	narrowing       map[string]types.Type
+	loopDepth       int
+	scopeDepth      int
+	constVars       map[string]bool                 // Track which variables are const (scoped)
+	typeParamScope  map[string]*types.TypeParameter // Type parameters currently in scope
 }
 
 // Error represents a type checking error.
@@ -80,12 +87,15 @@ func (s *Scope) lookup(name string) (types.Type, bool) {
 // NewBuilder creates a new typed AST builder.
 func NewBuilder() *Builder {
 	b := &Builder{
-		errors:      []*Error{},
-		scope:       newScope(nil),
-		typeAliases: make(map[string]types.Type),
-		classes:     make(map[string]*types.Class),
-		narrowing:   make(map[string]types.Type),
-		constVars:   make(map[string]bool),
+		errors:         []*Error{},
+		scope:          newScope(nil),
+		typeAliases:    make(map[string]types.Type),
+		classes:        make(map[string]*types.Class),
+		genericClasses: make(map[string]*types.GenericClass),
+		interfaces:     make(map[string]*types.Interface),
+		narrowing:      make(map[string]types.Type),
+		constVars:      make(map[string]bool),
+		typeParamScope: make(map[string]*types.TypeParameter),
 	}
 
 	// Pre-define built-in type aliases
@@ -128,13 +138,26 @@ func (b *Builder) popScope() {
 
 // Build transforms an AST program into a typed program.
 func (b *Builder) Build(program *ast.Program) *Program {
-	// First pass: collect type aliases and classes
+	// Initialize imports and exports
+	b.goImports = make([]*GoImportDecl, 0)
+	b.moduleImports = make([]*ModuleImportDecl, 0)
+	b.exports = make([]string, 0)
+
+	// First pass: collect type aliases, classes, interfaces, and imports
 	for _, stmt := range program.Statements {
 		switch s := stmt.(type) {
 		case *ast.TypeAliasDecl:
 			b.collectTypeAlias(s)
 		case *ast.ClassDecl:
 			b.collectClass(s)
+		case *ast.InterfaceDecl:
+			b.collectInterface(s)
+		case *ast.GoImportDecl:
+			b.collectGoImport(s)
+		case *ast.ModuleImportDecl:
+			b.collectModuleImport(s)
+		case *ast.ExportModifier:
+			b.collectExport(s)
 		}
 	}
 
@@ -145,19 +168,48 @@ func (b *Builder) Build(program *ast.Program) *Program {
 			b.resolveTypeAlias(s)
 		case *ast.ClassDecl:
 			b.resolveClass(s)
+		case *ast.InterfaceDecl:
+			b.resolveInterface(s)
+		case *ast.ExportModifier:
+			// Resolve types for exported declarations
+			switch d := s.Decl.(type) {
+			case *ast.TypeAliasDecl:
+				b.resolveTypeAlias(d)
+			case *ast.ClassDecl:
+				b.resolveClass(d)
+			case *ast.InterfaceDecl:
+				b.resolveInterface(d)
+			}
 		}
 	}
 
 	// Third pass: build typed AST
 	result := &Program{
-		TypeAliases: make([]*TypeAlias, 0),
-		Classes:     make([]*ClassDecl, 0),
-		Functions:   make([]*FuncDecl, 0),
-		TopLevel:    make([]Stmt, 0),
+		GoImports:     b.goImports,
+		ModuleImports: b.moduleImports,
+		TypeAliases:   make([]*TypeAlias, 0),
+		Classes:       make([]*ClassDecl, 0),
+		Interfaces:    make([]*InterfaceDecl, 0),
+		Functions:     make([]*FuncDecl, 0),
+		TopLevel:      make([]Stmt, 0),
+		Exports:       b.exports,
 	}
 
 	for _, stmt := range program.Statements {
 		switch s := stmt.(type) {
+		case *ast.GoImportDecl:
+			// Already handled in collectGoImport, skip
+			continue
+
+		case *ast.ModuleImportDecl:
+			// Already handled in collectModuleImport, skip
+			continue
+
+		case *ast.ExportModifier:
+			// Build the inner declaration
+			b.buildExportedDecl(s.Decl, result)
+			continue
+
 		case *ast.TypeAliasDecl:
 			alias := &TypeAlias{
 				Name:     s.Name,
@@ -168,6 +220,10 @@ func (b *Builder) Build(program *ast.Program) *Program {
 		case *ast.ClassDecl:
 			classDecl := b.buildClassDecl(s)
 			result.Classes = append(result.Classes, classDecl)
+
+		case *ast.InterfaceDecl:
+			ifaceDecl := b.buildInterfaceDecl(s)
+			result.Interfaces = append(result.Interfaces, ifaceDecl)
 
 		case *ast.FuncDecl:
 			funcDecl := b.buildFuncDecl(s)
@@ -198,14 +254,86 @@ func (b *Builder) resolveTypeAlias(decl *ast.TypeAliasDecl) {
 }
 
 func (b *Builder) collectClass(decl *ast.ClassDecl) {
-	b.classes[decl.Name] = &types.Class{
-		Name:    decl.Name,
-		Fields:  make(map[string]*types.Field),
-		Methods: make(map[string]*types.Method),
+	// Check if this is a generic class
+	if len(decl.TypeParams) > 0 {
+		typeParams := make([]*types.TypeParameter, len(decl.TypeParams))
+		for i, tp := range decl.TypeParams {
+			var constraint types.Type
+			if tp.Constraint != nil {
+				constraint = b.resolveType(tp.Constraint)
+			}
+			typeParams[i] = &types.TypeParameter{
+				Name:       tp.Name,
+				Constraint: constraint,
+			}
+		}
+		b.genericClasses[decl.Name] = &types.GenericClass{
+			Name:       decl.Name,
+			TypeParams: typeParams,
+			Fields:     make(map[string]*types.Field),
+			Methods:    make(map[string]*types.Method),
+		}
+	} else {
+		b.classes[decl.Name] = &types.Class{
+			Name:    decl.Name,
+			Fields:  make(map[string]*types.Field),
+			Methods: make(map[string]*types.Method),
+		}
 	}
 }
 
 func (b *Builder) resolveClass(decl *ast.ClassDecl) {
+	// Handle generic classes separately
+	if len(decl.TypeParams) > 0 {
+		genericClass := b.genericClasses[decl.Name]
+
+		// Put type parameters in scope for resolving field/method types
+		savedTypeParams := b.typeParamScope
+		b.typeParamScope = make(map[string]*types.TypeParameter)
+		for _, tp := range genericClass.TypeParams {
+			b.typeParamScope[tp.Name] = tp
+		}
+
+		for _, f := range decl.Fields {
+			genericClass.Fields[f.Name] = &types.Field{
+				Name: f.Name,
+				Type: b.resolveType(f.FieldType),
+			}
+		}
+
+		if decl.Constructor != nil {
+			params := make([]*types.Param, len(decl.Constructor.Params))
+			for i, p := range decl.Constructor.Params {
+				params[i] = &types.Param{
+					Name: p.Name,
+					Type: b.resolveType(p.ParamType),
+				}
+			}
+			genericClass.Constructor = &types.Function{
+				Params:     params,
+				ReturnType: types.VoidType,
+			}
+		}
+
+		for _, m := range decl.Methods {
+			params := make([]*types.Param, len(m.Params))
+			for i, p := range m.Params {
+				params[i] = &types.Param{
+					Name: p.Name,
+					Type: b.resolveType(p.ParamType),
+				}
+			}
+			genericClass.Methods[m.Name] = &types.Method{
+				Name:       m.Name,
+				Params:     params,
+				ReturnType: b.resolveType(m.ReturnType),
+			}
+		}
+
+		b.typeParamScope = savedTypeParams
+		return
+	}
+
 	class := b.classes[decl.Name]
 
 	if decl.SuperClass != "" {
@@ -250,6 +378,141 @@ func (b *Builder) resolveClass(decl *ast.ClassDecl) {
 			Params:     params,
 			ReturnType: b.resolveType(m.ReturnType),
 		}
+	}
+}
+
+func (b *Builder) collectInterface(decl *ast.InterfaceDecl) {
+	b.interfaces[decl.Name] = &types.Interface{
+		Name:    decl.Name,
+		Methods: make(map[string]*types.InterfaceMethod),
+	}
+}
+
+func (b *Builder) collectGoImport(decl *ast.GoImportDecl) {
+	// Register imported names in the global scope
+	for _, name := range decl.Names {
+		fnType := types.GetGoPackageFunction(decl.Package, name)
+		if fnType == nil {
+			b.error(decl.Token.Line, decl.Token.Column,
+				"unknown import %s from package %s", name, decl.Package)
+			continue
+		}
+		b.scope.define(name, fnType)
+	}
+
+	// Add to goImports for codegen
+	b.goImports = append(b.goImports, &GoImportDecl{
+		Names:   decl.Names,
+		Package: decl.Package,
+	})
+}
+
+func (b *Builder) collectModuleImport(decl *ast.ModuleImportDecl) {
+	// For now, register imported names with any type
+	// In a full implementation, we would load the module and get the actual types
+	for _, name := range decl.Names {
+		// Register with any type for now - full implementation would resolve actual types
+		b.scope.define(name, types.AnyType)
+	}
+
+	// Add to moduleImports for codegen
+	b.moduleImports = append(b.moduleImports, &ModuleImportDecl{
+		Names: decl.Names,
+		Path:  decl.Path,
+	})
+}
+
+func (b *Builder) collectExport(export *ast.ExportModifier) {
+	// Extract the name of the exported declaration
+	switch d := export.Decl.(type) {
+	case *ast.FuncDecl:
+		b.exports = append(b.exports, d.Name)
+		// Also collect the function for type checking
+		b.scope.define(d.Name, types.AnyType)
+	case *ast.ClassDecl:
+		b.exports = append(b.exports, d.Name)
+		b.collectClass(d)
+	case *ast.VarDecl:
+		b.exports = append(b.exports, d.Name)
+	case *ast.TypeAliasDecl:
+		b.exports = append(b.exports, d.Name)
+		b.collectTypeAlias(d)
+	case *ast.InterfaceDecl:
+		b.exports = append(b.exports, d.Name)
+		b.collectInterface(d)
+	}
+}
+
+func (b *Builder) buildExportedDecl(decl ast.Statement, result *Program) {
+	// Build the declaration and add to the appropriate list in result
+	switch d := decl.(type) {
+	case *ast.FuncDecl:
+		funcDecl := b.buildFuncDecl(d)
+		result.Functions = append(result.Functions, funcDecl)
+	case *ast.ClassDecl:
+		classDecl := b.buildClassDecl(d)
+		result.Classes = append(result.Classes, classDecl)
+	case *ast.VarDecl:
+		varDecl := b.buildVarDecl(d)
+		if varDecl != nil {
+			result.TopLevel = append(result.TopLevel, varDecl)
+		}
+	case *ast.TypeAliasDecl:
+		alias := &TypeAlias{
+			Name:     d.Name,
+			Resolved: b.typeAliases[d.Name],
+		}
+		result.TypeAliases = append(result.TypeAliases, alias)
+	case *ast.InterfaceDecl:
+		ifaceDecl := b.buildInterfaceDecl(d)
+		result.Interfaces = append(result.Interfaces, ifaceDecl)
+	}
+}
+
+func (b *Builder) resolveInterface(decl *ast.InterfaceDecl) {
+	iface := b.interfaces[decl.Name]
+
+	for _, m := range decl.Methods {
+		params := make([]*types.Param, len(m.Params))
+		for i, p := range m.Params {
+			params[i] = &types.Param{
+				Name: p.Name,
+				Type: b.resolveType(p.ParamType),
+			}
+		}
+		iface.Methods[m.Name] = &types.InterfaceMethod{
+			Name:       m.Name,
+			Params:     params,
+			ReturnType: b.resolveType(m.ReturnType),
+		}
+	}
+}
+
+func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
+	iface := b.interfaces[decl.Name]
+
+	methods := make([]*InterfaceMethodDecl, len(decl.Methods))
+	for i, m := range decl.Methods {
+		ifaceMethod := iface.Methods[m.Name]
+
+		params := make([]*Param, len(m.Params))
+		for j, p := range m.Params {
+			params[j] = &Param{
+				Name: p.Name,
+				Type: ifaceMethod.Params[j].Type,
+			}
+		}
+
+		methods[i] = &InterfaceMethodDecl{
+			Name:       m.Name,
+			Params:     params,
+			ReturnType: ifaceMethod.ReturnType,
+		}
+	}
+
+	return &InterfaceDecl{
+		Name:    decl.Name,
+		Methods: methods,
 	}
 }
 
@@ -308,12 +571,44 @@ func (b *Builder) resolveType(astType ast.Type) types.Type {
 	case *ast.NullableType:
 		return &types.Nullable{Inner: b.resolveType(t.Inner)}
 
+	case *ast.MapType:
+		return &types.Map{
+			Key:   b.resolveType(t.KeyType),
+			Value: b.resolveType(t.ValueType),
+		}
+
 	case *ast.NamedType:
+		// First check if it's a type parameter in scope
+		if tp, ok := b.typeParamScope[t.Name]; ok {
+			return tp
+		}
+		// Check for generic class instantiation (e.g., Stack<int>)
+		if len(t.TypeArgs) > 0 {
+			if genericClass, ok := b.genericClasses[t.Name]; ok {
+				typeArgs := make([]types.Type, len(t.TypeArgs))
+				for i, ta := range t.TypeArgs {
+					typeArgs[i] = b.resolveType(ta)
+				}
+				instantiated, err := genericClass.Instantiate(typeArgs)
+				if err != nil {
+					b.error(0, 0, "cannot instantiate %s: %s", t.Name, err.Error())
+					return types.AnyType
+				}
+				return instantiated
+			}
+		}
 		if alias, ok := b.typeAliases[t.Name]; ok {
 			return alias
 		}
 		if class, ok := b.classes[t.Name]; ok {
 			return class
+		}
+		if genericClass, ok := b.genericClasses[t.Name]; ok {
+			// Using generic class without type arguments - return the generic type itself
+			return genericClass
+		}
+		if iface, ok := b.interfaces[t.Name]; ok {
+			return iface
 		}
 		b.error(0, 0, "unknown type: %s", t.Name)
 		return types.AnyType
@@ -389,7 +684,20 @@ func (b *Builder) buildVarDecl(decl *ast.VarDecl) *VarDecl {
 	}
 
 	if decl.Value != nil {
-		init = b.buildExpr(decl.Value)
+		// Special handling for empty object literal assigned to Map type
+		if objLit, ok := decl.Value.(*ast.ObjectLiteral); ok && len(objLit.Properties) == 0 {
+			if mapType, ok := varType.(*types.Map); ok {
+				init = &MapLit{
+					Entries:  []*MapEntry{},
+					ExprType: mapType,
+				}
+			} else {
+				init = b.buildExpr(decl.Value)
+			}
+		} else {
+			init = b.buildExpr(decl.Value)
+		}
+
 		if varType == nil {
 			varType = init.Type()
 		} else {
@@ -671,27 +979,61 @@ func (b *Builder) buildReturnStmt(stmt *ast.ReturnStmt) *ReturnStmt {
 }
 
 func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
+	// Handle type parameters
+	var typeParams []*types.TypeParameter
+	savedTypeParamScope := b.typeParamScope
+	if len(decl.TypeParams) > 0 {
+		b.typeParamScope = make(map[string]*types.TypeParameter)
+		typeParams = make([]*types.TypeParameter, len(decl.TypeParams))
+		for i, tp := range decl.TypeParams {
+			var constraint types.Type
+			if tp.Constraint != nil {
+				constraint = b.resolveType(tp.Constraint)
+			}
+			typeParams[i] = &types.TypeParameter{
+				Name:       tp.Name,
+				Constraint: constraint,
+			}
+			b.typeParamScope[tp.Name] = typeParams[i]
+		}
+	}
+
 	params := make([]*Param, len(decl.Params))
-	typeParams := make([]*types.Param, len(decl.Params))
+	typeParamsForFunc := make([]*types.Param, len(decl.Params))
 	for i, p := range decl.Params {
 		paramType := b.resolveType(p.ParamType)
 		params[i] = &Param{
 			Name: p.Name,
 			Type: paramType,
 		}
-		typeParams[i] = &types.Param{
+		typeParamsForFunc[i] = &types.Param{
 			Name: p.Name,
 			Type: paramType,
 		}
 	}
 
 	returnType := b.resolveType(decl.ReturnType)
-	funcType := &types.Function{
-		Params:     typeParams,
-		ReturnType: returnType,
+
+	// Register function type
+	if len(typeParams) > 0 {
+		// Generic function
+		b.scope.define(decl.Name, &types.GenericFunction{
+			TypeParams: typeParams,
+			Params:     typeParamsForFunc,
+			ReturnType: returnType,
+		})
+	} else {
+		// Regular function
+		b.scope.define(decl.Name, &types.Function{
+			Params:     typeParamsForFunc,
+			ReturnType: returnType,
+		})
 	}
 
-	b.scope.define(decl.Name, funcType)
+	funcType := &types.Function{
+		Params:     typeParamsForFunc,
+		ReturnType: returnType,
+	}
 
 	savedFunc := b.currentFunc
 	b.currentFunc = funcType
@@ -705,9 +1047,11 @@ func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
 
 	b.popScope()
 	b.currentFunc = savedFunc
+	b.typeParamScope = savedTypeParamScope
 
 	return &FuncDecl{
 		Name:       decl.Name,
+		TypeParams: typeParams,
 		Params:     params,
 		ReturnType: returnType,
 		Body:       body,
@@ -715,6 +1059,108 @@ func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
 }
 
 func (b *Builder) buildClassDecl(decl *ast.ClassDecl) *ClassDecl {
+	// Handle type parameters for generic classes
+	var typeParams []*types.TypeParameter
+	savedTypeParamScope := b.typeParamScope
+
+	if len(decl.TypeParams) > 0 {
+		genericClass := b.genericClasses[decl.Name]
+		typeParams = genericClass.TypeParams
+
+		// Put type parameters in scope
+		b.typeParamScope = make(map[string]*types.TypeParameter)
+		for _, tp := range typeParams {
+			b.typeParamScope[tp.Name] = tp
+		}
+
+		savedClass := b.currentClass
+		// For generic classes, we use a placeholder class during building
+		b.currentClass = &types.Class{
+			Name:    decl.Name,
+			Fields:  genericClass.Fields,
+			Methods: genericClass.Methods,
+		}
+
+		fields := make([]*FieldDecl, len(decl.Fields))
+		for i, f := range decl.Fields {
+			fields[i] = &FieldDecl{
+				Name: f.Name,
+				Type: b.resolveType(f.FieldType),
+			}
+		}
+
+		var constructor *ConstructorDecl
+		if decl.Constructor != nil {
+			params := make([]*Param, len(decl.Constructor.Params))
+			for i, p := range decl.Constructor.Params {
+				params[i] = &Param{
+					Name: p.Name,
+					Type: b.resolveType(p.ParamType),
+				}
+			}
+
+			b.pushScope()
+			for _, p := range params {
+				b.scope.define(p.Name, p.Type)
+			}
+			body := b.buildBlock(decl.Constructor.Body)
+			b.popScope()
+
+			constructor = &ConstructorDecl{
+				Params: params,
+				Body:   body,
+			}
+		}
+
+		methods := make([]*MethodDecl, len(decl.Methods))
+		for i, m := range decl.Methods {
+			method := genericClass.Methods[m.Name]
+
+			params := make([]*Param, len(m.Params))
+			for j, p := range m.Params {
+				params[j] = &Param{
+					Name: p.Name,
+					Type: b.resolveType(p.ParamType),
+				}
+			}
+
+			savedFunc := b.currentFunc
+			b.currentFunc = &types.Function{
+				Params:     method.Params,
+				ReturnType: method.ReturnType,
+			}
+
+			b.pushScope()
+			for _, p := range params {
+				b.scope.define(p.Name, p.Type)
+			}
+			body := b.buildBlock(m.Body)
+			b.popScope()
+
+			b.currentFunc = savedFunc
+
+			methods[i] = &MethodDecl{
+				Name:       m.Name,
+				Params:     params,
+				ReturnType: method.ReturnType,
+				Body:       body,
+			}
+		}
+
+		b.currentClass = savedClass
+		b.typeParamScope = savedTypeParamScope
+
+		return &ClassDecl{
+			Name:        decl.Name,
+			TypeParams:  typeParams,
+			Super:       decl.SuperClass,
+			Fields:      fields,
+			Constructor: constructor,
+			Methods:     methods,
+		}
+	}
+
+	// Non-generic class handling
 	class := b.classes[decl.Name]
 
 	savedClass := b.currentClass
@@ -809,11 +1255,12 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 
 	switch e := expr.(type) {
 	case *ast.NumberLiteral:
-		// Check if number is an integer (no decimal part)
-		if e.Value == float64(int64(e.Value)) {
-			return &NumberLit{Value: e.Value, ExprType: types.IntType}
+		// Check if the original literal contains a decimal point to determine type
+		// 5.0 should be float, 5 should be int
+		if strings.Contains(e.Token.Literal, ".") {
+			return &NumberLit{Value: e.Value, ExprType: types.FloatType}
 		}
-		return &NumberLit{Value: e.Value, ExprType: types.FloatType}
+		return &NumberLit{Value: e.Value, ExprType: types.IntType}
 
 	case *ast.StringLiteral:
 		return &StringLit{Value: e.Value, ExprType: types.StringType}
@@ -1054,6 +1501,15 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		}
 	}
 
+	// Check for map method calls (e.g., m.get("key"), m.set("key", value))
+	if propExpr, ok := expr.Function.(*ast.PropertyExpr); ok {
+		objExpr := b.buildExpr(propExpr.Object)
+		objType := types.Unwrap(objExpr.Type())
+		if mapType, ok := objType.(*types.Map); ok {
+			return b.buildMapMethodCall(objExpr, mapType, propExpr.Property, expr)
+		}
+	}
+
 	callee := b.buildExpr(expr.Function)
 	calleeType := types.Unwrap(callee.Type())
 
@@ -1068,6 +1524,50 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 			Args:     args,
 			Optional: expr.Optional,
 			ExprType: types.AnyType,
+		}
+	}
+
+	// Handle generic function calls
+	if gfn, ok := calleeType.(*types.GenericFunction); ok {
+		args := make([]Expr, len(expr.Arguments))
+		for i, arg := range expr.Arguments {
+			args[i] = b.buildExpr(arg)
+		}
+
+		// Infer type arguments from actual arguments
+		typeArgs := make([]types.Type, len(gfn.TypeParams))
+		for i, tp := range gfn.TypeParams {
+			// Find the first parameter that uses this type parameter and infer from argument
+			for j, param := range gfn.Params {
+				if typeParam, ok := param.Type.(*types.TypeParameter); ok && typeParam.Name == tp.Name {
+					if j < len(args) {
+						typeArgs[i] = args[j].Type()
+						break
+					}
+				}
+			}
+			if typeArgs[i] == nil {
+				typeArgs[i] = types.AnyType
+			}
+		}
+
+		// Instantiate the generic function
+		fn, err := gfn.Instantiate(typeArgs)
+		if err != nil {
+			b.error(expr.Token.Line, expr.Token.Column, "cannot instantiate generic function: %s", err.Error())
+			return &CallExpr{
+				Callee:   callee,
+				Args:     args,
+				Optional: expr.Optional,
+				ExprType: types.AnyType,
+			}
+		}
+
+		return &CallExpr{
+			Callee:   callee,
+			Args:     args,
+			Optional: expr.Optional,
+			ExprType: fn.ReturnType,
 		}
 	}
 
@@ -1194,6 +1694,21 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 		} else {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"property %s does not exist on class %s", expr.Property, obj.Name)
+			resultType = types.AnyType
+		}
+
+	case *types.Interface:
+		// Access method on interface type
+		if method, ok := obj.Methods[expr.Property]; ok {
+			params := make([]*types.Param, len(method.Params))
+			copy(params, method.Params)
+			resultType = &types.Function{
+				Params:     params,
+				ReturnType: method.ReturnType,
+			}
+		} else {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"method %s does not exist on interface %s", expr.Property, obj.Name)
 			resultType = types.AnyType
 		}
 
@@ -1343,6 +1858,63 @@ func (b *Builder) buildArrowFuncExpr(expr *ast.ArrowFunctionExpr) Expr {
 }
 
 func (b *Builder) buildNewExpr(expr *ast.NewExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	// Check for generic class
+	if genericClass, ok := b.genericClasses[expr.ClassName]; ok {
+		// Infer type arguments from constructor arguments
+		typeArgs := make([]types.Type, len(genericClass.TypeParams))
+		if genericClass.Constructor != nil {
+			for i, tp := range genericClass.TypeParams {
+				for j, param := range genericClass.Constructor.Params {
+					if typeParam, ok := param.Type.(*types.TypeParameter); ok && typeParam.Name == tp.Name {
+						if j < len(args) {
+							typeArgs[i] = args[j].Type()
+							break
+						}
+					}
+				}
+				if typeArgs[i] == nil {
+					typeArgs[i] = types.AnyType
+				}
+			}
+		} else {
+			// No constructor, can't infer - use any
+			for i := range typeArgs {
+				typeArgs[i] = types.AnyType
+			}
+		}
+
+		class, err := genericClass.Instantiate(typeArgs)
+		if err != nil {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"cannot instantiate generic class: %s", err.Error())
+			return &NewExpr{
+				ClassName: expr.ClassName,
+				Args:      args,
+				ExprType:  types.AnyType,
+			}
+		}
+
+		if class.Constructor != nil {
+			if len(args) != len(class.Constructor.Params) {
+				b.error(expr.Token.Line, expr.Token.Column,
+					"expected %d constructor arguments, got %d",
+					len(class.Constructor.Params), len(args))
+			}
+		}
+
+		return &NewExpr{
+			ClassName: expr.ClassName,
+			TypeArgs:  typeArgs,
+			Args:      args,
+			ExprType:  class,
+		}
+	}
+
 	class, ok := b.classes[expr.ClassName]
 	if !ok {
 		b.error(expr.Token.Line, expr.Token.Column,
@@ -1352,11 +1924,6 @@ func (b *Builder) buildNewExpr(expr *ast.NewExpr) Expr {
 			Args:      []Expr{},
 			ExprType:  types.AnyType,
 		}
-	}
-
-	args := make([]Expr, len(expr.Arguments))
-	for i, arg := range expr.Arguments {
-		args[i] = b.buildExpr(arg)
 	}
 
 	if class.Constructor != nil {
@@ -1519,5 +2086,100 @@ func (b *Builder) buildUpdateExpr(expr *ast.UpdateExpr) Expr {
 		Operand:  operand,
 		Prefix:   expr.Prefix,
 		ExprType: operand.Type(), // Preserve type
+	}
+}
+
+// buildMapMethodCall handles method calls on Map types (get, set, has, delete, keys, values)
+func (b *Builder) buildMapMethodCall(obj Expr, mapType *types.Map, method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	var resultType types.Type
+
+	switch method {
+	case "get":
+		// get(key) returns value type
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.get expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), mapType.Key) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.get key type mismatch: expected %s, got %s",
+				mapType.Key.String(), args[0].Type().String())
+		}
+		resultType = mapType.Value
+
+	case "set":
+		// set(key, value) returns void
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.set expects 2 arguments, got %d", len(args))
+		} else {
+			if !types.IsAssignableTo(args[0].Type(), mapType.Key) {
+				b.error(expr.Token.Line, expr.Token.Column,
+					"Map.set key type mismatch: expected %s, got %s",
+					mapType.Key.String(), args[0].Type().String())
+			}
+			if !types.IsAssignableTo(args[1].Type(), mapType.Value) {
+				b.error(expr.Token.Line, expr.Token.Column,
+					"Map.set value type mismatch: expected %s, got %s",
+					mapType.Value.String(), args[1].Type().String())
+			}
+		}
+		resultType = types.VoidType
+
+	case "has":
+		// has(key) returns boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.has expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), mapType.Key) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.has key type mismatch: expected %s, got %s",
+				mapType.Key.String(), args[0].Type().String())
+		}
+		resultType = types.BooleanType
+
+	case "delete":
+		// delete(key) returns void
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.delete expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), mapType.Key) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.delete key type mismatch: expected %s, got %s",
+				mapType.Key.String(), args[0].Type().String())
+		}
+		resultType = types.VoidType
+
+	case "keys":
+		// keys() returns key[]
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.keys expects 0 arguments, got %d", len(args))
+		}
+		resultType = &types.Array{Element: mapType.Key}
+
+	case "values":
+		// values() returns value[]
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Map.values expects 0 arguments, got %d", len(args))
+		}
+		resultType = &types.Array{Element: mapType.Value}
+
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown Map method: %s", method)
+		resultType = types.AnyType
+	}
+
+	return &MethodCallExpr{
+		Object:   obj,
+		Method:   method,
+		Args:     args,
+		ExprType: resultType,
 	}
 }

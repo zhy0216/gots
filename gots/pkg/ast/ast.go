@@ -579,6 +579,7 @@ type Parameter struct {
 type FuncDecl struct {
 	Token      token.Token // The 'function' token
 	Name       string
+	TypeParams []*TypeParam // Generic type parameters (e.g., <T, U>)
 	Params     []*Parameter
 	ReturnType Type
 	Body       *Block
@@ -591,8 +592,16 @@ func (f *FuncDecl) String() string {
 	for i, p := range f.Params {
 		params[i] = fmt.Sprintf("%s: %s", p.Name, p.ParamType.String())
 	}
-	return fmt.Sprintf("function %s(%s): %s %s",
-		f.Name, strings.Join(params, ", "), f.ReturnType.String(), f.Body.String())
+	typeParams := ""
+	if len(f.TypeParams) > 0 {
+		tps := make([]string, len(f.TypeParams))
+		for i, tp := range f.TypeParams {
+			tps[i] = tp.String()
+		}
+		typeParams = fmt.Sprintf("<%s>", strings.Join(tps, ", "))
+	}
+	return fmt.Sprintf("function %s%s(%s): %s %s",
+		f.Name, typeParams, strings.Join(params, ", "), f.ReturnType.String(), f.Body.String())
 }
 
 // Field represents a class field.
@@ -619,7 +628,8 @@ type Constructor struct {
 type ClassDecl struct {
 	Token       token.Token // The 'class' token
 	Name        string
-	SuperClass  string // Empty if no superclass
+	TypeParams  []*TypeParam // Generic type parameters (e.g., <T>)
+	SuperClass  string       // Empty if no superclass
 	Fields      []*Field
 	Constructor *Constructor
 	Methods     []*Method
@@ -631,6 +641,13 @@ func (c *ClassDecl) String() string {
 	var out strings.Builder
 	out.WriteString("class ")
 	out.WriteString(c.Name)
+	if len(c.TypeParams) > 0 {
+		tps := make([]string, len(c.TypeParams))
+		for i, tp := range c.TypeParams {
+			tps[i] = tp.String()
+		}
+		out.WriteString(fmt.Sprintf("<%s>", strings.Join(tps, ", ")))
+	}
 	if c.SuperClass != "" {
 		out.WriteString(" extends ")
 		out.WriteString(c.SuperClass)
@@ -754,9 +771,139 @@ func (n *NullableType) String() string {
 
 // NamedType represents a reference to a named type (type alias or class).
 type NamedType struct {
-	Name string
+	Name     string
+	TypeArgs []Type // Type arguments for generic types (e.g., Stack<int>)
 }
 
 func (n *NamedType) typeNode()            {}
 func (n *NamedType) TokenLiteral() string { return n.Name }
-func (n *NamedType) String() string       { return n.Name }
+func (n *NamedType) String() string {
+	if len(n.TypeArgs) == 0 {
+		return n.Name
+	}
+	args := make([]string, len(n.TypeArgs))
+	for i, t := range n.TypeArgs {
+		args[i] = t.String()
+	}
+	return fmt.Sprintf("%s<%s>", n.Name, strings.Join(args, ", "))
+}
+
+// TypeParam represents a type parameter (e.g., T in function identity<T>).
+type TypeParam struct {
+	Name       string
+	Constraint Type // Optional constraint (e.g., T extends Comparable)
+}
+
+func (t *TypeParam) typeNode()            {}
+func (t *TypeParam) TokenLiteral() string { return t.Name }
+func (t *TypeParam) String() string {
+	if t.Constraint != nil {
+		return fmt.Sprintf("%s extends %s", t.Name, t.Constraint.String())
+	}
+	return t.Name
+}
+
+// MapType represents a map type (e.g., Map<string, int>).
+type MapType struct {
+	KeyType   Type
+	ValueType Type
+}
+
+func (m *MapType) typeNode()            {}
+func (m *MapType) TokenLiteral() string { return m.String() }
+func (m *MapType) String() string {
+	return fmt.Sprintf("Map<%s, %s>", m.KeyType.String(), m.ValueType.String())
+}
+
+// InterfaceType represents an interface type reference.
+type InterfaceType struct {
+	Name string
+}
+
+func (i *InterfaceType) typeNode()            {}
+func (i *InterfaceType) TokenLiteral() string { return i.Name }
+func (i *InterfaceType) String() string       { return i.Name }
+
+// ----------------------------------------------------------------------------
+// Interface Declaration
+// ----------------------------------------------------------------------------
+
+// InterfaceDecl represents an interface declaration.
+type InterfaceDecl struct {
+	Token   token.Token
+	Name    string
+	Methods []*InterfaceMethod
+}
+
+func (i *InterfaceDecl) statementNode()       {}
+func (i *InterfaceDecl) TokenLiteral() string { return i.Token.Literal }
+func (i *InterfaceDecl) String() string {
+	var methods []string
+	for _, m := range i.Methods {
+		methods = append(methods, m.String())
+	}
+	return fmt.Sprintf("interface %s { %s }", i.Name, strings.Join(methods, "; "))
+}
+
+// InterfaceMethod represents a method signature in an interface.
+type InterfaceMethod struct {
+	Name       string
+	Params     []*Parameter
+	ReturnType Type
+}
+
+func (m *InterfaceMethod) String() string {
+	var params []string
+	for _, p := range m.Params {
+		if p.ParamType != nil {
+			params = append(params, fmt.Sprintf("%s: %s", p.Name, p.ParamType.String()))
+		} else {
+			params = append(params, p.Name)
+		}
+	}
+	if m.ReturnType != nil {
+		return fmt.Sprintf("%s(%s): %s", m.Name, strings.Join(params, ", "), m.ReturnType.String())
+	}
+	return fmt.Sprintf("%s(%s)", m.Name, strings.Join(params, ", "))
+}
+
+// GoImportDecl represents an import from a Go package.
+// e.g., import { Sprintf, Println } from "go:fmt"
+type GoImportDecl struct {
+	Token   token.Token // The 'import' token
+	Names   []string    // The names being imported
+	Package string      // The Go package path (without "go:" prefix)
+}
+
+func (g *GoImportDecl) statementNode()       {}
+func (g *GoImportDecl) TokenLiteral() string { return g.Token.Literal }
+func (g *GoImportDecl) String() string {
+	return fmt.Sprintf("import { %s } from \"go:%s\"", strings.Join(g.Names, ", "), g.Package)
+}
+
+// ModuleImportDecl represents an import from a local module.
+// e.g., import { add, Vector } from "./math"
+type ModuleImportDecl struct {
+	Token  token.Token // The 'import' token
+	Names  []string    // The names being imported
+	Path   string      // The module path (e.g., "./math")
+}
+
+func (m *ModuleImportDecl) statementNode()       {}
+func (m *ModuleImportDecl) TokenLiteral() string { return m.Token.Literal }
+func (m *ModuleImportDecl) String() string {
+	return fmt.Sprintf("import { %s } from \"%s\"", strings.Join(m.Names, ", "), m.Path)
+}
+
+// ExportModifier is a marker that a declaration is exported.
+// It wraps another statement (FuncDecl, ClassDecl, VarDecl, TypeAliasDecl).
+type ExportModifier struct {
+	Token   token.Token
+	Decl    Statement // The declaration being exported
+}
+
+func (e *ExportModifier) statementNode()       {}
+func (e *ExportModifier) TokenLiteral() string { return e.Token.Literal }
+func (e *ExportModifier) String() string {
+	return "export " + e.Decl.String()
+}

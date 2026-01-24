@@ -4,6 +4,7 @@ package parser
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/zhy0216/quickts/gots/pkg/ast"
 	"github.com/zhy0216/quickts/gots/pkg/lexer"
@@ -237,6 +238,12 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseClassDeclaration()
 	case token.TYPE:
 		return p.parseTypeAlias()
+	case token.INTERFACE:
+		return p.parseInterfaceDeclaration()
+	case token.IMPORT:
+		return p.parseImportDeclaration()
+	case token.EXPORT:
+		return p.parseExportDeclaration()
 	case token.SWITCH:
 		return p.parseSwitchStatement()
 	case token.TRY:
@@ -578,6 +585,11 @@ func (p *Parser) parseFunctionDeclaration() *ast.FuncDecl {
 
 	decl.Name = p.curToken.Literal
 
+	// Check for type parameters <T, U>
+	if p.peekTokenIs(token.LT) {
+		decl.TypeParams = p.parseTypeParameters()
+	}
+
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
@@ -897,6 +909,11 @@ func (p *Parser) parseClassDeclaration() *ast.ClassDecl {
 
 	decl.Name = p.curToken.Literal
 
+	// Check for type parameters <T, U>
+	if p.peekTokenIs(token.LT) {
+		decl.TypeParams = p.parseTypeParameters()
+	}
+
 	if p.peekTokenIs(token.EXTENDS) {
 		p.nextToken()
 		if !p.expectPeek(token.IDENT) {
@@ -1044,8 +1061,15 @@ func (p *Parser) parseType() ast.Type {
 		typ = &ast.PrimitiveType{Kind: ast.TypeVoid}
 	case token.NULL:
 		typ = &ast.PrimitiveType{Kind: ast.TypeNull}
+	case token.MAP:
+		typ = p.parseMapType()
 	case token.IDENT:
-		typ = &ast.NamedType{Name: p.curToken.Literal}
+		namedType := &ast.NamedType{Name: p.curToken.Literal}
+		// Check for type arguments: Stack<int>
+		if p.peekTokenIs(token.LT) {
+			namedType.TypeArgs = p.parseTypeArguments()
+		}
+		typ = namedType
 	case token.LBRACE:
 		typ = p.parseObjectType()
 	case token.LPAREN:
@@ -1521,4 +1545,280 @@ func (p *Parser) parseThrowStatement() *ast.ThrowStmt {
 	}
 
 	return stmt
+}
+
+// parseMapType parses Map<K, V> type syntax
+func (p *Parser) parseMapType() *ast.MapType {
+	// curToken is MAP, expect <
+	if !p.expectPeek(token.LT) {
+		return nil
+	}
+
+	p.nextToken() // move to key type
+	keyType := p.parseType()
+
+	if !p.expectPeek(token.COMMA) {
+		return nil
+	}
+
+	p.nextToken() // move to value type
+	valueType := p.parseType()
+
+	if !p.expectPeek(token.GT) {
+		return nil
+	}
+
+	return &ast.MapType{
+		KeyType:   keyType,
+		ValueType: valueType,
+	}
+}
+
+// parseInterfaceDeclaration parses interface declarations
+func (p *Parser) parseInterfaceDeclaration() *ast.InterfaceDecl {
+	decl := &ast.InterfaceDecl{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	decl.Name = p.curToken.Literal
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	decl.Methods = []*ast.InterfaceMethod{}
+
+	for !p.peekTokenIs(token.RBRACE) && !p.peekTokenIs(token.EOF) {
+		method := p.parseInterfaceMethod()
+		if method != nil {
+			decl.Methods = append(decl.Methods, method)
+		}
+
+		// Handle optional separator (semicolon or newline)
+		if p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+	}
+
+	if !p.expectPeek(token.RBRACE) {
+		return nil
+	}
+
+	return decl
+}
+
+// parseInterfaceMethod parses a method signature in an interface
+func (p *Parser) parseInterfaceMethod() *ast.InterfaceMethod {
+	p.nextToken() // move to method name
+
+	if p.curToken.Type != token.IDENT {
+		p.peekError(token.IDENT)
+		return nil
+	}
+
+	method := &ast.InterfaceMethod{
+		Name: p.curToken.Literal,
+	}
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	method.Params = p.parseParameterList()
+
+	// Parse return type
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // consume ':'
+		p.nextToken() // move to type
+		method.ReturnType = p.parseType()
+	}
+
+	return method
+}
+
+// parseImportDeclaration parses an import statement.
+// import { Name1, Name2 } from "go:package"  - Go package import
+// import { Name1, Name2 } from "./module"    - Module import
+func (p *Parser) parseImportDeclaration() ast.Statement {
+	importToken := p.curToken
+
+	// Expect '{'
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	// Parse imported names
+	names := []string{}
+	for {
+		p.nextToken()
+		if p.curToken.Type == token.RBRACE {
+			break
+		}
+
+		if p.curToken.Type != token.IDENT {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier in import, got %s", p.curToken.Type))
+			return nil
+		}
+		names = append(names, p.curToken.Literal)
+
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken() // consume comma
+		} else if p.peekTokenIs(token.RBRACE) {
+			p.nextToken() // consume closing brace
+			break
+		}
+	}
+
+	// Expect 'from'
+	if !p.expectPeek(token.FROM) {
+		return nil
+	}
+
+	// Expect package/module string
+	if !p.expectPeek(token.STRING) {
+		return nil
+	}
+
+	pathStr := p.curToken.Literal
+
+	// Distinguish between Go package imports and module imports
+	if strings.HasPrefix(pathStr, "go:") {
+		// Go package import
+		return &ast.GoImportDecl{
+			Token:   importToken,
+			Names:   names,
+			Package: strings.TrimPrefix(pathStr, "go:"),
+		}
+	}
+
+	// Module import (local file)
+	return &ast.ModuleImportDecl{
+		Token: importToken,
+		Names: names,
+		Path:  pathStr,
+	}
+}
+
+// parseExportDeclaration parses an export statement.
+// export function foo() { ... }
+// export class Foo { ... }
+// export let x: int = 42
+func (p *Parser) parseExportDeclaration() *ast.ExportModifier {
+	exportToken := p.curToken
+
+	// Move to the next token which should be the declaration
+	p.nextToken()
+
+	var decl ast.Statement
+	switch p.curToken.Type {
+	case token.FUNCTION:
+		decl = p.parseFunctionDeclaration()
+	case token.CLASS:
+		decl = p.parseClassDeclaration()
+	case token.LET:
+		decl = p.parseVarDeclaration(false)
+	case token.CONST:
+		decl = p.parseVarDeclaration(true)
+	case token.TYPE:
+		decl = p.parseTypeAlias()
+	case token.INTERFACE:
+		decl = p.parseInterfaceDeclaration()
+	default:
+		p.errors = append(p.errors, fmt.Sprintf("expected function, class, let, const, type, or interface after export, got %s", p.curToken.Type))
+		return nil
+	}
+
+	if decl == nil {
+		return nil
+	}
+
+	return &ast.ExportModifier{
+		Token: exportToken,
+		Decl:  decl,
+	}
+}
+
+// parseTypeParameters parses generic type parameters <T, U extends V>
+func (p *Parser) parseTypeParameters() []*ast.TypeParam {
+	if !p.expectPeek(token.LT) {
+		return nil
+	}
+
+	params := []*ast.TypeParam{}
+
+	// Parse first type parameter
+	p.nextToken()
+	param := p.parseTypeParameter()
+	if param != nil {
+		params = append(params, param)
+	}
+
+	// Parse remaining type parameters
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // consume comma
+		p.nextToken() // move to next type param
+		param := p.parseTypeParameter()
+		if param != nil {
+			params = append(params, param)
+		}
+	}
+
+	if !p.expectPeek(token.GT) {
+		return nil
+	}
+
+	return params
+}
+
+// parseTypeParameter parses a single type parameter (e.g., T or T extends Comparable)
+func (p *Parser) parseTypeParameter() *ast.TypeParam {
+	if !p.curTokenIs(token.IDENT) {
+		return nil
+	}
+
+	param := &ast.TypeParam{
+		Name: p.curToken.Literal,
+	}
+
+	// Check for constraint: T extends SomeType
+	if p.peekTokenIs(token.EXTENDS) {
+		p.nextToken() // consume 'extends'
+		p.nextToken() // move to constraint type
+		param.Constraint = p.parseType()
+	}
+
+	return param
+}
+
+// parseTypeArguments parses type arguments <int, string>
+func (p *Parser) parseTypeArguments() []ast.Type {
+	if !p.expectPeek(token.LT) {
+		return nil
+	}
+
+	args := []ast.Type{}
+
+	// Parse first type argument
+	p.nextToken()
+	arg := p.parseType()
+	if arg != nil {
+		args = append(args, arg)
+	}
+
+	// Parse remaining type arguments
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // consume comma
+		p.nextToken() // move to next type arg
+		arg := p.parseType()
+		if arg != nil {
+			args = append(args, arg)
+		}
+	}
+
+	if !p.expectPeek(token.GT) {
+		return nil
+	}
+
+	return args
 }

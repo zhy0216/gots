@@ -108,6 +108,13 @@ const (
 	BOOLEAN_TYPE // boolean
 	VOID_TYPE    // void
 	NULL_TYPE    // null (as type)
+
+	// Advanced type keywords
+	MAP       // Map
+	INTERFACE // interface
+	IMPORT    // import
+	FROM      // from
+	EXPORT    // export
 )
 
 // Token represents a lexical token with its metadata.
@@ -228,6 +235,13 @@ var typeStrings = map[Type]string{
 	BOOLEAN_TYPE: "boolean",
 	VOID_TYPE:    "void",
 	NULL_TYPE:    "null",
+
+	// Advanced type keywords
+	MAP:       "Map",
+	INTERFACE: "interface",
+	IMPORT:    "import",
+	FROM:      "from",
+	EXPORT:    "export",
 }
 
 // keywords maps keyword strings to their token types.
@@ -264,6 +278,11 @@ var keywords = map[string]Type{
 	"string":      STRING_TYPE,
 	"boolean":     BOOLEAN_TYPE,
 	"void":        VOID_TYPE,
+	"Map":         MAP,
+	"interface":   INTERFACE,
+	"import":      IMPORT,
+	"from":        FROM,
+	"export":      EXPORT,
 }
 
 // LookupIdent checks if an identifier is a keyword and returns the appropriate token type.
@@ -281,7 +300,8 @@ func IsKeyword(t Type) bool {
 		BREAK, CONTINUE, CLASS, EXTENDS, NEW, THIS, SUPER,
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL, SWITCH, CASE, DEFAULT, OF,
 		TRY, CATCH, THROW,
-		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE:
+		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
+		MAP, INTERFACE, IMPORT, FROM, EXPORT:
 		return true
 	}
 	return false

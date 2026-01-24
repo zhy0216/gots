@@ -7,8 +7,17 @@ import (
 
 // Program represents a type-checked program ready for code generation.
 type Program struct {
+	// GoImports contains Go package imports.
+	GoImports []*GoImportDecl
+
+	// ModuleImports contains local module imports.
+	ModuleImports []*ModuleImportDecl
+
 	// TypeAliases contains type alias declarations.
 	TypeAliases []*TypeAlias
+
+	// Interfaces contains interface declarations.
+	Interfaces []*InterfaceDecl
 
 	// Classes contains class declarations.
 	Classes []*ClassDecl
@@ -18,6 +27,9 @@ type Program struct {
 
 	// TopLevel contains top-level statements (executed in main).
 	TopLevel []Stmt
+
+	// Exports contains the names of exported declarations.
+	Exports []string
 }
 
 // TypeAlias represents a resolved type alias.

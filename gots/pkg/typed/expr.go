@@ -152,6 +152,7 @@ func (f *FuncExpr) Type() types.Type { return f.ExprType }
 // NewExpr represents object instantiation.
 type NewExpr struct {
 	ClassName string
+	TypeArgs  []types.Type // Type arguments for generic class instantiation
 	Args      []Expr
 	ExprType  types.Type // *types.Class
 }
@@ -217,6 +218,31 @@ type BuiltinCall struct {
 
 func (b *BuiltinCall) exprNode()        {}
 func (b *BuiltinCall) Type() types.Type { return b.ExprType }
+
+// MapLit represents a map literal.
+type MapLit struct {
+	Entries  []*MapEntry
+	ExprType types.Type // *types.Map
+}
+
+type MapEntry struct {
+	Key   Expr
+	Value Expr
+}
+
+func (m *MapLit) exprNode()        {}
+func (m *MapLit) Type() types.Type { return m.ExprType }
+
+// MethodCallExpr represents a method call on an object (e.g., map.get("key")).
+type MethodCallExpr struct {
+	Object   Expr
+	Method   string
+	Args     []Expr
+	ExprType types.Type
+}
+
+func (m *MethodCallExpr) exprNode()        {}
+func (m *MethodCallExpr) Type() types.Type { return m.ExprType }
 
 // tokenOpToString converts token.Type to operator string.
 func TokenOpToString(op ast.Node) string {

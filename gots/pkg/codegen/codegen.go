@@ -13,18 +13,27 @@ import (
 
 // Generator transforms typed AST into Go source code.
 type Generator struct {
-	buf            *bytes.Buffer
-	indent         int
-	imports        map[string]bool
-	currentRetType types.Type        // Track return type for type assertions
-	currentClass   *typed.ClassDecl  // Track current class for super() handling
+	buf             *bytes.Buffer
+	indent          int
+	imports         map[string]bool
+	goImportedNames map[string]string // maps imported name to its package
+	currentRetType  types.Type        // Track return type for type assertions
+	currentClass    *typed.ClassDecl  // Track current class for super() handling
 }
 
 // Generate produces Go source code from a typed program.
 func Generate(prog *typed.Program) ([]byte, error) {
 	g := &Generator{
-		buf:     new(bytes.Buffer),
-		imports: make(map[string]bool),
+		buf:             new(bytes.Buffer),
+		imports:         make(map[string]bool),
+		goImportedNames: make(map[string]string),
+	}
+
+	// Build map of imported names to their packages
+	for _, imp := range prog.GoImports {
+		for _, name := range imp.Names {
+			g.goImportedNames[name] = imp.Package
+		}
 	}
 
 	// First pass: collect required imports
@@ -49,6 +58,11 @@ func (g *Generator) collectImports(prog *typed.Program) {
 	g.imports["fmt"] = true
 	// reflect is needed for dynamic function calls
 	g.imports["reflect"] = true
+
+	// Add Go package imports from the source
+	for _, imp := range prog.GoImports {
+		g.imports[imp.Package] = true
+	}
 
 	// Check for math functions
 	for _, fn := range prog.Functions {
@@ -202,6 +216,16 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		g.collectImportsFromExpr(e.Value)
 	case *typed.UpdateExpr:
 		g.collectImportsFromExpr(e.Operand)
+	case *typed.MapLit:
+		for _, entry := range e.Entries {
+			g.collectImportsFromExpr(entry.Key)
+			g.collectImportsFromExpr(entry.Value)
+		}
+	case *typed.MethodCallExpr:
+		g.collectImportsFromExpr(e.Object)
+		for _, arg := range e.Args {
+			g.collectImportsFromExpr(arg)
+		}
 	}
 }
 
@@ -230,6 +254,12 @@ func (g *Generator) genProgram(prog *typed.Program) {
 	// Generate runtime helpers
 	g.genRuntime()
 	g.writeln("")
+
+	// Generate interfaces
+	for _, iface := range prog.Interfaces {
+		g.genInterface(iface)
+		g.writeln("")
+	}
 
 	// Generate classes as structs
 	for _, class := range prog.Classes {
@@ -496,11 +526,53 @@ func (g *Generator) genRuntime() {
 	g.writeln("}")
 }
 
+// genInterface generates a Go interface type from an InterfaceDecl.
+func (g *Generator) genInterface(iface *typed.InterfaceDecl) {
+	name := exportName(iface.Name)
+
+	g.writeln("type %s interface {", name)
+	g.indent++
+
+	for _, method := range iface.Methods {
+		params := make([]string, len(method.Params))
+		for i, p := range method.Params {
+			params[i] = fmt.Sprintf("%s %s", goName(p.Name), g.goType(p.Type))
+		}
+
+		if method.ReturnType == nil || types.VoidType.Equals(method.ReturnType) {
+			g.writeln("%s(%s)", exportName(method.Name), strings.Join(params, ", "))
+		} else {
+			g.writeln("%s(%s) %s", exportName(method.Name), strings.Join(params, ", "), g.goType(method.ReturnType))
+		}
+	}
+
+	g.indent--
+	g.writeln("}")
+}
+
 func (g *Generator) genClass(class *typed.ClassDecl) {
 	name := exportName(class.Name)
 
+	// Generate type parameters for generic classes
+	typeParamStr := ""
+	typeParamNames := ""
+	if len(class.TypeParams) > 0 {
+		typeParams := make([]string, len(class.TypeParams))
+		typeNames := make([]string, len(class.TypeParams))
+		for i, tp := range class.TypeParams {
+			typeNames[i] = tp.Name
+			if tp.Constraint != nil {
+				typeParams[i] = fmt.Sprintf("%s %s", tp.Name, g.goType(tp.Constraint))
+			} else {
+				typeParams[i] = fmt.Sprintf("%s any", tp.Name)
+			}
+		}
+		typeParamStr = fmt.Sprintf("[%s]", strings.Join(typeParams, ", "))
+		typeParamNames = fmt.Sprintf("[%s]", strings.Join(typeNames, ", "))
+	}
+
 	// Generate struct
-	g.writeln("type %s struct {", name)
+	g.writeln("type %s%s struct {", name, typeParamStr)
 	g.indent++
 
 	// Embed super class if present
@@ -524,9 +596,9 @@ func (g *Generator) genClass(class *typed.ClassDecl) {
 			params[i] = fmt.Sprintf("%s %s", goName(p.Name), g.goType(p.Type))
 		}
 
-		g.writeln("func New%s(%s) *%s {", name, strings.Join(params, ", "), name)
+		g.writeln("func New%s%s(%s) *%s%s {", name, typeParamStr, strings.Join(params, ", "), name, typeParamNames)
 		g.indent++
-		g.writeln("this := &%s{}", name)
+		g.writeln("this := &%s%s{}", name, typeParamNames)
 
 		// Set current class for super() handling
 		prevClass := g.currentClass
@@ -545,9 +617,9 @@ func (g *Generator) genClass(class *typed.ClassDecl) {
 		g.writeln("")
 	} else {
 		// Default constructor
-		g.writeln("func New%s() *%s {", name, name)
+		g.writeln("func New%s%s() *%s%s {", name, typeParamStr, name, typeParamNames)
 		g.indent++
-		g.writeln("return &%s{}", name)
+		g.writeln("return &%s%s{}", name, typeParamNames)
 		g.indent--
 		g.writeln("}")
 		g.writeln("")
@@ -562,9 +634,9 @@ func (g *Generator) genClass(class *typed.ClassDecl) {
 
 		returnType := g.goType(method.ReturnType)
 		if returnType == "" {
-			g.writeln("func (this *%s) %s(%s) {", name, exportName(method.Name), strings.Join(params, ", "))
+			g.writeln("func (this *%s%s) %s(%s) {", name, typeParamNames, exportName(method.Name), strings.Join(params, ", "))
 		} else {
-			g.writeln("func (this *%s) %s(%s) %s {", name, exportName(method.Name), strings.Join(params, ", "), returnType)
+			g.writeln("func (this *%s%s) %s(%s) %s {", name, typeParamNames, exportName(method.Name), strings.Join(params, ", "), returnType)
 		}
 		g.indent++
 
@@ -590,10 +662,24 @@ func (g *Generator) genFuncDecl(fn *typed.FuncDecl) {
 	savedRetType := g.currentRetType
 	g.currentRetType = fn.ReturnType
 
+	// Generate type parameters for generic functions
+	typeParamStr := ""
+	if len(fn.TypeParams) > 0 {
+		typeParams := make([]string, len(fn.TypeParams))
+		for i, tp := range fn.TypeParams {
+			if tp.Constraint != nil {
+				typeParams[i] = fmt.Sprintf("%s %s", tp.Name, g.goType(tp.Constraint))
+			} else {
+				typeParams[i] = fmt.Sprintf("%s any", tp.Name)
+			}
+		}
+		typeParamStr = fmt.Sprintf("[%s]", strings.Join(typeParams, ", "))
+	}
+
 	if returnType == "" {
-		g.writeln("func %s(%s) {", goName(fn.Name), strings.Join(params, ", "))
+		g.writeln("func %s%s(%s) {", goName(fn.Name), typeParamStr, strings.Join(params, ", "))
 	} else {
-		g.writeln("func %s(%s) %s {", goName(fn.Name), strings.Join(params, ", "), returnType)
+		g.writeln("func %s%s(%s) %s {", goName(fn.Name), typeParamStr, strings.Join(params, ", "), returnType)
 	}
 	g.indent++
 
@@ -947,6 +1033,10 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 		return "nil"
 
 	case *typed.Ident:
+		// Check if this is an imported Go package function
+		if pkg, ok := g.goImportedNames[e.Name]; ok {
+			return pkg + "." + e.Name
+		}
 		return goName(e.Name)
 
 	case *typed.BinaryExpr:
@@ -993,6 +1083,12 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 
 	case *typed.UpdateExpr:
 		return g.genUpdateExpr(e)
+
+	case *typed.MapLit:
+		return g.genMapLit(e)
+
+	case *typed.MethodCallExpr:
+		return g.genMethodCallExpr(e)
 	}
 
 	return "nil"
@@ -1397,6 +1493,71 @@ func (g *Generator) genUpdateExpr(expr *typed.UpdateExpr) string {
 	return fmt.Sprintf("%s%s", operand, expr.Op)
 }
 
+func (g *Generator) genMapLit(expr *typed.MapLit) string {
+	mapType := expr.ExprType.(*types.Map)
+	goKeyType := g.goType(mapType.Key)
+	goValType := g.goType(mapType.Value)
+
+	if len(expr.Entries) == 0 {
+		return fmt.Sprintf("make(map[%s]%s)", goKeyType, goValType)
+	}
+
+	entries := make([]string, len(expr.Entries))
+	for i, entry := range expr.Entries {
+		entries[i] = fmt.Sprintf("%s: %s", g.genExpr(entry.Key), g.genExpr(entry.Value))
+	}
+
+	return fmt.Sprintf("map[%s]%s{%s}", goKeyType, goValType, strings.Join(entries, ", "))
+}
+
+func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
+	obj := g.genExpr(expr.Object)
+	objType := types.Unwrap(expr.Object.Type())
+
+	// Handle Map method calls
+	if mapType, ok := objType.(*types.Map); ok {
+		args := make([]string, len(expr.Args))
+		for i, arg := range expr.Args {
+			args[i] = g.genExpr(arg)
+		}
+
+		switch expr.Method {
+		case "get":
+			// m.get(key) => m[key]
+			return fmt.Sprintf("%s[%s]", obj, args[0])
+
+		case "set":
+			// m.set(key, value) => m[key] = value (as statement, returns nothing)
+			return fmt.Sprintf("%s[%s] = %s", obj, args[0], args[1])
+
+		case "has":
+			// m.has(key) => func() bool { _, ok := m[key]; return ok }()
+			return fmt.Sprintf("func() bool { _, ok := %s[%s]; return ok }()", obj, args[0])
+
+		case "delete":
+			// m.delete(key) => delete(m, key)
+			return fmt.Sprintf("delete(%s, %s)", obj, args[0])
+
+		case "keys":
+			// m.keys() => func() []K { keys := make([]K, 0, len(m)); for k := range m { keys = append(keys, k) }; return keys }()
+			keyType := g.goType(mapType.Key)
+			return fmt.Sprintf("func() []%s { keys := make([]%s, 0, len(%s)); for k := range %s { keys = append(keys, k) }; return keys }()", keyType, keyType, obj, obj)
+
+		case "values":
+			// m.values() => func() []V { vals := make([]V, 0, len(m)); for _, v := range m { vals = append(vals, v) }; return vals }()
+			valType := g.goType(mapType.Value)
+			return fmt.Sprintf("func() []%s { vals := make([]%s, 0, len(%s)); for _, v := range %s { vals = append(vals, v) }; return vals }()", valType, valType, obj, obj)
+		}
+	}
+
+	// Fallback for other method calls
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+	return fmt.Sprintf("%s.%s(%s)", obj, exportName(expr.Method), strings.Join(args, ", "))
+}
+
 // ----------------------------------------------------------------------------
 // Type Mapping
 // ----------------------------------------------------------------------------
@@ -1431,6 +1592,9 @@ func (g *Generator) goType(t types.Type) string {
 
 	case *types.Array:
 		return "[]" + g.goType(typ.Element)
+
+	case *types.Map:
+		return fmt.Sprintf("map[%s]%s", g.goType(typ.Key), g.goType(typ.Value))
 
 	case *types.Object:
 		// Anonymous struct
@@ -1467,6 +1631,29 @@ func (g *Generator) goType(t types.Type) string {
 		return "*" + inner
 
 	case *types.Class:
+		// Check if this class was instantiated from a generic class
+		if typ.GenericBaseName != "" && len(typ.TypeArgs) > 0 {
+			typeArgs := make([]string, len(typ.TypeArgs))
+			for i, ta := range typ.TypeArgs {
+				typeArgs[i] = g.goType(ta)
+			}
+			return fmt.Sprintf("*%s[%s]", exportName(typ.GenericBaseName), strings.Join(typeArgs, ", "))
+		}
+		return "*" + exportName(typ.Name)
+
+	case *types.Interface:
+		return exportName(typ.Name)
+
+	case *types.TypeParameter:
+		// Type parameters are used directly by name in Go generics
+		return typ.Name
+
+	case *types.GenericFunction:
+		// For generic function types, use interface{} as they need special handling
+		return "interface{}"
+
+	case *types.GenericClass:
+		// For generic class types without type arguments, use the name with type parameter placeholder
 		return "*" + exportName(typ.Name)
 	}
 

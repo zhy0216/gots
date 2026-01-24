@@ -120,6 +120,7 @@ func (t *ThrowStmt) stmtNode() {}
 // FuncDecl represents a top-level function declaration.
 type FuncDecl struct {
 	Name       string
+	TypeParams []*types.TypeParameter // Generic type parameters
 	Params     []*Param
 	ReturnType types.Type
 	Body       *BlockStmt
@@ -131,7 +132,8 @@ func (f *FuncDecl) stmtNode() {}
 // ClassDecl represents a class declaration.
 type ClassDecl struct {
 	Name        string
-	Super       string // Empty if no superclass
+	TypeParams  []*types.TypeParameter // Generic type parameters
+	Super       string                 // Empty if no superclass
 	SuperClass  *types.Class
 	Fields      []*FieldDecl
 	Constructor *ConstructorDecl
@@ -159,3 +161,41 @@ type MethodDecl struct {
 	ReturnType types.Type
 	Body       *BlockStmt
 }
+
+// InterfaceDecl represents a typed interface declaration.
+type InterfaceDecl struct {
+	Name    string
+	Methods []*InterfaceMethodDecl
+}
+
+func (i *InterfaceDecl) stmtNode() {}
+
+// InterfaceMethodDecl represents a method signature in a typed interface.
+type InterfaceMethodDecl struct {
+	Name       string
+	Params     []*Param
+	ReturnType types.Type
+}
+
+// GoImportDecl represents an import from a Go package.
+type GoImportDecl struct {
+	Names   []string // Imported names
+	Package string   // Go package path
+}
+
+func (g *GoImportDecl) stmtNode() {}
+
+// ModuleImportDecl represents an import from a local module.
+type ModuleImportDecl struct {
+	Names []string // Imported names
+	Path  string   // Module path (e.g., "./math")
+}
+
+func (m *ModuleImportDecl) stmtNode() {}
+
+// ExportModifier wraps a declaration that is exported.
+type ExportModifier struct {
+	Decl Stmt // The exported declaration
+}
+
+func (e *ExportModifier) stmtNode() {}

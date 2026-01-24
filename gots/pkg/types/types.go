@@ -100,6 +100,68 @@ func (a *Array) Equals(other Type) bool {
 }
 
 // ----------------------------------------------------------------------------
+// Map Type
+// ----------------------------------------------------------------------------
+
+// Map represents a map type (e.g., Map<string, int>).
+type Map struct {
+	Key   Type
+	Value Type
+}
+
+func (m *Map) typeNode() {}
+func (m *Map) String() string {
+	return fmt.Sprintf("Map<%s, %s>", m.Key.String(), m.Value.String())
+}
+
+func (m *Map) Equals(other Type) bool {
+	if o, ok := other.(*Map); ok {
+		return m.Key.Equals(o.Key) && m.Value.Equals(o.Value)
+	}
+	return false
+}
+
+// ----------------------------------------------------------------------------
+// Interface Type
+// ----------------------------------------------------------------------------
+
+// InterfaceMethod represents a method signature in an interface.
+type InterfaceMethod struct {
+	Name       string
+	Params     []*Param
+	ReturnType Type
+}
+
+// Interface represents an interface type.
+type Interface struct {
+	Name    string
+	Methods map[string]*InterfaceMethod
+}
+
+func (i *Interface) typeNode() {}
+func (i *Interface) String() string {
+	return i.Name
+}
+
+func (i *Interface) Equals(other Type) bool {
+	if o, ok := other.(*Interface); ok {
+		return i.Name == o.Name
+	}
+	return false
+}
+
+// HasMethod checks if the interface has a method with the given name.
+func (i *Interface) HasMethod(name string) bool {
+	_, ok := i.Methods[name]
+	return ok
+}
+
+// GetMethod returns the method with the given name, or nil if not found.
+func (i *Interface) GetMethod(name string) *InterfaceMethod {
+	return i.Methods[name]
+}
+
+// ----------------------------------------------------------------------------
 // Object Type
 // ----------------------------------------------------------------------------
 
@@ -243,11 +305,13 @@ type Method struct {
 
 // Class represents a class type.
 type Class struct {
-	Name        string
-	Super       *Class
-	Fields      map[string]*Field
-	Methods     map[string]*Method
-	Constructor *Function
+	Name            string
+	Super           *Class
+	Fields          map[string]*Field
+	Methods         map[string]*Method
+	Constructor     *Function
+	GenericBaseName string // Original name if instantiated from a generic class (e.g., "Box")
+	TypeArgs        []Type // Type arguments if instantiated (e.g., [int])
 }
 
 func (c *Class) typeNode() {}
@@ -398,6 +462,10 @@ func IsAssignableTo(from, to Type) bool {
 	if fromClass, ok := from.(*Class); ok {
 		if toClass, ok := to.(*Class); ok {
 			return fromClass.IsSubclassOf(toClass)
+		}
+		// Class can be assigned to interface if it implements the interface
+		if toInterface, ok := to.(*Interface); ok {
+			return classImplementsInterface(fromClass, toInterface)
 		}
 	}
 
@@ -555,4 +623,297 @@ func NumericResultType(left, right Type) Type {
 		}
 	}
 	return FloatType
+}
+
+// classImplementsInterface checks if a class implements an interface (structural typing).
+func classImplementsInterface(class *Class, iface *Interface) bool {
+	for methodName, ifaceMethod := range iface.Methods {
+		classMethod := class.GetMethod(methodName)
+		if classMethod == nil {
+			return false
+		}
+
+		// Check parameter count
+		if len(classMethod.Params) != len(ifaceMethod.Params) {
+			return false
+		}
+
+		// Check parameter types
+		for i, ifaceParam := range ifaceMethod.Params {
+			if !classMethod.Params[i].Type.Equals(ifaceParam.Type) {
+				return false
+			}
+		}
+
+		// Check return type
+		if !classMethod.ReturnType.Equals(ifaceMethod.ReturnType) {
+			return false
+		}
+	}
+	return true
+}
+
+// ----------------------------------------------------------------------------
+// Type Parameter
+// ----------------------------------------------------------------------------
+
+// TypeParameter represents a generic type parameter (e.g., T in function identity<T>).
+type TypeParameter struct {
+	Name       string
+	Constraint Type // Optional constraint (e.g., T extends Comparable)
+}
+
+func (t *TypeParameter) typeNode() {}
+func (t *TypeParameter) String() string {
+	if t.Constraint != nil {
+		return fmt.Sprintf("%s extends %s", t.Name, t.Constraint.String())
+	}
+	return t.Name
+}
+
+func (t *TypeParameter) Equals(other Type) bool {
+	if ot, ok := other.(*TypeParameter); ok {
+		return t.Name == ot.Name
+	}
+	return false
+}
+
+// SatisfiesConstraint checks if a type satisfies this type parameter's constraint.
+func (t *TypeParameter) SatisfiesConstraint(typ Type) bool {
+	if t.Constraint == nil {
+		return true
+	}
+	return IsAssignableTo(typ, t.Constraint)
+}
+
+// ----------------------------------------------------------------------------
+// Generic Function Type
+// ----------------------------------------------------------------------------
+
+// GenericFunction represents a generic function type.
+type GenericFunction struct {
+	TypeParams []*TypeParameter
+	Params     []*Param
+	ReturnType Type
+}
+
+func (g *GenericFunction) typeNode() {}
+func (g *GenericFunction) String() string {
+	typeParams := make([]string, len(g.TypeParams))
+	for i, tp := range g.TypeParams {
+		typeParams[i] = tp.String()
+	}
+	params := make([]string, len(g.Params))
+	for i, p := range g.Params {
+		params[i] = p.Type.String()
+	}
+	return fmt.Sprintf("<%s>(%s) => %s", strings.Join(typeParams, ", "), strings.Join(params, ", "), g.ReturnType.String())
+}
+
+func (g *GenericFunction) Equals(other Type) bool {
+	if og, ok := other.(*GenericFunction); ok {
+		if len(g.TypeParams) != len(og.TypeParams) {
+			return false
+		}
+		if len(g.Params) != len(og.Params) {
+			return false
+		}
+		for i, tp := range g.TypeParams {
+			if !tp.Equals(og.TypeParams[i]) {
+				return false
+			}
+		}
+		for i, p := range g.Params {
+			if !p.Type.Equals(og.Params[i].Type) {
+				return false
+			}
+		}
+		return g.ReturnType.Equals(og.ReturnType)
+	}
+	return false
+}
+
+// Instantiate creates a concrete function type by substituting type parameters.
+func (g *GenericFunction) Instantiate(typeArgs []Type) (*Function, error) {
+	if len(typeArgs) != len(g.TypeParams) {
+		return nil, fmt.Errorf("expected %d type arguments, got %d", len(g.TypeParams), len(typeArgs))
+	}
+
+	// Build substitution map
+	subst := make(map[string]Type)
+	for i, tp := range g.TypeParams {
+		if !tp.SatisfiesConstraint(typeArgs[i]) {
+			return nil, fmt.Errorf("type %s does not satisfy constraint %s", typeArgs[i].String(), tp.Constraint.String())
+		}
+		subst[tp.Name] = typeArgs[i]
+	}
+
+	// Substitute in params
+	params := make([]*Param, len(g.Params))
+	for i, p := range g.Params {
+		params[i] = &Param{
+			Name: p.Name,
+			Type: substituteType(p.Type, subst),
+		}
+	}
+
+	return &Function{
+		Params:     params,
+		ReturnType: substituteType(g.ReturnType, subst),
+	}, nil
+}
+
+// ----------------------------------------------------------------------------
+// Generic Class Type
+// ----------------------------------------------------------------------------
+
+// GenericClass represents a generic class type (e.g., Stack<T>).
+type GenericClass struct {
+	Name        string
+	TypeParams  []*TypeParameter
+	Super       *Class
+	Fields      map[string]*Field
+	Methods     map[string]*Method
+	Constructor *Function
+}
+
+func (g *GenericClass) typeNode() {}
+func (g *GenericClass) String() string {
+	typeParams := make([]string, len(g.TypeParams))
+	for i, tp := range g.TypeParams {
+		typeParams[i] = tp.String()
+	}
+	return fmt.Sprintf("%s<%s>", g.Name, strings.Join(typeParams, ", "))
+}
+
+func (g *GenericClass) Equals(other Type) bool {
+	if og, ok := other.(*GenericClass); ok {
+		return g.Name == og.Name
+	}
+	return false
+}
+
+// Instantiate creates a concrete class type by substituting type parameters.
+func (g *GenericClass) Instantiate(typeArgs []Type) (*Class, error) {
+	if len(typeArgs) != len(g.TypeParams) {
+		return nil, fmt.Errorf("expected %d type arguments, got %d", len(g.TypeParams), len(typeArgs))
+	}
+
+	// Build substitution map
+	subst := make(map[string]Type)
+	for i, tp := range g.TypeParams {
+		if !tp.SatisfiesConstraint(typeArgs[i]) {
+			return nil, fmt.Errorf("type %s does not satisfy constraint %s", typeArgs[i].String(), tp.Constraint.String())
+		}
+		subst[tp.Name] = typeArgs[i]
+	}
+
+	// Create instantiated class name (e.g., Stack_int)
+	argNames := make([]string, len(typeArgs))
+	for i, t := range typeArgs {
+		argNames[i] = typeNameForInstantiation(t)
+	}
+	instName := g.Name + "_" + strings.Join(argNames, "_")
+
+	// Substitute in fields
+	fields := make(map[string]*Field)
+	for name, f := range g.Fields {
+		fields[name] = &Field{
+			Name: f.Name,
+			Type: substituteType(f.Type, subst),
+		}
+	}
+
+	// Substitute in methods
+	methods := make(map[string]*Method)
+	for name, m := range g.Methods {
+		params := make([]*Param, len(m.Params))
+		for i, p := range m.Params {
+			params[i] = &Param{
+				Name: p.Name,
+				Type: substituteType(p.Type, subst),
+			}
+		}
+		methods[name] = &Method{
+			Name:       m.Name,
+			Params:     params,
+			ReturnType: substituteType(m.ReturnType, subst),
+		}
+	}
+
+	// Substitute in constructor
+	var constructor *Function
+	if g.Constructor != nil {
+		params := make([]*Param, len(g.Constructor.Params))
+		for i, p := range g.Constructor.Params {
+			params[i] = &Param{
+				Name: p.Name,
+				Type: substituteType(p.Type, subst),
+			}
+		}
+		constructor = &Function{
+			Params:     params,
+			ReturnType: g.Constructor.ReturnType,
+		}
+	}
+
+	return &Class{
+		Name:            instName,
+		Super:           g.Super,
+		Fields:          fields,
+		Methods:         methods,
+		Constructor:     constructor,
+		GenericBaseName: g.Name,
+		TypeArgs:        typeArgs,
+	}, nil
+}
+
+// substituteType replaces type parameters with their concrete types.
+func substituteType(t Type, subst map[string]Type) Type {
+	switch typ := t.(type) {
+	case *TypeParameter:
+		if concrete, ok := subst[typ.Name]; ok {
+			return concrete
+		}
+		return t
+	case *Array:
+		return &Array{Element: substituteType(typ.Element, subst)}
+	case *Map:
+		return &Map{
+			Key:   substituteType(typ.Key, subst),
+			Value: substituteType(typ.Value, subst),
+		}
+	case *Nullable:
+		return &Nullable{Inner: substituteType(typ.Inner, subst)}
+	case *Function:
+		params := make([]*Param, len(typ.Params))
+		for i, p := range typ.Params {
+			params[i] = &Param{
+				Name: p.Name,
+				Type: substituteType(p.Type, subst),
+			}
+		}
+		return &Function{
+			Params:     params,
+			ReturnType: substituteType(typ.ReturnType, subst),
+		}
+	default:
+		return t
+	}
+}
+
+// typeNameForInstantiation returns a simple name for a type suitable for instantiation names.
+func typeNameForInstantiation(t Type) string {
+	switch typ := t.(type) {
+	case *Primitive:
+		return typ.String()
+	case *Class:
+		return typ.Name
+	case *Array:
+		return "arr_" + typeNameForInstantiation(typ.Element)
+	case *Map:
+		return "map_" + typeNameForInstantiation(typ.Key) + "_" + typeNameForInstantiation(typ.Value)
+	default:
+		return "unknown"
+	}
 }
