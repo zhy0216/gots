@@ -160,6 +160,16 @@ func (b *Builder) Build(program *ast.Program) *Program {
 			b.collectModuleImport(s)
 		case *ast.ExportModifier:
 			b.collectExport(s)
+		case *ast.DefaultExport:
+			// Collect types from default exports
+			switch d := s.Decl.(type) {
+			case *ast.TypeAliasDecl:
+				b.collectTypeAlias(d)
+			case *ast.ClassDecl:
+				b.collectClass(d)
+			case *ast.InterfaceDecl:
+				b.collectInterface(d)
+			}
 		}
 	}
 
@@ -182,20 +192,34 @@ func (b *Builder) Build(program *ast.Program) *Program {
 			case *ast.InterfaceDecl:
 				b.resolveInterface(d)
 			}
+		case *ast.DefaultExport:
+			// Resolve types for default exports
+			switch d := s.Decl.(type) {
+			case *ast.TypeAliasDecl:
+				b.resolveTypeAlias(d)
+			case *ast.ClassDecl:
+				b.resolveClass(d)
+			case *ast.InterfaceDecl:
+				b.resolveInterface(d)
+			}
 		}
 	}
 
 	// Third pass: build typed AST
 	result := &Program{
-		GoImports:     b.goImports,
-		ModuleImports: b.moduleImports,
-		TypeAliases:   make([]*TypeAlias, 0),
-		Enums:         make([]*EnumDecl, 0),
-		Classes:       make([]*ClassDecl, 0),
-		Interfaces:    make([]*InterfaceDecl, 0),
-		Functions:     make([]*FuncDecl, 0),
-		TopLevel:      make([]Stmt, 0),
-		Exports:       b.exports,
+		GoImports:        b.goImports,
+		ModuleImports:    b.moduleImports,
+		DefaultImports:   make([]*DefaultImport, 0),
+		NamespaceImports: make([]*NamespaceImport, 0),
+		TypeAliases:      make([]*TypeAlias, 0),
+		Enums:            make([]*EnumDecl, 0),
+		Classes:          make([]*ClassDecl, 0),
+		Interfaces:       make([]*InterfaceDecl, 0),
+		Functions:        make([]*FuncDecl, 0),
+		TopLevel:         make([]Stmt, 0),
+		Exports:          b.exports,
+		ReExports:        make([]*ReExportDecl, 0),
+		DefaultExports:   make([]*DefaultExport, 0),
 	}
 
 	for _, stmt := range program.Statements {
@@ -206,6 +230,36 @@ func (b *Builder) Build(program *ast.Program) *Program {
 
 		case *ast.ModuleImportDecl:
 			// Already handled in collectModuleImport, skip
+			continue
+
+		case *ast.DefaultImport:
+			result.DefaultImports = append(result.DefaultImports, &DefaultImport{
+				Name: s.Name,
+				Path: s.Path,
+			})
+			continue
+
+		case *ast.NamespaceImport:
+			result.NamespaceImports = append(result.NamespaceImports, &NamespaceImport{
+				Alias: s.Alias,
+				Path:  s.Path,
+			})
+			continue
+
+		case *ast.ReExportDecl:
+			result.ReExports = append(result.ReExports, &ReExportDecl{
+				Names:      s.Names,
+				Path:       s.Path,
+				IsWildcard: s.IsWildcard,
+			})
+			continue
+
+		case *ast.DefaultExport:
+			// Build the default export
+			typedDecl := b.buildDecl(s.Decl)
+			result.DefaultExports = append(result.DefaultExports, &DefaultExport{
+				Decl: typedDecl,
+			})
 			continue
 
 		case *ast.ExportModifier:
@@ -513,6 +567,20 @@ func (b *Builder) buildExportedDecl(decl ast.Statement, result *Program) {
 	case *ast.InterfaceDecl:
 		ifaceDecl := b.buildInterfaceDecl(d)
 		result.Interfaces = append(result.Interfaces, ifaceDecl)
+	}
+}
+
+// buildDecl builds a typed declaration from an AST declaration.
+func (b *Builder) buildDecl(decl ast.Statement) Stmt {
+	switch d := decl.(type) {
+	case *ast.FuncDecl:
+		return b.buildFuncDecl(d)
+	case *ast.ClassDecl:
+		return b.buildClassDecl(d)
+	case *ast.VarDecl:
+		return b.buildVarDecl(d)
+	default:
+		return nil
 	}
 }
 
@@ -1660,19 +1728,35 @@ func (b *Builder) buildSpreadExpr(expr *ast.SpreadExpr) Expr {
 
 // isBuiltin checks if a name is a built-in function.
 var builtins = map[string]types.Type{
-	"println":  &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.VoidType},
-	"print":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.VoidType},
-	"len":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
-	"push":     &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "val", Type: types.AnyType}}, ReturnType: types.VoidType},
-	"pop":      &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}}, ReturnType: types.AnyType},
-	"typeof":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
-	"tostring": &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
-	"toint":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
-	"tofloat":  &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.FloatType},
-	"sqrt":     &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
-	"floor":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
-	"ceil":     &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
-	"abs":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	"println":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.VoidType},
+	"print":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.VoidType},
+	"len":        &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
+	"push":       &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "val", Type: types.AnyType}}, ReturnType: types.VoidType},
+	"pop":        &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}}, ReturnType: types.AnyType},
+	"typeof":     &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
+	"tostring":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
+	"toint":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
+	"tofloat":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.FloatType},
+	"sqrt":       &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	"floor":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	"ceil":       &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	"abs":        &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	// String methods
+	"split":      &types.Function{Params: []*types.Param{{Name: "str", Type: types.StringType}, {Name: "sep", Type: types.StringType}}, ReturnType: &types.Array{Element: types.StringType}},
+	"join":       &types.Function{Params: []*types.Param{{Name: "arr", Type: &types.Array{Element: types.StringType}}, {Name: "sep", Type: types.StringType}}, ReturnType: types.StringType},
+	"replace":    &types.Function{Params: []*types.Param{{Name: "str", Type: types.StringType}, {Name: "old", Type: types.StringType}, {Name: "new", Type: types.StringType}}, ReturnType: types.StringType},
+	"trim":       &types.Function{Params: []*types.Param{{Name: "str", Type: types.StringType}}, ReturnType: types.StringType},
+	"startsWith": &types.Function{Params: []*types.Param{{Name: "str", Type: types.StringType}, {Name: "prefix", Type: types.StringType}}, ReturnType: types.BooleanType},
+	"endsWith":   &types.Function{Params: []*types.Param{{Name: "str", Type: types.StringType}, {Name: "suffix", Type: types.StringType}}, ReturnType: types.BooleanType},
+	"includes":   &types.Function{Params: []*types.Param{{Name: "str", Type: types.StringType}, {Name: "substr", Type: types.StringType}}, ReturnType: types.BooleanType},
+	// Array methods (higher-order functions)
+	"map":       &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.AnyType},
+	"filter":    &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.AnyType},
+	"reduce":    &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "initial", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.AnyType},
+	"find":      &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.AnyType},
+	"findIndex": &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.IntType},
+	"some":      &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.BooleanType},
+	"every":     &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.BooleanType},
 }
 
 func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
@@ -1692,6 +1776,35 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 				if arrType, ok := argType.(*types.Array); ok {
 					returnType = arrType.Element
 				}
+			}
+
+			// Special case: map returns array of callback return type
+			if ident.Name == "map" && len(args) > 0 {
+				argType := types.Unwrap(args[0].Type())
+				if arrType, ok := argType.(*types.Array); ok {
+					returnType = arrType // Default to same array type
+				}
+			}
+
+			// Special case: filter returns same array type as input
+			if ident.Name == "filter" && len(args) > 0 {
+				argType := types.Unwrap(args[0].Type())
+				if arrType, ok := argType.(*types.Array); ok {
+					returnType = arrType
+				}
+			}
+
+			// Special case: find returns element type of array
+			if ident.Name == "find" && len(args) > 0 {
+				argType := types.Unwrap(args[0].Type())
+				if arrType, ok := argType.(*types.Array); ok {
+					returnType = arrType.Element
+				}
+			}
+
+			// Special case: reduce returns the type of initial value
+			if ident.Name == "reduce" && len(args) > 1 {
+				returnType = args[1].Type()
 			}
 
 			return &BuiltinCall{
@@ -1714,6 +1827,9 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		}
 		if arrType, ok := objType.(*types.Array); ok {
 			return b.buildArrayMethodCall(objExpr, arrType, propExpr.Property, expr)
+		}
+		if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
+			return b.buildStringMethodCall(objExpr, propExpr.Property, expr)
 		}
 	}
 
@@ -2805,6 +2921,130 @@ func (b *Builder) buildArrayMethodCall(obj Expr, arrType *types.Array, method st
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown Array method: %s", method)
+		resultType = types.AnyType
+	}
+
+	return &MethodCallExpr{
+		Object:   obj,
+		Method:   method,
+		Args:     args,
+		ExprType: resultType,
+	}
+}
+
+// buildStringMethodCall handles method calls on string types
+func (b *Builder) buildStringMethodCall(obj Expr, method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	var resultType types.Type
+
+	switch method {
+	case "split":
+		// split(separator: string): string[]
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.split expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), types.StringType) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.split separator must be string, got %s", args[0].Type().String())
+		}
+		resultType = &types.Array{Element: types.StringType}
+
+	case "replace":
+		// replace(old: string, new: string): string
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.replace expects 2 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "trim":
+		// trim(): string
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.trim expects 0 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "startsWith":
+		// startsWith(prefix: string): boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.startsWith expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), types.StringType) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.startsWith prefix must be string, got %s", args[0].Type().String())
+		}
+		resultType = types.BooleanType
+
+	case "endsWith":
+		// endsWith(suffix: string): boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.endsWith expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), types.StringType) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.endsWith suffix must be string, got %s", args[0].Type().String())
+		}
+		resultType = types.BooleanType
+
+	case "includes":
+		// includes(substring: string): boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.includes expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), types.StringType) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.includes substring must be string, got %s", args[0].Type().String())
+		}
+		resultType = types.BooleanType
+
+	case "toLowerCase":
+		// toLowerCase(): string
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.toLowerCase expects 0 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "toUpperCase":
+		// toUpperCase(): string
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.toUpperCase expects 0 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "substring":
+		// substring(start: int, end?: int): string
+		if len(args) < 1 || len(args) > 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.substring expects 1-2 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "charAt":
+		// charAt(index: int): string
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.charAt expects 1 argument, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "indexOf":
+		// indexOf(substring: string): int
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.indexOf expects 1 argument, got %d", len(args))
+		}
+		resultType = types.IntType
+
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown String method: %s", method)
 		resultType = types.AnyType
 	}
 

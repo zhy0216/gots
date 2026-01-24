@@ -13,6 +13,12 @@ type Program struct {
 	// ModuleImports contains local module imports.
 	ModuleImports []*ModuleImportDecl
 
+	// DefaultImports contains default imports.
+	DefaultImports []*DefaultImport
+
+	// NamespaceImports contains namespace imports.
+	NamespaceImports []*NamespaceImport
+
 	// TypeAliases contains type alias declarations.
 	TypeAliases []*TypeAlias
 
@@ -33,6 +39,12 @@ type Program struct {
 
 	// Exports contains the names of exported declarations.
 	Exports []string
+
+	// ReExports contains re-export statements.
+	ReExports []*ReExportDecl
+
+	// DefaultExports contains default export statements.
+	DefaultExports []*DefaultExport
 }
 
 // TypeAlias represents a resolved type alias.

@@ -1128,3 +1128,62 @@ func (e *ExportModifier) TokenLiteral() string { return e.Token.Literal }
 func (e *ExportModifier) String() string {
 	return "export " + e.Decl.String()
 }
+
+// ReExportDecl represents a re-export statement.
+// e.g., export { foo, bar } from "./module" or export * from "./module"
+type ReExportDecl struct {
+	Token      token.Token // The 'export' token
+	Names      []string    // The names being re-exported (empty for wildcard)
+	Path       string      // The module path
+	IsWildcard bool        // true for "export *"
+}
+
+func (r *ReExportDecl) statementNode()       {}
+func (r *ReExportDecl) TokenLiteral() string { return r.Token.Literal }
+func (r *ReExportDecl) String() string {
+	if r.IsWildcard {
+		return fmt.Sprintf("export * from \"%s\"", r.Path)
+	}
+	return fmt.Sprintf("export { %s } from \"%s\"", strings.Join(r.Names, ", "), r.Path)
+}
+
+// DefaultExport represents a default export statement.
+// e.g., export default class Foo {} or export default function() {}
+type DefaultExport struct {
+	Token token.Token // The 'export' token
+	Decl  Statement   // The declaration being exported (can be class, function, or expression)
+}
+
+func (d *DefaultExport) statementNode()       {}
+func (d *DefaultExport) TokenLiteral() string { return d.Token.Literal }
+func (d *DefaultExport) String() string {
+	return "export default " + d.Decl.String()
+}
+
+// DefaultImport represents a default import statement.
+// e.g., import Foo from "./module"
+type DefaultImport struct {
+	Token token.Token // The 'import' token
+	Name  string      // The name to bind the default export
+	Path  string      // The module path
+}
+
+func (d *DefaultImport) statementNode()       {}
+func (d *DefaultImport) TokenLiteral() string { return d.Token.Literal }
+func (d *DefaultImport) String() string {
+	return fmt.Sprintf("import %s from \"%s\"", d.Name, d.Path)
+}
+
+// NamespaceImport represents a namespace import statement.
+// e.g., import * as utils from "./utils"
+type NamespaceImport struct {
+	Token token.Token // The 'import' token
+	Alias string      // The namespace alias
+	Path  string      // The module path
+}
+
+func (n *NamespaceImport) statementNode()       {}
+func (n *NamespaceImport) TokenLiteral() string { return n.Token.Literal }
+func (n *NamespaceImport) String() string {
+	return fmt.Sprintf("import * as %s from \"%s\"", n.Alias, n.Path)
+}

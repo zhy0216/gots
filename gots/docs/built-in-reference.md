@@ -1,480 +1,473 @@
-# goTS Built-in Functions Reference
+## String Methods
 
-This document describes all built-in functions available in goTS programs.
+String values in goTS have built-in methods for common string operations.
 
-## Console Output
+### split
 
-### println
-
-Prints values to standard output with a newline.
+Splits a string into an array of substrings using a delimiter.
 
 **Signature:**
 ```typescript
-function println(...args: any): void
+str.split(separator: string): string[]
 ```
 
 **Parameters:**
-- `args` - Variable number of arguments of any type
+- `separator` - The delimiter to split on
 
-**Returns:** void
+**Returns:** string[] - Array of substrings
 
 **Examples:**
 ```typescript
-println("Hello, world!")
-println(42)
-println("x =", 10, "y =", 20)
+let str: string = "a,b,c"
+let parts: string[] = str.split(",")
+println(len(parts))  // 3
+
+let path = "folder/subfolder/file.txt"
+let segments = path.split("/")
+println(segments[0])  // "folder"
 ```
 
-**Go Mapping:** `fmt.Println()`
+**Go Mapping:** `strings.Split()`
 
 ---
 
-### print
+### replace
 
-Prints values to standard output without a newline.
+Replaces all occurrences of a substring with another string.
 
 **Signature:**
 ```typescript
-function print(...args: any): void
+str.replace(old: string, new: string): string
 ```
 
 **Parameters:**
-- `args` - Variable number of arguments of any type
+- `old` - The substring to replace
+- `new` - The replacement string
 
-**Returns:** void
+**Returns:** string - The string with replacements made
 
 **Examples:**
 ```typescript
-print("Hello")
-print(" ")
-print("world")
-// Output: Hello world
+let str: string = "hello world"
+let newStr: string = str.replace("world", "goTS")
+println(newStr)  // "hello goTS"
+
+let text = "I like apples and apples"
+println(text.replace("apples", "oranges"))  // "I like oranges and oranges"
 ```
 
-**Go Mapping:** `fmt.Print()`
+**Go Mapping:** `strings.Replace()`
 
 ---
 
-## Array Operations
+### trim
 
-### len
-
-Returns the length of an array or string.
+Removes leading and trailing whitespace from a string.
 
 **Signature:**
 ```typescript
-function len(arr: T[] | string): int
+str.trim(): string
 ```
 
-**Parameters:**
-- `arr` - An array or string
-
-**Returns:** int - The number of elements in the array or characters in the string
+**Returns:** string - The trimmed string
 
 **Examples:**
 ```typescript
-let arr = [1, 2, 3, 4, 5]
-println(len(arr))  // 5
+let str: string = "  hello  "
+let trimmed: string = str.trim()
+println(trimmed)  // "hello"
 
-let str = "hello"
-println(len(str))  // 5
+let input = "\n\ttext\t\n"
+println(input.trim())  // "text"
 ```
 
-**Go Mapping:** `len()`
+**Go Mapping:** `strings.TrimSpace()`
 
 ---
 
-### push
+### startsWith
 
-Appends an element to the end of an array.
+Checks if a string starts with a given prefix.
 
 **Signature:**
 ```typescript
-function push<T>(arr: T[], element: T): void
+str.startsWith(prefix: string): boolean
 ```
 
 **Parameters:**
-- `arr` - The array to append to
-- `element` - The element to append
+- `prefix` - The prefix to look for
 
-**Returns:** void (modifies array in-place)
-
-**Examples:**
-```typescript
-let numbers: int[] = [1, 2, 3]
-push(numbers, 4)
-println(numbers)  // [1, 2, 3, 4]
-
-let names: string[] = ["Alice", "Bob"]
-push(names, "Charlie")
-println(names)  // ["Alice", "Bob", "Charlie"]
-```
-
-**Go Mapping:** `arr = append(arr, element)`
-
-**Note:** In goTS, `push` modifies the array in-place. The array variable must be mutable (`let`, not `const`).
-
----
-
-### pop
-
-Removes and returns the last element from an array.
-
-**Signature:**
-```typescript
-function pop<T>(arr: T[]): T
-```
-
-**Parameters:**
-- `arr` - The array to pop from
-
-**Returns:** T - The removed element
+**Returns:** boolean - true if the string starts with the prefix
 
 **Examples:**
 ```typescript
-let numbers: int[] = [1, 2, 3, 4, 5]
-let last = pop(numbers)
-println(last)      // 5
-println(numbers)   // [1, 2, 3, 4]
-
-let names: string[] = ["Alice", "Bob", "Charlie"]
-let name = pop(names)
-println(name)   // "Charlie"
-```
-
-**Go Mapping:**
-```go
-last := arr[len(arr)-1]
-arr = arr[:len(arr)-1]
-```
-
-**Note:** Behavior is undefined if the array is empty. Always check `len(arr) > 0` before calling `pop`.
-
----
-
-## Type Operations
-
-### typeof
-
-Returns the type of a value as a string.
-
-**Signature:**
-```typescript
-function typeof(value: any): string
-```
-
-**Parameters:**
-- `value` - Any value
-
-**Returns:** string - Type name: "int", "float", "string", "bool", "array", "object", "function", "null"
-
-**Examples:**
-```typescript
-println(typeof(42))           // "int"
-println(typeof(3.14))         // "float"
-println(typeof("hello"))      // "string"
-println(typeof(true))         // "bool"
-println(typeof([1, 2, 3]))    // "array"
-println(typeof(null))         // "null"
-
-let f = function(): void {}
-println(typeof(f))            // "function"
-```
-
-**Go Mapping:** Uses `reflect.TypeOf()` with custom type name mapping
-
----
-
-## Type Conversion
-
-### tostring
-
-Converts a value to a string.
-
-**Signature:**
-```typescript
-function tostring(value: any): string
-```
-
-**Parameters:**
-- `value` - Value to convert (int, float, boolean, string, etc.)
-
-**Returns:** string - String representation of the value
-
-**Examples:**
-```typescript
-println(tostring(42))          // "42"
-println(tostring(3.14))        // "3.14"
-println(tostring(true))        // "true"
-println(tostring(false))       // "false"
-
-let x = 100
-let msg = "The value is " + tostring(x)
-println(msg)  // "The value is 100"
-```
-
-**Go Mapping:** `fmt.Sprint()` or `strconv` functions
-
----
-
-### toint
-
-Converts a value to an integer.
-
-**Signature:**
-```typescript
-function toint(value: string | float | int): int
-```
-
-**Parameters:**
-- `value` - String, float, or int to convert
-
-**Returns:** int - Integer value
-
-**Examples:**
-```typescript
-println(toint("42"))      // 42
-println(toint(3.14))      // 3
-println(toint(3.99))      // 3  (truncates decimal)
-println(toint(100))       // 100
-
-// Parse strings
-let num = toint("123")
-println(num + 1)  // 124
-```
-
-**Go Mapping:**
-- String: `strconv.Atoi()`
-- Float: `int(value)`
-- Int: identity
-
-**Note:** Returns 0 if string parsing fails.
-
----
-
-### tofloat
-
-Converts a value to a floating-point number.
-
-**Signature:**
-```typescript
-function tofloat(value: string | int | float): float
-```
-
-**Parameters:**
-- `value` - String, int, or float to convert
-
-**Returns:** float - Floating-point value
-
-**Examples:**
-```typescript
-println(tofloat("3.14"))   // 3.14
-println(tofloat(42))       // 42.0
-println(tofloat(10))       // 10.0
-
-// Parse strings
-let pi = tofloat("3.14159")
-println(pi * 2)  // 6.28318
-```
-
-**Go Mapping:**
-- String: `strconv.ParseFloat()`
-- Int: `float64(value)`
-- Float: identity
-
-**Note:** Returns 0.0 if string parsing fails.
-
----
-
-## Math Functions
-
-### sqrt
-
-Calculates the square root of a number.
-
-**Signature:**
-```typescript
-function sqrt(x: float | int): float
-```
-
-**Parameters:**
-- `x` - A non-negative number
-
-**Returns:** float - Square root of x
-
-**Examples:**
-```typescript
-println(sqrt(16))      // 4.0
-println(sqrt(2))       // 1.414...
-println(sqrt(100.0))   // 10.0
-
-// Pythagorean theorem
-let a = 3.0
-let b = 4.0
-let c = sqrt(a*a + b*b)
-println(c)  // 5.0
-```
-
-**Go Mapping:** `math.Sqrt()`
-
----
-
-### floor
-
-Returns the largest integer less than or equal to a number.
-
-**Signature:**
-```typescript
-function floor(x: float | int): float
-```
-
-**Parameters:**
-- `x` - A number
-
-**Returns:** float - Largest integer ≤ x (as float)
-
-**Examples:**
-```typescript
-println(floor(3.7))    // 3.0
-println(floor(3.2))    // 3.0
-println(floor(-2.3))   // -3.0
-println(floor(5))      // 5.0
-```
-
-**Go Mapping:** `math.Floor()`
-
----
-
-### ceil
-
-Returns the smallest integer greater than or equal to a number.
-
-**Signature:**
-```typescript
-function ceil(x: float | int): float
-```
-
-**Parameters:**
-- `x` - A number
-
-**Returns:** float - Smallest integer ≥ x (as float)
-
-**Examples:**
-```typescript
-println(ceil(3.2))    // 4.0
-println(ceil(3.7))    // 4.0
-println(ceil(-2.3))   // -2.0
-println(ceil(5))      // 5.0
-```
-
-**Go Mapping:** `math.Ceil()`
-
----
-
-### abs
-
-Returns the absolute value of a number.
-
-**Signature:**
-```typescript
-function abs(x: float | int): float
-```
-
-**Parameters:**
-- `x` - A number
-
-**Returns:** float - Absolute value of x
-
-**Examples:**
-```typescript
-println(abs(-5))      // 5.0
-println(abs(3.14))    // 3.14
-println(abs(-2.5))    // 2.5
-println(abs(0))       // 0.0
-
-let distance = abs(x2 - x1)
-```
-
-**Go Mapping:** `math.Abs()`
-
----
-
-## Function Reference Table
-
-| Function | Purpose | Parameters | Return Type |
-|----------|---------|------------|-------------|
-| `println` | Print with newline | `...any` | `void` |
-| `print` | Print without newline | `...any` | `void` |
-| `len` | Get array/string length | `T[] \| string` | `int` |
-| `push` | Append to array | `T[], T` | `void` |
-| `pop` | Remove last element | `T[]` | `T` |
-| `typeof` | Get type name | `any` | `string` |
-| `tostring` | Convert to string | `any` | `string` |
-| `toint` | Convert to int | `string \| float \| int` | `int` |
-| `tofloat` | Convert to float | `string \| int \| float` | `float` |
-| `sqrt` | Square root | `float \| int` | `float` |
-| `floor` | Round down | `float \| int` | `float` |
-| `ceil` | Round up | `float \| int` | `float` |
-| `abs` | Absolute value | `float \| int` | `float` |
-
-## Usage Notes
-
-### Type Flexibility
-
-Most built-in functions that accept numeric arguments work with both `int` and `float`:
-
-```typescript
-println(sqrt(16))      // int argument
-println(sqrt(16.0))    // float argument
-
-println(abs(-5))       // int argument
-println(abs(-5.5))     // float argument
-```
-
-### Array Mutability
-
-Functions that modify arrays (`push`, `pop`) require the array variable to be declared with `let`:
-
-```typescript
-let arr: int[] = [1, 2, 3]
-push(arr, 4)  // OK
-
-const fixed: int[] = [1, 2, 3]
-// push(fixed, 4)  // Error: cannot modify const
-```
-
-### Type Conversion Chain
-
-You can chain type conversions:
-
-```typescript
-let str = "42"
-let num = toint(str)
-let result = num * 2
-println(tostring(result))  // "84"
-```
-
-### Dynamic Typing with `any`
-
-When working with `Function` or `any` types, use type checking and conversion:
-
-```typescript
-function process(value: any): void {
-    if (typeof(value) == "int") {
-        println("Integer: " + tostring(value))
-    } else if (typeof(value) == "string") {
-        println("String: " + value)
-    }
+let str: string = "hello world"
+let starts: boolean = str.startsWith("hello")
+println(starts)  // true
+
+if (filename.startsWith("test_")) {
+    println("Test file detected")
 }
 ```
 
-## Runtime Helpers
+**Go Mapping:** `strings.HasPrefix()`
 
-The following functions are generated by the goTS compiler for internal use:
+---
 
-- `gts_call` - Dynamic function invocation
-- `gts_toint` - Runtime integer conversion
-- `gts_tofloat` - Runtime float conversion
-- `gts_tostring` - Runtime string conversion
+### endsWith
 
-These are not directly callable from goTS code but are used in generated Go code for type coercion and dynamic operations.
+Checks if a string ends with a given suffix.
+
+**Signature:**
+```typescript
+str.endsWith(suffix: string): boolean
+```
+
+**Parameters:**
+- `suffix` - The suffix to look for
+
+**Returns:** boolean - true if the string ends with the suffix
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let ends: boolean = str.endsWith("world")
+println(ends)  // true
+
+if (filename.endsWith(".gts")) {
+    println("goTS source file")
+}
+```
+
+**Go Mapping:** `strings.HasSuffix()`
+
+---
+
+### includes
+
+Checks if a string contains a substring.
+
+**Signature:**
+```typescript
+str.includes(substr: string): boolean
+```
+
+**Parameters:**
+- `substr` - The substring to search for
+
+**Returns:** boolean - true if the substring is found
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let has: boolean = str.includes("world")
+println(has)  // true
+
+if (email.includes("@")) {
+    println("Valid email format")
+}
+```
+
+**Go Mapping:** `strings.Contains()`
+
+---
+
+### toLowerCase
+
+Converts a string to lowercase.
+
+**Signature:**
+```typescript
+str.toLowerCase(): string
+```
+
+**Returns:** string - The lowercase string
+
+**Examples:**
+```typescript
+let str: string = "HELLO WORLD"
+let lower: string = str.toLowerCase()
+println(lower)  // "hello world"
+```
+
+**Go Mapping:** `strings.ToLower()`
+
+---
+
+### toUpperCase
+
+Converts a string to uppercase.
+
+**Signature:**
+```typescript
+str.toUpperCase(): string
+```
+
+**Returns:** string - The uppercase string
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let upper: string = str.toUpperCase()
+println(upper)  // "HELLO WORLD"
+```
+
+**Go Mapping:** `strings.ToUpper()`
+
+---
+
+### indexOf
+
+Finds the index of the first occurrence of a substring.
+
+**Signature:**
+```typescript
+str.indexOf(substring: string): int
+```
+
+**Parameters:**
+- `substring` - The substring to search for
+
+**Returns:** int - Index of first occurrence, or -1 if not found
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let idx: int = str.indexOf("world")
+println(idx)  // 6
+```
+
+**Go Mapping:** `strings.Index()`
+
+---
+## Array Methods
+
+Array values in goTS have built-in methods for functional programming operations.
+
+### map
+
+Transforms each element of an array using a callback function.
+
+**Signature:**
+```typescript
+arr.map<T, U>(fn: (x: T) => U): U[]
+```
+
+**Parameters:**
+- `fn` - Function to apply to each element
+
+**Returns:** Array of transformed elements
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3]
+let doubled: int[] = arr.map((x: int): int => x * 2)
+println(doubled)  // [2, 4, 6]
+
+let nums = [1, 2, 3, 4, 5]
+let squares = nums.map((n: int): int => n * n)
+```
+
+**Go Mapping:** Inline loop with result array
+
+---
+
+### filter
+
+Filters array elements based on a predicate function.
+
+**Signature:**
+```typescript
+arr.filter<T>(fn: (x: T) => boolean): T[]
+```
+
+**Parameters:**
+- `fn` - Predicate function returning true to keep element
+
+**Returns:** Array containing only elements that pass the test
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+let evens: int[] = arr.filter((x: int): boolean => x % 2 == 0)
+println(evens)  // [2, 4]
+
+let names = ["Alice", "Bob", "Anna"]
+let aNames = names.filter((n: string): boolean => n.startsWith("A"))
+```
+
+**Go Mapping:** Inline loop with conditional append
+
+---
+
+### reduce
+
+Reduces an array to a single value using an accumulator function.
+
+**Signature:**
+```typescript
+arr.reduce<T, U>(fn: (acc: U, x: T) => U, initial: U): U
+```
+
+**Parameters:**
+- `fn` - Reducer function taking accumulator and current element
+- `initial` - Initial accumulator value
+
+**Returns:** Final accumulated value
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+let sum: int = arr.reduce((acc: int, x: int): int => acc + x, 0)
+println(sum)  // 15
+
+let product = [1, 2, 3, 4].reduce((acc: int, x: int): int => acc * x, 1)
+println(product)  // 24
+```
+
+**Go Mapping:** Inline loop with accumulator
+
+---
+
+### find
+
+Finds the first element that satisfies a predicate.
+
+**Signature:**
+```typescript
+arr.find<T>(fn: (x: T) => boolean): T | null
+```
+
+**Parameters:**
+- `fn` - Predicate function
+
+**Returns:** First element that matches, or null if none found
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+let found: int | null = arr.find((x: int): boolean => x > 3)
+println(found)  // 4
+
+let names = ["Alice", "Bob", "Charlie"]
+let longName = names.find((n: string): boolean => len(n) > 5)
+```
+
+**Go Mapping:** Inline loop with early return
+
+---
+
+### findIndex
+
+Finds the index of the first element that satisfies a predicate.
+
+**Signature:**
+```typescript
+arr.findIndex<T>(fn: (x: T) => boolean): int
+```
+
+**Parameters:**
+- `fn` - Predicate function
+
+**Returns:** Index of first matching element, or -1 if none found
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+let idx: int = arr.findIndex((x: int): boolean => x > 3)
+println(idx)  // 3
+
+if (arr.findIndex((x: int): boolean => x < 0) == -1) {
+    println("No negative numbers")
+}
+```
+
+**Go Mapping:** Inline loop with index tracking
+
+---
+
+### some
+
+Tests whether at least one element passes the predicate.
+
+**Signature:**
+```typescript
+arr.some<T>(fn: (x: T) => boolean): boolean
+```
+
+**Parameters:**
+- `fn` - Predicate function
+
+**Returns:** true if any element passes the test
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+let hasEven: boolean = arr.some((x: int): boolean => x % 2 == 0)
+println(hasEven)  // true
+
+if (scores.some((s: int): boolean => s < 60)) {
+    println("Some students failed")
+}
+```
+
+**Go Mapping:** Inline loop with early return
+
+---
+
+### every
+
+Tests whether all elements pass the predicate.
+
+**Signature:**
+```typescript
+arr.every<T>(fn: (x: T) => boolean): boolean
+```
+
+**Parameters:**
+- `fn` - Predicate function
+
+**Returns:** true if all elements pass the test
+
+**Examples:**
+```typescript
+let arr: int[] = [2, 4, 6, 8]
+let allEven: boolean = arr.every((x: int): boolean => x % 2 == 0)
+println(allEven)  // true
+
+if (ages.every((a: int): boolean => a >= 18)) {
+    println("All adults")
+}
+```
+
+**Go Mapping:** Inline loop with early return
+
+---
+
+### join
+
+Joins an array of strings into a single string using a separator.
+
+**Signature:**
+```typescript
+arr.join(separator: string): string
+```
+
+**Parameters:**
+- `separator` - The string to insert between elements
+
+**Returns:** string - The joined string
+
+**Examples:**
+```typescript
+let parts: string[] = ["a", "b", "c"]
+let str: string = parts.join(",")
+println(str)  // "a,b,c"
+
+let words = ["Hello", "World"]
+println(words.join(" "))  // "Hello World"
+```
+
+**Go Mapping:** `strings.Join()`
+
+---

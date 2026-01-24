@@ -2054,9 +2054,66 @@ func (p *Parser) parseInterfaceMethod() *ast.InterfaceMethod {
 // parseImportDeclaration parses an import statement.
 // import { Name1, Name2 } from "go:package"  - Go package import
 // import { Name1, Name2 } from "./module"    - Module import
+// import Foo from "./module"                  - Default import
+// import * as utils from "./utils"            - Namespace import
 func (p *Parser) parseImportDeclaration() ast.Statement {
 	importToken := p.curToken
 
+	// Check for default import: import Foo from "./module"
+	if p.peekTokenIs(token.IDENT) {
+		p.nextToken() // move to identifier
+		name := p.curToken.Literal
+
+		// Expect 'from'
+		if !p.expectPeek(token.FROM) {
+			return nil
+		}
+
+		// Expect module string
+		if !p.expectPeek(token.STRING) {
+			return nil
+		}
+
+		return &ast.DefaultImport{
+			Token: importToken,
+			Name:  name,
+			Path:  p.curToken.Literal,
+		}
+	}
+
+	// Check for namespace import: import * as utils from "./utils"
+	if p.peekTokenIs(token.STAR) {
+		p.nextToken() // move to *
+
+		// Expect 'as'
+		if !p.expectPeek(token.AS) {
+			return nil
+		}
+
+		// Expect alias identifier
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		alias := p.curToken.Literal
+
+		// Expect 'from'
+		if !p.expectPeek(token.FROM) {
+			return nil
+		}
+
+		// Expect module string
+		if !p.expectPeek(token.STRING) {
+			return nil
+		}
+
+		return &ast.NamespaceImport{
+			Token: importToken,
+			Alias: alias,
+			Path:  p.curToken.Literal,
+		}
+	}
+
+	// Named imports: import { Name1, Name2 } from "./module"
 	// Expect '{'
 	if !p.expectPeek(token.LBRACE) {
 		return nil
@@ -2115,15 +2172,111 @@ func (p *Parser) parseImportDeclaration() ast.Statement {
 }
 
 // parseExportDeclaration parses an export statement.
-// export function foo() { ... }
-// export class Foo { ... }
-// export let x: int = 42
-func (p *Parser) parseExportDeclaration() *ast.ExportModifier {
+// export function foo() { ... }           - Named export
+// export class Foo { ... }                 - Named export
+// export let x: int = 42                   - Named export
+// export default class Foo {}              - Default export
+// export default function foo() {}         - Default export
+// export { foo, bar } from "./module"      - Re-export
+// export * from "./module"                 - Re-export all
+func (p *Parser) parseExportDeclaration() ast.Statement {
 	exportToken := p.curToken
 
-	// Move to the next token which should be the declaration
+	// Move to the next token
 	p.nextToken()
 
+	// Check for re-export: export * from "./module"
+	if p.curToken.Type == token.STAR {
+		// Expect 'from'
+		if !p.expectPeek(token.FROM) {
+			return nil
+		}
+
+		// Expect module string
+		if !p.expectPeek(token.STRING) {
+			return nil
+		}
+
+		return &ast.ReExportDecl{
+			Token:      exportToken,
+			Names:      nil,
+			Path:       p.curToken.Literal,
+			IsWildcard: true,
+		}
+	}
+
+	// Check for re-export: export { foo, bar } from "./module"
+	if p.curToken.Type == token.LBRACE {
+		// Parse exported names
+		names := []string{}
+		for {
+			p.nextToken()
+			if p.curToken.Type == token.RBRACE {
+				break
+			}
+
+			if p.curToken.Type != token.IDENT {
+				p.errors = append(p.errors, fmt.Sprintf("expected identifier in export, got %s", p.curToken.Type))
+				return nil
+			}
+			names = append(names, p.curToken.Literal)
+
+			if p.peekTokenIs(token.COMMA) {
+				p.nextToken() // consume comma
+			} else if p.peekTokenIs(token.RBRACE) {
+				p.nextToken() // consume closing brace
+				break
+			}
+		}
+
+		// Check if followed by 'from' for re-export
+		if p.peekTokenIs(token.FROM) {
+			p.nextToken() // consume 'from'
+
+			// Expect module string
+			if !p.expectPeek(token.STRING) {
+				return nil
+			}
+
+			return &ast.ReExportDecl{
+				Token:      exportToken,
+				Names:      names,
+				Path:       p.curToken.Literal,
+				IsWildcard: false,
+			}
+		}
+
+		// Regular named export (not implemented yet, would need export { foo } syntax)
+		p.errors = append(p.errors, "export { ... } without 'from' is not yet supported")
+		return nil
+	}
+
+	// Check for default export
+	if p.curToken.Type == token.DEFAULT {
+		p.nextToken() // move to the declaration
+
+		var decl ast.Statement
+		switch p.curToken.Type {
+		case token.FUNCTION:
+			decl = p.parseFunctionDeclaration()
+		case token.CLASS:
+			decl = p.parseClassDeclaration()
+		default:
+			p.errors = append(p.errors, fmt.Sprintf("expected function or class after export default, got %s", p.curToken.Type))
+			return nil
+		}
+
+		if decl == nil {
+			return nil
+		}
+
+		return &ast.DefaultExport{
+			Token: exportToken,
+			Decl:  decl,
+		}
+	}
+
+	// Named export
 	var decl ast.Statement
 	switch p.curToken.Type {
 	case token.FUNCTION:

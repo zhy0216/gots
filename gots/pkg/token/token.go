@@ -127,6 +127,7 @@ const (
 	EXPORT    // export
 	DECLARE   // declare
 	MODULE    // module
+	AS        // as
 )
 
 // Token represents a lexical token with its metadata.
@@ -266,6 +267,7 @@ var typeStrings = map[Type]string{
 	EXPORT:    "export",
 	DECLARE:   "declare",
 	MODULE:    "module",
+	AS:        "as",
 }
 
 // keywords maps keyword strings to their token types.
@@ -311,6 +313,7 @@ var keywords = map[string]Type{
 	"export":      EXPORT,
 	"declare":     DECLARE,
 	"module":      MODULE,
+	"as":          AS,
 }
 
 // LookupIdent checks if an identifier is a keyword and returns the appropriate token type.
@@ -329,7 +332,7 @@ func IsKeyword(t Type) bool {
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL, SWITCH, CASE, DEFAULT, OF,
 		TRY, CATCH, THROW, ENUM,
 		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
-		MAP, SET, INTERFACE, IMPORT, FROM, EXPORT, DECLARE, MODULE:
+		MAP, SET, INTERFACE, IMPORT, FROM, EXPORT, DECLARE, MODULE, AS:
 		return true
 	}
 	return false

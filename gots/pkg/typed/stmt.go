@@ -237,6 +237,38 @@ type ModuleImportDecl struct {
 
 func (m *ModuleImportDecl) stmtNode() {}
 
+// DefaultImport represents a default import.
+type DefaultImport struct {
+	Name string // Name to bind the default export
+	Path string // Module path
+}
+
+func (d *DefaultImport) stmtNode() {}
+
+// NamespaceImport represents a namespace import.
+type NamespaceImport struct {
+	Alias string // Namespace alias
+	Path  string // Module path
+}
+
+func (n *NamespaceImport) stmtNode() {}
+
+// ReExportDecl represents a re-export statement.
+type ReExportDecl struct {
+	Names      []string // Names being re-exported (empty for wildcard)
+	Path       string   // Module path
+	IsWildcard bool     // true for "export *"
+}
+
+func (r *ReExportDecl) stmtNode() {}
+
+// DefaultExport represents a default export.
+type DefaultExport struct {
+	Decl Stmt // The declaration being exported
+}
+
+func (d *DefaultExport) stmtNode() {}
+
 // ExportModifier wraps a declaration that is exported.
 type ExportModifier struct {
 	Decl Stmt // The exported declaration

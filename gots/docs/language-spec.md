@@ -744,6 +744,15 @@ export class Point {
 }
 
 export type Coord = {x: int, y: int}
+
+// Default exports
+export default class Calculator {
+    // ...
+}
+
+export default function multiply(a: int, b: int): int {
+    return a * b
+}
 ```
 
 ### 13.2 Imports
@@ -757,6 +766,24 @@ import { add as sum } from "./math"
 
 // Type-only imports
 import type { Coord } from "./types"
+
+// Default imports
+import Calculator from "./calculator"
+import multiply from "./math"
+
+// Namespace imports
+import * as utils from "./utils"
+// Use as: utils.add(1, 2)
+```
+
+### 13.3 Re-exports
+
+```typescript
+// Re-export specific items
+export { foo, bar } from "./module"
+
+// Re-export all
+export * from "./module"
 ```
 
 ## 14. Type System Features

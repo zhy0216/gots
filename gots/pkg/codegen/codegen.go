@@ -161,6 +161,8 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		switch e.Name {
 		case "sqrt", "floor", "ceil", "abs":
 			g.imports["math"] = true
+		case "split", "join", "replace", "trim", "startsWith", "endsWith", "includes":
+			g.imports["strings"] = true
 		}
 		for _, arg := range e.Args {
 			g.collectImportsFromExpr(arg)
@@ -227,6 +229,11 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		g.collectImportsFromExpr(e.Object)
 		for _, arg := range e.Args {
 			g.collectImportsFromExpr(arg)
+		}
+		// Check if this is a string method call that requires strings import
+		objType := types.Unwrap(e.Object.Type())
+		if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
+			g.imports["strings"] = true
 		}
 	}
 }
@@ -536,6 +543,162 @@ func (g *Generator) genRuntime() {
 	g.indent--
 	g.writeln("}")
 	g.writeln("return result")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Array method helpers
+	// gts_map
+	g.writeln("func gts_map(arr interface{}, fn interface{}) interface{} {")
+	g.indent++
+	g.writeln("v := reflect.ValueOf(arr)")
+	g.writeln("if v.Kind() != reflect.Slice {")
+	g.indent++
+	g.writeln("return arr")
+	g.indent--
+	g.writeln("}")
+	g.writeln("resultType := reflect.SliceOf(v.Type().Elem())")
+	g.writeln("result := reflect.MakeSlice(resultType, 0, v.Len())")
+	g.writeln("f := reflect.ValueOf(fn)")
+	g.writeln("for i := 0; i < v.Len(); i++ {")
+	g.indent++
+	g.writeln("elem := v.Index(i)")
+	g.writeln("out := f.Call([]reflect.Value{elem})")
+	g.writeln("result = reflect.Append(result, out[0])")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return result.Interface()")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_filter
+	g.writeln("func gts_filter(arr interface{}, fn interface{}) interface{} {")
+	g.indent++
+	g.writeln("v := reflect.ValueOf(arr)")
+	g.writeln("if v.Kind() != reflect.Slice {")
+	g.indent++
+	g.writeln("return arr")
+	g.indent--
+	g.writeln("}")
+	g.writeln("resultType := reflect.SliceOf(v.Type().Elem())")
+	g.writeln("result := reflect.MakeSlice(resultType, 0, v.Len())")
+	g.writeln("f := reflect.ValueOf(fn)")
+	g.writeln("for i := 0; i < v.Len(); i++ {")
+	g.indent++
+	g.writeln("elem := v.Index(i)")
+	g.writeln("out := f.Call([]reflect.Value{elem})")
+	g.writeln("if out[0].Bool() {")
+	g.indent++
+	g.writeln("result = reflect.Append(result, elem)")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return result.Interface()")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_reduce
+	g.writeln("func gts_reduce(arr interface{}, initial interface{}, fn interface{}) interface{} {")
+	g.indent++
+	g.writeln("v := reflect.ValueOf(arr)")
+	g.writeln("f := reflect.ValueOf(fn)")
+	g.writeln("acc := reflect.ValueOf(initial)")
+	g.writeln("for i := 0; i < v.Len(); i++ {")
+	g.indent++
+	g.writeln("elem := v.Index(i)")
+	g.writeln("out := f.Call([]reflect.Value{acc, elem})")
+	g.writeln("acc = out[0]")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return acc.Interface()")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_find
+	g.writeln("func gts_find(arr interface{}, fn interface{}) interface{} {")
+	g.indent++
+	g.writeln("v := reflect.ValueOf(arr)")
+	g.writeln("f := reflect.ValueOf(fn)")
+	g.writeln("for i := 0; i < v.Len(); i++ {")
+	g.indent++
+	g.writeln("elem := v.Index(i)")
+	g.writeln("out := f.Call([]reflect.Value{elem})")
+	g.writeln("if out[0].Bool() {")
+	g.indent++
+	g.writeln("return elem.Interface()")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("var zero interface{}")
+	g.writeln("return zero")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_findIndex
+	g.writeln("func gts_findIndex(arr interface{}, fn interface{}) int {")
+	g.indent++
+	g.writeln("v := reflect.ValueOf(arr)")
+	g.writeln("f := reflect.ValueOf(fn)")
+	g.writeln("for i := 0; i < v.Len(); i++ {")
+	g.indent++
+	g.writeln("elem := v.Index(i)")
+	g.writeln("out := f.Call([]reflect.Value{elem})")
+	g.writeln("if out[0].Bool() {")
+	g.indent++
+	g.writeln("return i")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return -1")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_some
+	g.writeln("func gts_some(arr interface{}, fn interface{}) bool {")
+	g.indent++
+	g.writeln("v := reflect.ValueOf(arr)")
+	g.writeln("f := reflect.ValueOf(fn)")
+	g.writeln("for i := 0; i < v.Len(); i++ {")
+	g.indent++
+	g.writeln("elem := v.Index(i)")
+	g.writeln("out := f.Call([]reflect.Value{elem})")
+	g.writeln("if out[0].Bool() {")
+	g.indent++
+	g.writeln("return true")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return false")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_every
+	g.writeln("func gts_every(arr interface{}, fn interface{}) bool {")
+	g.indent++
+	g.writeln("v := reflect.ValueOf(arr)")
+	g.writeln("f := reflect.ValueOf(fn)")
+	g.writeln("for i := 0; i < v.Len(); i++ {")
+	g.indent++
+	g.writeln("elem := v.Index(i)")
+	g.writeln("out := f.Call([]reflect.Value{elem})")
+	g.writeln("if !out[0].Bool() {")
+	g.indent++
+	g.writeln("return false")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return true")
 	g.indent--
 	g.writeln("}")
 }
@@ -1400,6 +1563,40 @@ func (g *Generator) genBuiltinCall(expr *typed.BuiltinCall) string {
 		return fmt.Sprintf("math.Ceil(%s)", args[0])
 	case "abs":
 		return fmt.Sprintf("math.Abs(%s)", args[0])
+	// String methods
+	case "split":
+		return fmt.Sprintf("strings.Split(%s, %s)", args[0], args[1])
+	case "join":
+		return fmt.Sprintf("strings.Join(%s, %s)", args[0], args[1])
+	case "replace":
+		return fmt.Sprintf("strings.ReplaceAll(%s, %s, %s)", args[0], args[1], args[2])
+	case "trim":
+		return fmt.Sprintf("strings.TrimSpace(%s)", args[0])
+	case "startsWith":
+		return fmt.Sprintf("strings.HasPrefix(%s, %s)", args[0], args[1])
+	case "endsWith":
+		return fmt.Sprintf("strings.HasSuffix(%s, %s)", args[0], args[1])
+	case "includes":
+		return fmt.Sprintf("strings.Contains(%s, %s)", args[0], args[1])
+	// Array methods
+	case "map":
+		goType := g.goType(expr.ExprType)
+		return fmt.Sprintf("gts_map(%s, %s).(%s)", args[0], args[1], goType)
+	case "filter":
+		goType := g.goType(expr.ExprType)
+		return fmt.Sprintf("gts_filter(%s, %s).(%s)", args[0], args[1], goType)
+	case "reduce":
+		goType := g.goType(expr.ExprType)
+		return fmt.Sprintf("gts_reduce(%s, %s, %s).(%s)", args[0], args[1], args[2], goType)
+	case "find":
+		goType := g.goType(expr.ExprType)
+		return fmt.Sprintf("gts_find(%s, %s).(%s)", args[0], args[1], goType)
+	case "findIndex":
+		return fmt.Sprintf("gts_findIndex(%s, %s)", args[0], args[1])
+	case "some":
+		return fmt.Sprintf("gts_some(%s, %s)", args[0], args[1])
+	case "every":
+		return fmt.Sprintf("gts_every(%s, %s)", args[0], args[1])
 	default:
 		return fmt.Sprintf("%s(%s)", expr.Name, strings.Join(args, ", "))
 	}
@@ -1900,44 +2097,97 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 			return fmt.Sprintf("func() []%s { sort.Slice(%s, func(i, j int) bool { return %s(%s[i], %s[j]) < 0 }); return %s }()", elemType, obj, args[0], obj, obj, obj)
 
 		case "map":
-			// arr.map(callback) => func() []U { result := make([]U, len(arr)); for i, v := range arr { result[i] = callback(v, i) }; return result }()
+			// arr.map(callback) => func() []U { result := make([]U, 0); for _, v := range arr { result = append(result, callback(v)) }; return result }()
 			resultElemType := "interface{}"
 			if exprType, ok := expr.ExprType.(*types.Array); ok {
 				resultElemType = g.goType(exprType.Element)
 			}
-			return fmt.Sprintf("func() []%s { result := make([]%s, len(%s)); for i, v := range %s { result[i] = %s(v, i) }; return result }()", resultElemType, resultElemType, obj, obj, args[0])
+			return fmt.Sprintf("func() []%s { result := make([]%s, 0); for _, v := range %s { result = append(result, %s(v)) }; return result }()", resultElemType, resultElemType, obj, args[0])
 
 		case "filter":
 			// arr.filter(callback) => func() []T { result := make([]T, 0); for i, v := range arr { if callback(v, i) { result = append(result, v) } }; return result }()
-			return fmt.Sprintf("func() []%s { result := make([]%s, 0); for i, v := range %s { if %s(v, i) { result = append(result, v) } }; return result }()", elemType, elemType, obj, args[0])
+			return fmt.Sprintf("func() []%s { result := make([]%s, 0); for _, v := range %s { if %s(v) { result = append(result, v) } }; return result }()", elemType, elemType, obj, args[0])
 
 		case "reduce":
-			// arr.reduce(callback, initialValue) => func() U { acc := initialValue; for i, v := range arr { acc = callback(acc, v, i) }; return acc }()
+			// arr.reduce(callback, initialValue) => func() U { acc := initialValue; for _, v := range arr { acc = callback(acc, v) }; return acc }()
 			accType := "interface{}"
 			if len(args) > 1 {
 				accType = g.goType(expr.Args[1].Type())
 			}
-			return fmt.Sprintf("func() %s { acc := %s; for i, v := range %s { acc = %s(acc, v, i) }; return acc }()", accType, args[1], obj, args[0])
+			return fmt.Sprintf("func() %s { acc := %s; for _, v := range %s { acc = %s(acc, v) }; return acc }()", accType, args[1], obj, args[0])
 
 		case "forEach":
 			// arr.forEach(callback) => func() { for i, v := range arr { callback(v, i) } }()
-			return fmt.Sprintf("func() { for i, v := range %s { %s(v, i) } }()", obj, args[0])
+			return fmt.Sprintf("func() { for _, v := range %s { %s(v) } }()", obj, args[0])
 
 		case "find":
 			// arr.find(callback) => func() *T { for i, v := range arr { if callback(v, i) { return &v } }; return nil }()
-			return fmt.Sprintf("func() *%s { for i, v := range %s { if %s(v, i) { return &v } }; return nil }()", elemType, obj, args[0])
+			return fmt.Sprintf("func() *%s { for _, v := range %s { if %s(v) { return &v } }; return nil }()", elemType, obj, args[0])
 
 		case "findIndex":
-			// arr.findIndex(callback) => func() int { for i, v := range arr { if callback(v, i) { return i } }; return -1 }()
-			return fmt.Sprintf("func() int { for i, v := range %s { if %s(v, i) { return i } }; return -1 }()", obj, args[0])
+			// arr.findIndex(callback) => func() int { for i, v := range arr { if callback(v) { return i } }; return -1 }()
+			return fmt.Sprintf("func() int { for i, v := range %s { if %s(v) { return i } }; return -1 }()", obj, args[0])
 
 		case "some":
 			// arr.some(callback) => func() bool { for i, v := range arr { if callback(v, i) { return true } }; return false }()
-			return fmt.Sprintf("func() bool { for i, v := range %s { if %s(v, i) { return true } }; return false }()", obj, args[0])
+			return fmt.Sprintf("func() bool { for _, v := range %s { if %s(v) { return true } }; return false }()", obj, args[0])
 
 		case "every":
-			// arr.every(callback) => func() bool { for i, v := range arr { if !callback(v, i) { return false } }; return true }()
-			return fmt.Sprintf("func() bool { for i, v := range %s { if !%s(v, i) { return false } }; return true }()", obj, args[0])
+			// arr.every(callback) => func() bool { for _, v := range arr { if !callback(v) { return false } }; return true }()
+			return fmt.Sprintf("func() bool { for _, v := range %s { if !%s(v) { return false } }; return true }()", obj, args[0])
+		}
+	}
+
+	// Handle String method calls
+	if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
+		g.imports["strings"] = true
+		switch expr.Method {
+		case "split":
+			// str.split(separator) => strings.Split(str, separator)
+			return fmt.Sprintf("strings.Split(%s, %s)", obj, args[0])
+
+		case "replace":
+			// str.replace(old, new) => strings.Replace(str, old, new, -1)
+			return fmt.Sprintf("strings.Replace(%s, %s, %s, -1)", obj, args[0], args[1])
+
+		case "trim":
+			// str.trim() => strings.TrimSpace(str)
+			return fmt.Sprintf("strings.TrimSpace(%s)", obj)
+
+		case "startsWith":
+			// str.startsWith(prefix) => strings.HasPrefix(str, prefix)
+			return fmt.Sprintf("strings.HasPrefix(%s, %s)", obj, args[0])
+
+		case "endsWith":
+			// str.endsWith(suffix) => strings.HasSuffix(str, suffix)
+			return fmt.Sprintf("strings.HasSuffix(%s, %s)", obj, args[0])
+
+		case "includes":
+			// str.includes(substring) => strings.Contains(str, substring)
+			return fmt.Sprintf("strings.Contains(%s, %s)", obj, args[0])
+
+		case "toLowerCase":
+			// str.toLowerCase() => strings.ToLower(str)
+			return fmt.Sprintf("strings.ToLower(%s)", obj)
+
+		case "toUpperCase":
+			// str.toUpperCase() => strings.ToUpper(str)
+			return fmt.Sprintf("strings.ToUpper(%s)", obj)
+
+		case "substring":
+			// str.substring(start, end?) => str[start:end]
+			if len(args) == 1 {
+				return fmt.Sprintf("%s[%s:]", obj, args[0])
+			}
+			return fmt.Sprintf("%s[%s:%s]", obj, args[0], args[1])
+
+		case "charAt":
+			// str.charAt(index) => string(str[index])
+			return fmt.Sprintf("string(%s[%s])", obj, args[0])
+
+		case "indexOf":
+			// str.indexOf(substring) => strings.Index(str, substring)
+			return fmt.Sprintf("strings.Index(%s, %s)", obj, args[0])
 		}
 	}
 
