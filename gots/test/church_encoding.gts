@@ -84,20 +84,6 @@ function mult(m: Function, n: Function): Function {
     }
 }
 
-println("Church multiplication:")
-println(churchToInt(mult(two, three)))    // 6
-println(churchToInt(mult(three, four)))   // 12
-
-// Power: raise a Church numeral to a power
-// exp(m, n) = n(m) -- apply m, n times
-function exp(base: Function, power: Function): Function {
-    return power(base)
-}
-
-println("Church exponentiation:")
-println(churchToInt(exp(two, three)))     // 2^3 = 8
-println(churchToInt(exp(three, two)))     // 3^2 = 9
-
 // Convert integer to Church numeral using successor
 function intToChurch(n: int): Function {
     let result: Function = zero
@@ -108,6 +94,29 @@ function intToChurch(n: int): Function {
     }
     return result
 }
+
+println("Church multiplication:")
+println(churchToInt(mult(two, three)))    // 6
+println(churchToInt(mult(three, four)))   // 12
+
+// Power: raise a Church numeral to a power
+// exp(m, n) = n(m) -- apply m, n times
+function exp(base: Function, power: Function): Function {
+    // Church numerals here are int-specialized; exponentiation needs a numeric bridge.
+    let baseInt: int = churchToInt(base)
+    let powerInt: int = churchToInt(power)
+    let result: int = 1
+    let i: int = 0
+    while (i < powerInt) {
+        result = result * baseInt
+        i = i + 1
+    }
+    return intToChurch(result)
+}
+
+println("Church exponentiation:")
+println(churchToInt(exp(two, three)))     // 2^3 = 8
+println(churchToInt(exp(three, two)))     // 3^2 = 9
 
 println("Integer to Church and back:")
 let six: Function = intToChurch(6)
