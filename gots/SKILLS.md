@@ -1,6 +1,6 @@
-# GoTS Development Skills
+# goTS Development Skills
 
-Common patterns and commands for working with the GoTS codebase.
+Common patterns and commands for working with the goTS codebase.
 
 ## Testing Skills
 

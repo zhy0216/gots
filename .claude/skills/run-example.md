@@ -1,4 +1,4 @@
-# Run GoTS Example
+# Run goTS Example
 
 Build and run the example program to test the full pipeline.
 

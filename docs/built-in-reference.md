@@ -1,9 +1,9 @@
-# GoTS Built-in Functions and Objects Reference
+# goTS Built-in Functions and Objects Reference
 
 **Version 2.0**
 **January 2026**
 
-This document describes the built-in functions and objects available in GoTS, designed to closely mirror JavaScript's standard library while being adapted for the GoTS type system and compilation to Go.
+This document describes the built-in functions and objects available in goTS, designed to closely mirror JavaScript's standard library while being adapted for the goTS type system and compilation to Go.
 
 ---
 
@@ -23,7 +23,7 @@ This document describes the built-in functions and objects available in GoTS, de
 
 ## Overview
 
-GoTS provides built-in objects and functions that closely follow JavaScript conventions:
+goTS provides built-in objects and functions that closely follow JavaScript conventions:
 
 - **Console I/O**: Print output to the console
 - **Array**: Full-featured array object with methods like JavaScript
@@ -96,7 +96,7 @@ println("!")
 
 ## Array
 
-Arrays in GoTS are objects with methods, similar to JavaScript arrays. They are generic and type-safe.
+Arrays in goTS are objects with methods, similar to JavaScript arrays. They are generic and type-safe.
 
 ### Creating Arrays
 
@@ -1347,9 +1347,9 @@ println(abs(3.14))                 // Prints: 3.14
 
 ## Comparison with JavaScript
 
-### Available in GoTS
+### Available in goTS
 
-| GoTS | JavaScript Equivalent |
+| goTS | JavaScript Equivalent |
 |------|----------------------|
 | `arr.length` | `arr.length` |
 | `arr.push(x)` | `arr.push(x)` |
@@ -1388,7 +1388,7 @@ println(abs(3.14))                 // Prints: 3.14
 | `set.clear()` | `set.clear()` |
 | `set.values()` | `[...set.values()]` |
 
-### Not Available in GoTS
+### Not Available in goTS
 
 - `Array.from()`, `Array.isArray()`
 - `arr.flat()`, `arr.flatMap()`
@@ -1403,5 +1403,5 @@ println(abs(3.14))                 // Prints: 3.14
 
 ---
 
-**GoTS Built-in Reference v2.0**
+**goTS Built-in Reference v2.0**
 **© 2026**

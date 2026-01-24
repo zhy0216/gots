@@ -1,6 +1,6 @@
-# Test GoTS
+# Test goTS
 
-Run all GoTS tests to verify changes.
+Run all goTS tests to verify changes.
 
 ## Usage
 Run this skill after making changes to verify everything works.

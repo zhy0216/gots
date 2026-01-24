@@ -1,4 +1,4 @@
-# Test Single GoTS Package
+# Test Single goTS Package
 
 Run tests for a specific package with verbose output.
 

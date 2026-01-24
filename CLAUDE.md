@@ -1,10 +1,10 @@
-# GoTS (GoTypeScript)
+# goTS (GoTypeScript)
 
 A TypeScript-like language that compiles to Go.
 
 ## Project Overview
 
-GoTS implements a complete compilation pipeline: lexer → parser → type checker → Go code generator. It transpiles TypeScript-like source code to Go, providing static typing, functions, closures, classes with inheritance, and access to the Go ecosystem.
+goTS implements a complete compilation pipeline: lexer → parser → type checker → Go code generator. It transpiles TypeScript-like source code to Go, providing static typing, functions, closures, classes with inheritance, and access to the Go ecosystem.
 
 ## Important Notes
 
@@ -97,7 +97,7 @@ gots repl                         # Interactive REPL
 // Variables
 let x: int = 42
 let pi: float = 3.14159
-const name: string = "GoTS"
+const name: string = "goTS"
 
 // Functions
 function factorial(n: int): int {

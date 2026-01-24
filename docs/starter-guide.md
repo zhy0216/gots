@@ -1,15 +1,15 @@
-# GoTS Starter Guide
+# goTS Starter Guide
 
-A quick introduction to GoTS, a statically-typed TypeScript subset that compiles to Go.
+A quick introduction to goTS, a statically-typed TypeScript subset that compiles to Go.
 
 ---
 
-## What is GoTS?
+## What is goTS?
 
-GoTS is a minimal, statically-typed programming language with TypeScript-like syntax. It transpiles source code to Go, which is then compiled to native binaries.
+goTS is a minimal, statically-typed programming language with TypeScript-like syntax. It transpiles source code to Go, which is then compiled to native binaries.
 
 **Key features:**
-- TypeScript-compatible syntax (GoTS is a valid TypeScript subset)
+- TypeScript-compatible syntax (goTS is a valid TypeScript subset)
 - Static type checking at compile time
 - First-class functions and closures
 - Classes with inheritance
@@ -67,7 +67,7 @@ gots repl
 ```
 
 ```
-GoTS REPL v0.2.0 (Go transpiler)
+goTS REPL v0.2.0 (Go transpiler)
 Type 'exit' or press Ctrl+D to quit
 
 >>> let x: int = 42
@@ -107,7 +107,7 @@ const MAX: int = 100;
 
 ### Numeric Types
 
-GoTS has two numeric types: `int` and `float`.
+goTS has two numeric types: `int` and `float`.
 
 ```typescript
 let count: int = 42;        // Integer
@@ -286,7 +286,7 @@ if (name != null) {
 ## Example Program
 
 ```typescript
-// FizzBuzz in GoTS
+// FizzBuzz in goTS
 
 function fizzbuzz(n: int): void {
     for (let i: int = 1; i <= n; i = i + 1) {
@@ -311,7 +311,7 @@ fizzbuzz(20);
 
 | Extension | Description                     |
 |-----------|---------------------------------|
-| `.gts`    | GoTS source file                |
+| `.gts`    | goTS source file                |
 
 ---
 

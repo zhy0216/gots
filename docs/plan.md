@@ -1,4 +1,4 @@
-# GoTS Implementation Plan (Next)
+# goTS Implementation Plan (Next)
 
 ## Current Status
 - End-to-end pipeline exists: lexer -> parser -> typed AST builder -> Go codegen -> CLI run/build/emit-go/repl.

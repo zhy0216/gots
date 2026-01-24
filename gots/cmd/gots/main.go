@@ -1,4 +1,4 @@
-// Package main implements the GoTS CLI.
+// Package main implements the goTS CLI.
 package main
 
 import (
@@ -98,7 +98,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("GoTS - A TypeScript-like language that compiles to Go")
+	fmt.Println("goTS - A TypeScript-like language that compiles to Go")
 	fmt.Println()
 	fmt.Println("Usage: gots <command> [arguments]")
 	fmt.Println()
@@ -269,7 +269,7 @@ func compileToGo(source, filename string) ([]byte, error) {
 
 // runRepl starts the REPL
 func runRepl() {
-	fmt.Println("GoTS REPL v" + version + " (Go transpiler)")
+	fmt.Println("goTS REPL v" + version + " (Go transpiler)")
 	fmt.Println("Type 'exit' or press Ctrl+D to quit")
 	fmt.Println()
 

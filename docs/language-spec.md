@@ -1,4 +1,4 @@
-# GoTS Language Specification
+# goTS Language Specification
 
 **Version 1.0**
 **January 2026**
@@ -87,11 +87,11 @@
 
 ## 1. Introduction
 
-GoTS (Go-TypeScript) is a statically-typed programming language with TypeScript-like syntax that compiles to Go. It provides a familiar development experience for TypeScript developers while leveraging the Go ecosystem and toolchain.
+goTS (Go-TypeScript) is a statically-typed programming language with TypeScript-like syntax that compiles to Go. It provides a familiar development experience for TypeScript developers while leveraging the Go ecosystem and toolchain.
 
 ### 1.1 Design Goals
 
-The primary design goals of GoTS are:
+The primary design goals of goTS are:
 
 1. **Static Type Safety**: All types are checked at compile time
 2. **TypeScript Compatibility**: Use TypeScript-like syntax for familiarity
@@ -101,16 +101,16 @@ The primary design goals of GoTS are:
 
 ### 1.2 Relationship to TypeScript
 
-GoTS is designed to be a **strict subset of TypeScript** with the following characteristics:
+goTS is designed to be a **strict subset of TypeScript** with the following characteristics:
 
-- Valid GoTS code should be syntactically valid TypeScript
-- GoTS enforces stricter rules than TypeScript (e.g., all variables require explicit type annotations)
+- Valid goTS code should be syntactically valid TypeScript
+- goTS enforces stricter rules than TypeScript (e.g., all variables require explicit type annotations)
 - Not all TypeScript features are supported (see [Section 10](#10-differences-from-typescript))
-- GoTS uses `int` and `float` as distinct numeric types, whereas TypeScript uses `number`
+- goTS uses `int` and `float` as distinct numeric types, whereas TypeScript uses `number`
 
 ### 1.3 Compilation Model
 
-GoTS follows this compilation pipeline:
+goTS follows this compilation pipeline:
 
 ```
 Source (.gts) → Lexer → Parser → Type Checker → Go Code Generator → go build → Native Binary
@@ -130,11 +130,11 @@ Source (.gts) → Lexer → Parser → Type Checker → Go Code Generator → go
 
 ### 2.1 Programs
 
-A GoTS program consists of a sequence of statements and declarations in a source file with the `.gts` extension.
+A goTS program consists of a sequence of statements and declarations in a source file with the `.gts` extension.
 
 ### 2.2 Comments
 
-GoTS supports single-line comments:
+goTS supports single-line comments:
 
 ```typescript
 // This is a comment
@@ -259,7 +259,7 @@ null
 
 ### 3.1 Type System Overview
 
-GoTS has a **static type system**. Every variable, parameter, and expression has a type that is determined at compile time. Type annotations are **mandatory** for variable declarations, function parameters, and function return types.
+goTS has a **static type system**. Every variable, parameter, and expression has a type that is determined at compile time. Type annotations are **mandatory** for variable declarations, function parameters, and function return types.
 
 ### 3.2 Primitive Types
 
@@ -498,7 +498,7 @@ Type annotations are **required** in the following contexts:
 
 ### 3.10 Type Mapping to Go
 
-| GoTS Type | Go Type | Notes |
+| goTS Type | Go Type | Notes |
 |-----------|---------|-------|
 | `int` | `int` | Integer type |
 | `float` | `float64` | Floating-point type |
@@ -560,7 +560,7 @@ const MAX_SIZE: int = 100
 
 ### 4.3 Scope Rules
 
-GoTS uses **lexical (block) scoping**:
+goTS uses **lexical (block) scoping**:
 
 1. Variables declared in a block are scoped to that block
 2. Inner scopes can access outer scope variables
@@ -1233,7 +1233,7 @@ class Counter {
 
 ### 8.5 Inheritance
 
-GoTS supports **single inheritance** using the `extends` keyword.
+goTS supports **single inheritance** using the `extends` keyword.
 
 **Syntax:**
 ```typescript
@@ -1540,7 +1540,7 @@ println(abs(-3.14))  // 3.14
 
 ### 10.1 Supported Features
 
-GoTS supports the following TypeScript features:
+goTS supports the following TypeScript features:
 
 ✅ **Type Annotations**
 - Primitive types: `int`, `float`, `string`, `boolean`, `void`, `null`
@@ -1587,7 +1587,7 @@ GoTS supports the following TypeScript features:
 
 ### 10.2 Unsupported Features
 
-The following TypeScript features are **not supported** in GoTS:
+The following TypeScript features are **not supported** in goTS:
 
 ❌ **Type System Features**
 - Type inference (all types must be explicit)
@@ -1730,22 +1730,22 @@ this        throw       true        try         typeof
 var         void        while       with        yield
 ```
 
-**Note**: While some keywords (like `case`, `switch`, `var`) are reserved, they are not currently used in GoTS but may be supported in future versions.
+**Note**: While some keywords (like `case`, `switch`, `var`) are reserved, they are not currently used in goTS but may be supported in future versions.
 
 ---
 
 ## Conclusion
 
-GoTS provides a minimal, statically-typed language with TypeScript-like syntax that compiles to efficient Go code. By focusing on a core subset of TypeScript features, GoTS offers:
+goTS provides a minimal, statically-typed language with TypeScript-like syntax that compiles to efficient Go code. By focusing on a core subset of TypeScript features, goTS offers:
 
 - **Simplicity**: Easy to learn and reason about
 - **Safety**: Full static type checking
 - **Performance**: Native code generation via Go
 - **Familiarity**: Syntax compatible with TypeScript
 
-For questions, issues, or contributions, please visit the GoTS repository.
+For questions, issues, or contributions, please visit the goTS repository.
 
 ---
 
-**GoTS Language Specification v1.0**
+**goTS Language Specification v1.0**
 **© 2026**

@@ -1,8 +1,8 @@
-// Y Combinator Test for GoTS
+// Y Combinator Test for goTS
 // The Y combinator enables anonymous recursion without explicit self-reference
 // We use the Z combinator variant which works with strict (call-by-value) evaluation
 
-// Since GoTS doesn't support recursive types, we use a class wrapper
+// Since goTS doesn't support recursive types, we use a class wrapper
 // to enable self-application: x(x) becomes x.call(x)
 class FuncWrapper {
     call: Function

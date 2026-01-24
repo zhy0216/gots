@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GoTS Test Runner
+# goTS Test Runner
 # Usage: ./test.sh [unit|integration|all]
 
 set -e

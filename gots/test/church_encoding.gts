@@ -1,4 +1,4 @@
-// Church Encoding Test for GoTS
+// Church Encoding Test for goTS
 // Church numerals encode natural numbers using only functions
 // A Church numeral n is a function that applies another function n times
 

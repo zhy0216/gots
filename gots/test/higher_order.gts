@@ -1,4 +1,4 @@
-// Higher-Order Functions and Currying Test for GoTS
+// Higher-Order Functions and Currying Test for goTS
 // Demonstrates functional programming patterns
 
 // Currying: transforming a function with multiple arguments

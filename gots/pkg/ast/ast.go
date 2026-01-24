@@ -1,4 +1,4 @@
-// Package ast defines the Abstract Syntax Tree nodes for GoTS.
+// Package ast defines the Abstract Syntax Tree nodes for goTS.
 package ast
 
 import (

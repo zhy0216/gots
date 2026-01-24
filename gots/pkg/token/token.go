@@ -1,4 +1,4 @@
-// Package token defines the token types and utilities for the GoTS lexer.
+// Package token defines the token types and utilities for the goTS lexer.
 package token
 
 // Type represents the type of a token.

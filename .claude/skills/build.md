@@ -1,6 +1,6 @@
-# Build GoTS
+# Build goTS
 
-Build the GoTS CLI executable.
+Build the goTS CLI executable.
 
 ## Usage
 Run this skill to build the gots binary.

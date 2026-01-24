@@ -1,7 +1,7 @@
 // Test: const variables work correctly
 const PI: float = 3.14159
 const MAX_SIZE: int = 100
-const NAME: string = "GoTS"
+const NAME: string = "goTS"
 
 // This should compile - using const values
 println(PI)

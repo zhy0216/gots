@@ -1,4 +1,4 @@
-// Package parser implements the parser for GoTS.
+// Package parser implements the parser for goTS.
 package parser
 
 import (
@@ -63,7 +63,7 @@ type (
 	infixParseFn  func(ast.Expression) ast.Expression
 )
 
-// Parser parses GoTS source code into an AST.
+// Parser parses goTS source code into an AST.
 type Parser struct {
 	l      *lexer.Lexer
 	errors []string

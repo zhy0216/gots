@@ -1,4 +1,4 @@
-// Package module provides module loading and resolution for GoTS.
+// Package module provides module loading and resolution for goTS.
 package module
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/zhy0216/quickts/gots/pkg/types"
 )
 
-// Module represents a loaded GoTS module.
+// Module represents a loaded goTS module.
 type Module struct {
 	Path    string                 // Absolute file path
 	Program *ast.Program           // Parsed AST

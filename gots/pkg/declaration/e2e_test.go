@@ -40,7 +40,7 @@ declare module "go:mylib" {
 	// Add search path to default loader
 	declaration.DefaultLoader.AddSearchPath(tmpDir)
 
-	// GoTS source that uses the declared package
+	// goTS source that uses the declared package
 	source := `
 import { Greet, Add } from "go:mylib"
 
@@ -171,7 +171,7 @@ declare module "go:strictlib" {
 
 	declaration.DefaultLoader.AddSearchPath(tmpDir)
 
-	// GoTS source with type mismatch
+	// goTS source with type mismatch
 	source := `
 import { RequiresInt } from "go:strictlib"
 

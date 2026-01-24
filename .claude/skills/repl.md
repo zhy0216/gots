@@ -1,6 +1,6 @@
-# GoTS REPL
+# goTS REPL
 
-Start the interactive GoTS REPL for testing expressions and statements.
+Start the interactive goTS REPL for testing expressions and statements.
 
 ## Usage
 Run this skill to start an interactive session.

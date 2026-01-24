@@ -1,4 +1,4 @@
-// Test program for GoTS
+// Test program for goTS
 
 let x: int = 10
 let y: int = 20

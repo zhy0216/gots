@@ -179,7 +179,7 @@ func convertAstTypeToType(t ast.Type) Type {
 	case *ast.AnyType:
 		return AnyType
 	case *ast.ByteType:
-		return IntType // byte maps to int in GoTS
+		return IntType // byte maps to int in goTS
 	case *ast.NamedType:
 		// For now, return any for named types (interfaces, classes, etc.)
 		return AnyType
@@ -206,7 +206,7 @@ func convertAstTypeToType(t ast.Type) Type {
 		}
 	case *ast.TupleType:
 		// Tuples from declarations represent Go's multiple return values
-		// For now, we'll treat them as any since GoTS doesn't fully support tuples
+		// For now, we'll treat them as any since goTS doesn't fully support tuples
 		return AnyType
 	}
 	return AnyType

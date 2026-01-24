@@ -1,11 +1,11 @@
-// Package lexer implements the lexical analyzer for GoTS.
+// Package lexer implements the lexical analyzer for goTS.
 package lexer
 
 import (
 	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
-// Lexer performs lexical analysis on GoTS source code.
+// Lexer performs lexical analysis on goTS source code.
 type Lexer struct {
 	input        string
 	position     int  // current position in input (points to current char)

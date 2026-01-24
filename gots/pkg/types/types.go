@@ -1,4 +1,4 @@
-// Package types implements the type system for GoTS.
+// Package types implements the type system for goTS.
 package types
 
 import (

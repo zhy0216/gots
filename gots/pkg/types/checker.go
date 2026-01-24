@@ -1,4 +1,4 @@
-// Package types implements the type checker for GoTS.
+// Package types implements the type checker for goTS.
 package types
 
 import (
@@ -126,7 +126,7 @@ func (tn *TypeNarrowing) Get(name string) Type {
 	return tn.narrowedTypes[name]
 }
 
-// Checker performs type checking on a GoTS AST.
+// Checker performs type checking on a goTS AST.
 type Checker struct {
 	errors       []*Error
 	scope        *Scope
