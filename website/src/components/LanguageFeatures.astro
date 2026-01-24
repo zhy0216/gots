@@ -1,0 +1,38 @@
+---
+const features = [
+  {
+    title: 'Classes & Inheritance',
+    description: 'Full OOP support with classes, constructors, methods, and inheritance'
+  },
+  {
+    title: 'Higher-Order Functions',
+    description: 'First-class functions, closures, and functional programming patterns'
+  },
+  {
+    title: 'Type Inference',
+    description: 'Smart type inference reduces boilerplate while maintaining safety'
+  }
+];
+---
+
+<section class="flex flex-col items-center gap-12 px-20 py-20">
+  <!-- Header -->
+  <div class="flex flex-col items-center gap-3">
+    <h2 class="text-[42px] font-bold text-[var(--color-text-white)] text-center">Familiar Syntax, Powerful Features</h2>
+    <p class="text-lg text-[var(--color-text-gray)]">
+      All the language features you expect from a modern programming language
+    </p>
+  </div>
+
+  <!-- Features Grid -->
+  <div class="flex justify-center gap-5 w-full">
+    {features.map(({ title, description }) => (
+      <div class="w-[360px] p-7 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border)]">
+        <div class="flex flex-col gap-3">
+          <h3 class="text-base font-semibold text-[var(--color-text-white)]">{title}</h3>
+          <p class="text-[13px] text-[var(--color-text-gray)] leading-relaxed">{description}</p>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>

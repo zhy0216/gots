@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  /* Background colors */
+  --color-bg-dark: #0A0A0B;
+  --color-bg-card: #111113;
+  --color-bg-card-header: #0D0D0E;
+
+  /* Border colors */
+  --color-border: #1F1F23;
+  --color-border-light: #2A2A2E;
+
+  /* Primary (TypeScript blue) */
+  --color-primary: #3178C6;
+  --color-primary-muted: #3178C620;
+
+  /* Go blue */
+  --color-go: #00ADD8;
+  --color-go-muted: #00ADD820;
+
+  /* Text colors */
+  --color-text-white: #FFFFFF;
+  --color-text-gray: #8B8B90;
+  --color-text-gray-light: #ADADB0;
+  --color-text-muted: #6B6B70;
+}
+
+@layer base {
+  html, body {
+    height: 100%;
+  }
+
+  .font-sans {
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  .font-mono {
+    font-family: "DM Mono", ui-monospace, SFMono-Regular, monospace;
+  }
+}

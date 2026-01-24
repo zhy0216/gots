@@ -1,0 +1,34 @@
+---
+import { Terminal, Github } from 'lucide-astro';
+---
+
+<section class="flex flex-col items-center gap-10 px-20 pt-24 pb-20">
+  <!-- Badge -->
+  <div class="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--color-primary-muted)]">
+    <div class="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]"></div>
+    <span class="text-xs font-medium text-[var(--color-primary)]">TypeScript-like syntax, Go performance</span>
+  </div>
+
+  <!-- Title -->
+  <h1 class="text-[64px] font-bold text-[var(--color-text-white)] text-center leading-tight max-w-[900px]">
+    Write TypeScript.<br />Compile to Go.
+  </h1>
+
+  <!-- Subtitle -->
+  <p class="text-lg text-[var(--color-text-gray)] text-center leading-relaxed max-w-[700px]">
+    GoTS is a TypeScript-like language that compiles to native Go binaries.<br />
+    Get the developer experience of TypeScript with the performance of Go.
+  </p>
+
+  <!-- Buttons -->
+  <div class="flex items-center gap-4">
+    <a href="#getting-started" class="flex items-center gap-2 px-7 py-3.5 rounded-lg bg-[var(--color-primary)] text-[15px] font-semibold text-[var(--color-text-white)] hover:opacity-90 transition-opacity">
+      <Terminal class="w-[18px] h-[18px]" />
+      Quick Start
+    </a>
+    <a href="https://github.com/gots/gots" class="flex items-center gap-2 px-7 py-3.5 rounded-lg border border-[var(--color-border-light)] text-[15px] font-medium text-[var(--color-text-white)] hover:border-[var(--color-text-gray)] transition-colors">
+      <Github class="w-[18px] h-[18px] text-[var(--color-text-gray-light)]" />
+      View on GitHub
+    </a>
+  </div>
+</section>
