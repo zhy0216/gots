@@ -95,9 +95,14 @@ var GoPackageConstants = map[string]map[string]Type{
 // It first tries to load from .d.gts declaration files, then falls back to the hardcoded registry.
 // Returns nil if the package or function is not found.
 func GetGoPackageFunction(pkg, name string) Type {
-	// Try declaration loader first
+	// Try declaration loader first for functions
 	if fn, err := declaration.DefaultLoader.GetFunction("go:"+pkg, name); err == nil {
 		return convertDeclFunctionToType(fn)
+	}
+
+	// Also try constants from declaration loader
+	if constType, err := declaration.DefaultLoader.GetConstant("go:"+pkg, name); err == nil {
+		return convertAstTypeToType(constType)
 	}
 
 	// Fall back to hardcoded registry
