@@ -204,10 +204,17 @@ func convertAstTypeToType(t ast.Type) Type {
 			Params:     params,
 			ReturnType: convertAstTypeToType(at.ReturnType),
 		}
-	case *ast.TupleType:
+	case *ast.ReturnTupleType:
 		// Tuples from declarations represent Go's multiple return values
 		// For now, we'll treat them as any since goTS doesn't fully support tuples
 		return AnyType
+	case *ast.TupleType:
+		// TypeScript-style tuple types [string, int]
+		elements := make([]Type, len(at.Elements))
+		for i, e := range at.Elements {
+			elements[i] = convertAstTypeToType(e)
+		}
+		return &Tuple{Elements: elements}
 	}
 	return AnyType
 }

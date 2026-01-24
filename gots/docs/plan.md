@@ -49,23 +49,72 @@ let c = Color.Red
 
 ---
 
-## Phase 2: Advanced Types (TODO)
+## Phase 2: Advanced Types (COMPLETED)
 
-### Union Types
-- Allow `type A = string | number`
-- Runtime type narrowing with `typeof`
+### Union Types ✅
+- Token: `|` (PIPE) already exists
+- AST: Added `UnionType` node
+- Types: Added `Union` type with helper methods
+- Parser: Parse union types with proper precedence
+- Builder: Resolve union types with `MakeUnion` helper
+- Codegen: Generate `interface{}` for union types
+- Tests: Parser, types, and codegen tests
 
-### Intersection Types
-- Allow `type C = A & B`
-- Merge object properties
+```typescript
+type StringOrNumber = string | int
+type Value = string | int | boolean
+let x: string | int = "hello"
+```
 
-### Literal Types
-- Support `type Direction = "north" | "south" | "east" | "west"`
-- String and number literal types
+### Intersection Types ✅
+- Token: Added `AMPERSAND` (&) token
+- Lexer: Recognize `&` for intersection types
+- AST: Added `IntersectionType` node
+- Types: Added `Intersection` type with object merging
+- Parser: Parse intersection types with higher precedence than union
+- Builder: Resolve intersection types with `MakeIntersection` helper
+- Codegen: Merge object properties or use `interface{}`
+- Tests: Parser, types, and codegen tests
 
-### Tuple Types
-- Fixed-length arrays with mixed types: `[string, number]`
-- Rest elements in tuples: `[string, ...number[]]`
+```typescript
+type A = { x: int }
+type B = { y: int }
+type AB = A & B  // { x: int, y: int }
+type Combined = { x: int } & { y: int }
+```
+
+### Literal Types ✅
+- AST: Added `LiteralType` node
+- Types: Added `Literal` type for singleton values
+- Parser: Parse string, number, and boolean literals in type positions
+- Builder: Resolve literal types
+- Codegen: Generate base primitive types
+- Tests: Parser tests
+
+```typescript
+type Direction = "north" | "south" | "east" | "west"
+type One = 1
+type Status = "active" | "inactive" | 0 | 1
+let x: "hello" = "hello"
+let y: 42 = 42
+let z: true = true
+```
+
+### Tuple Types ✅
+- Token: Uses existing `[` and `]` brackets, `...` for rest elements
+- AST: Added `TupleType` node with Elements and RestElement
+- Types: Added `Tuple` type with element types and optional rest
+- Parser: Parse tuple types in type positions with rest element support
+- Builder: Resolve tuple types with element type mapping
+- Codegen: Generate Go structs with numbered fields (T0, T1, etc.)
+- Tests: Parser, types, and codegen tests
+
+```typescript
+type Pair = [string, int]
+type Triple = [string, int, boolean]
+type VarArgs = [string, ...int[]]
+let point: [int, int] = [1, 2]
+```
 
 ---
 
@@ -100,23 +149,8 @@ let c = Color.Red
 
 ---
 
-## Phase 5: Developer Experience (TODO)
 
-### Source Maps
-- Generate source maps for debugging
-- Map Go errors back to GTS source
-
-### Better Error Messages
-- Include code snippets in errors
-- Suggest fixes for common mistakes
-
-### LSP Support (stretch goal)
-- Language server protocol implementation
-- IDE integration
-
----
-
-## Phase 6: Standard Library (TODO)
+## Phase 5: Standard Library (TODO)
 
 ### String Methods
 - `split()`, `join()`, `replace()`, `trim()`

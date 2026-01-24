@@ -1281,6 +1281,73 @@ func (p *Parser) parseEnumMembers() []*ast.EnumMember {
 // Type parsing
 
 func (p *Parser) parseType() ast.Type {
+	// Parse base type (possibly with array suffix)
+	typ := p.parseSingleType()
+	if typ == nil {
+		return nil
+	}
+
+	// Handle intersection types (higher precedence) - A & B & C
+	if p.peekTokenIs(token.AMPERSAND) {
+		types := []ast.Type{typ}
+		for p.peekTokenIs(token.AMPERSAND) {
+			p.nextToken() // consume &
+			p.nextToken() // move to next type
+			nextType := p.parseSingleType()
+			if nextType == nil {
+				return nil
+			}
+			types = append(types, nextType)
+		}
+		typ = &ast.IntersectionType{Types: types}
+	}
+
+	// Handle union types (lower precedence) - A | B | C or (A & B) | C
+	if p.peekTokenIs(token.PIPE) {
+		types := []ast.Type{typ}
+		for p.peekTokenIs(token.PIPE) {
+			p.nextToken() // consume |
+			p.nextToken() // move to next type
+
+			// Parse next type which could be an intersection
+			nextType := p.parseSingleType()
+			if nextType == nil {
+				return nil
+			}
+
+			// Check for intersection at this level too
+			if p.peekTokenIs(token.AMPERSAND) {
+				intersectionTypes := []ast.Type{nextType}
+				for p.peekTokenIs(token.AMPERSAND) {
+					p.nextToken() // consume &
+					p.nextToken() // move to next type
+					interType := p.parseSingleType()
+					if interType == nil {
+						return nil
+					}
+					intersectionTypes = append(intersectionTypes, interType)
+				}
+				nextType = &ast.IntersectionType{Types: intersectionTypes}
+			}
+
+			types = append(types, nextType)
+		}
+
+		// Special case: if it's just T | null, use NullableType for backward compatibility
+		if len(types) == 2 {
+			if prim, ok := types[1].(*ast.PrimitiveType); ok && prim.Kind == ast.TypeNull {
+				return &ast.NullableType{Inner: types[0]}
+			}
+		}
+
+		return &ast.UnionType{Types: types}
+	}
+
+	return typ
+}
+
+// parseSingleType parses a single type without union or intersection handling
+func (p *Parser) parseSingleType() ast.Type {
 	var typ ast.Type
 
 	switch p.curToken.Type {
@@ -1302,7 +1369,6 @@ func (p *Parser) parseType() ast.Type {
 		typ = p.parseSetType()
 	case token.IDENT:
 		namedType := &ast.NamedType{Name: p.curToken.Literal}
-		// Check for type arguments: Stack<int>
 		if p.peekTokenIs(token.LT) {
 			namedType.TypeArgs = p.parseTypeArguments()
 		}
@@ -1311,6 +1377,29 @@ func (p *Parser) parseType() ast.Type {
 		typ = p.parseObjectType()
 	case token.LPAREN:
 		typ = p.parseFunctionType()
+	case token.LBRACKET:
+		typ = p.parseTupleType()
+	// Handle literal types
+	case token.STRING:
+		typ = &ast.LiteralType{
+			Kind:  ast.TypeString,
+			Value: p.curToken.Literal,
+		}
+	case token.NUMBER:
+		// Determine if it's int or float
+		kind := ast.TypeInt
+		if strings.Contains(p.curToken.Literal, ".") {
+			kind = ast.TypeFloat
+		}
+		typ = &ast.LiteralType{
+			Kind:  kind,
+			Value: p.curToken.Literal,
+		}
+	case token.TRUE, token.FALSE:
+		typ = &ast.LiteralType{
+			Kind:  ast.TypeBoolean,
+			Value: p.curToken.Literal,
+		}
 	default:
 		msg := fmt.Sprintf("line %d: unexpected token %s in type", p.curToken.Line, p.curToken.Type)
 		p.errors = append(p.errors, msg)
@@ -1324,15 +1413,6 @@ func (p *Parser) parseType() ast.Type {
 			return nil
 		}
 		typ = &ast.ArrayType{ElementType: typ}
-	}
-
-	// Check for nullable type
-	if p.peekTokenIs(token.PIPE) {
-		p.nextToken()
-		if !p.expectPeek(token.NULL) {
-			return nil
-		}
-		typ = &ast.NullableType{Inner: typ}
 	}
 
 	return typ
@@ -1386,6 +1466,84 @@ func (p *Parser) parseObjectTypeProperty() *ast.ObjectTypeProperty {
 	prop.PropType = p.parseType()
 
 	return prop
+}
+
+func (p *Parser) parseTupleType() *ast.TupleType {
+	tupleType := &ast.TupleType{
+		Token:    p.curToken, // The '['
+		Elements: []ast.Type{},
+	}
+
+	// Empty tuple: []
+	if p.peekTokenIs(token.RBRACKET) {
+		p.nextToken()
+		return tupleType
+	}
+
+	p.nextToken() // move to first element
+
+	// Check for rest element at the start: [...int[]]
+	if p.curTokenIs(token.ELLIPSIS) {
+		p.nextToken() // move to type after ...
+		restType := p.parseType()
+		if restType == nil {
+			return nil
+		}
+		// Extract the element type from the array type
+		if arrayType, ok := restType.(*ast.ArrayType); ok {
+			tupleType.RestElement = arrayType
+		} else {
+			p.errors = append(p.errors, "rest element must be an array type")
+			return nil
+		}
+		if !p.expectPeek(token.RBRACKET) {
+			return nil
+		}
+		return tupleType
+	}
+
+	// Parse first element
+	firstElem := p.parseType()
+	if firstElem == nil {
+		return nil
+	}
+	tupleType.Elements = append(tupleType.Elements, firstElem)
+
+	// Parse remaining elements
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // consume comma
+		p.nextToken() // move to next element
+
+		// Check for rest element: [string, int, ...number[]]
+		if p.curTokenIs(token.ELLIPSIS) {
+			p.nextToken() // move to type after ...
+			restType := p.parseType()
+			if restType == nil {
+				return nil
+			}
+			// Extract the element type from the array type
+			if arrayType, ok := restType.(*ast.ArrayType); ok {
+				tupleType.RestElement = arrayType
+			} else {
+				p.errors = append(p.errors, "rest element must be an array type")
+				return nil
+			}
+			break // Rest element must be last
+		}
+
+		// Parse normal element
+		elem := p.parseType()
+		if elem == nil {
+			return nil
+		}
+		tupleType.Elements = append(tupleType.Elements, elem)
+	}
+
+	if !p.expectPeek(token.RBRACKET) {
+		return nil
+	}
+
+	return tupleType
 }
 
 func (p *Parser) parseFunctionType() *ast.FunctionType {

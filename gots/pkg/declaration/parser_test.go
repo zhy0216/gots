@@ -593,7 +593,7 @@ declare module "go:test" {
 	}
 
 	// Check that return type is a tuple
-	_, isTuple := divide.ReturnType.(*ast.TupleType)
+	_, isTuple := divide.ReturnType.(*ast.ReturnTupleType)
 	if !isTuple {
 		t.Error("Expected Divide return type to be a tuple")
 	}

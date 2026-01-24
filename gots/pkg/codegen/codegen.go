@@ -263,6 +263,12 @@ func (g *Generator) genProgram(prog *typed.Program) {
 		g.writeln("")
 	}
 
+	// Generate type aliases
+	for _, alias := range prog.TypeAliases {
+		g.genTypeAlias(alias)
+		g.writeln("")
+	}
+
 	// Generate interfaces
 	for _, iface := range prog.Interfaces {
 		g.genInterface(iface)
@@ -553,6 +559,13 @@ func (g *Generator) genEnum(enum *typed.EnumDecl) {
 		g.indent--
 		g.writeln(")")
 	}
+}
+
+// genTypeAlias generates a Go type alias from a TypeAlias.
+func (g *Generator) genTypeAlias(alias *typed.TypeAlias) {
+	name := exportName(alias.Name)
+	goTypeName := g.goType(alias.Resolved)
+	g.writeln("type %s %s", name, goTypeName)
 }
 
 // genInterface generates a Go interface type from an InterfaceDecl.
@@ -1964,6 +1977,31 @@ func (g *Generator) goType(t types.Type) string {
 			return ""
 		}
 
+	case *types.Literal:
+		// For literal types, use the base primitive type
+		switch typ.Kind {
+		case types.KindInt:
+			return "int"
+		case types.KindFloat:
+			return "float64"
+		case types.KindString:
+			return "string"
+		case types.KindBoolean:
+			return "bool"
+		default:
+			return "interface{}"
+		}
+
+	case *types.Tuple:
+		// Generate an anonymous struct with numbered fields
+		var fields []string
+		for i, elem := range typ.Elements {
+			fields = append(fields, fmt.Sprintf("T%d %s", i, g.goType(elem)))
+		}
+		// Note: Rest elements are not yet fully supported in codegen
+		// For now, we ignore the rest element
+		return fmt.Sprintf("struct{%s}", strings.Join(fields, "; "))
+
 	case *types.Array:
 		return "[]" + g.goType(typ.Element)
 
@@ -2009,6 +2047,19 @@ func (g *Generator) goType(t types.Type) string {
 		}
 		inner := g.goType(typ.Inner)
 		return "*" + inner
+
+	case *types.Union:
+		// Go doesn't have native union types, so we use interface{}
+		// At runtime, the value can be any of the union member types
+		return "interface{}"
+
+	case *types.Intersection:
+		// Try to merge as object first
+		if merged := typ.MergeAsObject(); merged != nil {
+			return g.goType(merged)
+		}
+		// Otherwise use interface{} for non-object intersections
+		return "interface{}"
 
 	case *types.Class:
 		// Check if this class was instantiated from a generic class

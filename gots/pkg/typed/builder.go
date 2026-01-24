@@ -618,6 +618,56 @@ func (b *Builder) resolveType(astType ast.Type) types.Type {
 	case *ast.NullableType:
 		return &types.Nullable{Inner: b.resolveType(t.Inner)}
 
+	case *ast.UnionType:
+		unionTypes := make([]types.Type, len(t.Types))
+		for i, ut := range t.Types {
+			unionTypes[i] = b.resolveType(ut)
+		}
+		return types.MakeUnion(unionTypes...)
+
+	case *ast.IntersectionType:
+		intersectionTypes := make([]types.Type, len(t.Types))
+		for i, it := range t.Types {
+			intersectionTypes[i] = b.resolveType(it)
+		}
+		return types.MakeIntersection(intersectionTypes...)
+
+	case *ast.LiteralType:
+		// Convert AST literal type to types.Literal
+		kind := types.KindAny
+		switch t.Kind {
+		case ast.TypeInt:
+			kind = types.KindInt
+		case ast.TypeFloat:
+			kind = types.KindFloat
+		case ast.TypeString:
+			kind = types.KindString
+		case ast.TypeBoolean:
+			kind = types.KindBoolean
+		}
+		return &types.Literal{
+			Kind:  kind,
+			Value: t.Value,
+		}
+
+	case *ast.TupleType:
+		// Convert AST tuple type to types.Tuple
+		elements := make([]types.Type, len(t.Elements))
+		for i, e := range t.Elements {
+			elements[i] = b.resolveType(e)
+		}
+		var restType types.Type
+		if t.RestElement != nil {
+			// Extract element type from the array type
+			if arrayType, ok := t.RestElement.(*ast.ArrayType); ok {
+				restType = b.resolveType(arrayType.ElementType)
+			}
+		}
+		return &types.Tuple{
+			Elements: elements,
+			Rest:     restType,
+		}
+
 	case *ast.MapType:
 		return &types.Map{
 			Key:   b.resolveType(t.KeyType),

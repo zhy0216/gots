@@ -79,6 +79,79 @@ var (
 )
 
 // ----------------------------------------------------------------------------
+// Literal Type
+// ----------------------------------------------------------------------------
+
+// Literal represents a literal type (e.g., "hello", 42, true).
+// This is a singleton type that only accepts a specific value.
+type Literal struct {
+	Kind  PrimitiveKind // The base kind (int, float, string, boolean)
+	Value string        // The literal value as a string
+}
+
+func (l *Literal) typeNode() {}
+func (l *Literal) String() string {
+	return l.Value
+}
+
+func (l *Literal) Equals(other Type) bool {
+	if ol, ok := other.(*Literal); ok {
+		return l.Kind == ol.Kind && l.Value == ol.Value
+	}
+	return false
+}
+
+// BaseType returns the base primitive type for this literal.
+func (l *Literal) BaseType() *Primitive {
+	return &Primitive{Kind: l.Kind}
+}
+
+// ----------------------------------------------------------------------------
+// Tuple Type
+// ----------------------------------------------------------------------------
+
+// Tuple represents a tuple type (e.g., [string, int] or [string, ...int[]]).
+// Tuples are fixed-length arrays where each position has a specific type.
+type Tuple struct {
+	Elements []Type // Fixed-position element types
+	Rest     Type   // Optional rest element type (the element type, not the array type)
+}
+
+func (t *Tuple) typeNode() {}
+func (t *Tuple) String() string {
+	elements := make([]string, len(t.Elements))
+	for i, e := range t.Elements {
+		elements[i] = e.String()
+	}
+	if t.Rest != nil {
+		return fmt.Sprintf("[%s, ...%s[]]", strings.Join(elements, ", "), t.Rest.String())
+	}
+	return fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+}
+
+func (t *Tuple) Equals(other Type) bool {
+	if ot, ok := other.(*Tuple); ok {
+		if len(t.Elements) != len(ot.Elements) {
+			return false
+		}
+		for i, e := range t.Elements {
+			if !e.Equals(ot.Elements[i]) {
+				return false
+			}
+		}
+		// Check rest element
+		if t.Rest == nil && ot.Rest == nil {
+			return true
+		}
+		if t.Rest == nil || ot.Rest == nil {
+			return false
+		}
+		return t.Rest.Equals(ot.Rest)
+	}
+	return false
+}
+
+// ----------------------------------------------------------------------------
 // Array Type
 // ----------------------------------------------------------------------------
 
@@ -346,6 +419,136 @@ func (n *Nullable) Unwrap() Type {
 }
 
 // ----------------------------------------------------------------------------
+// Union Type
+// ----------------------------------------------------------------------------
+
+// Union represents a union of multiple types (e.g., string | int | boolean).
+type Union struct {
+	Types []Type
+}
+
+func (u *Union) typeNode() {}
+func (u *Union) String() string {
+	types := make([]string, len(u.Types))
+	for i, t := range u.Types {
+		types[i] = t.String()
+	}
+	return strings.Join(types, " | ")
+}
+
+func (u *Union) Equals(other Type) bool {
+	if ou, ok := other.(*Union); ok {
+		if len(u.Types) != len(ou.Types) {
+			return false
+		}
+		// Check all types in order
+		for i, t := range u.Types {
+			if !t.Equals(ou.Types[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// Contains checks if the union contains a specific type.
+func (u *Union) Contains(t Type) bool {
+	for _, ut := range u.Types {
+		if ut.Equals(t) {
+			return true
+		}
+	}
+	return false
+}
+
+// ContainsNull checks if null is one of the union members.
+func (u *Union) ContainsNull() bool {
+	for _, t := range u.Types {
+		if p, ok := t.(*Primitive); ok && p.Kind == KindNull {
+			return true
+		}
+	}
+	return false
+}
+
+// NonNullTypes returns all types in the union except null.
+func (u *Union) NonNullTypes() []Type {
+	var result []Type
+	for _, t := range u.Types {
+		if p, ok := t.(*Primitive); ok && p.Kind == KindNull {
+			continue
+		}
+		result = append(result, t)
+	}
+	return result
+}
+
+// ----------------------------------------------------------------------------
+// Intersection Type
+// ----------------------------------------------------------------------------
+
+// Intersection represents an intersection of multiple types (e.g., A & B).
+// In Go, this is typically implemented as a struct with merged fields for object types.
+type Intersection struct {
+	Types []Type
+}
+
+func (i *Intersection) typeNode() {}
+func (i *Intersection) String() string {
+	types := make([]string, len(i.Types))
+	for idx, t := range i.Types {
+		types[idx] = t.String()
+	}
+	return strings.Join(types, " & ")
+}
+
+func (i *Intersection) Equals(other Type) bool {
+	if oi, ok := other.(*Intersection); ok {
+		if len(i.Types) != len(oi.Types) {
+			return false
+		}
+		// Check all types in order
+		for idx, t := range i.Types {
+			if !t.Equals(oi.Types[idx]) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// MergeAsObject tries to merge the intersection types as an object type.
+// Returns nil if the types cannot be merged (e.g., primitive & primitive).
+func (i *Intersection) MergeAsObject() *Object {
+	// Collect all properties from object types
+	props := make(map[string]*Property)
+
+	for _, t := range i.Types {
+		t = Unwrap(t)
+		if obj, ok := t.(*Object); ok {
+			// Merge object properties
+			for name, prop := range obj.Properties {
+				if existing, exists := props[name]; exists {
+					// If property exists, types must match
+					if !existing.Type.Equals(prop.Type) {
+						return nil // Conflicting property types
+					}
+				} else {
+					props[name] = prop
+				}
+			}
+		} else {
+			// Non-object types in intersection cannot be merged
+			return nil
+		}
+	}
+
+	return &Object{Properties: props}
+}
+
+// ----------------------------------------------------------------------------
 // Class Type
 // ----------------------------------------------------------------------------
 
@@ -466,6 +669,9 @@ func IsNullable(t Type) bool {
 	if _, ok := t.(*Nullable); ok {
 		return true
 	}
+	if union, ok := t.(*Union); ok {
+		return union.ContainsNull()
+	}
 	if p, ok := t.(*Primitive); ok {
 		return p.Kind == KindNull
 	}
@@ -478,6 +684,65 @@ func MakeNullable(t Type) Type {
 		return t
 	}
 	return &Nullable{Inner: t}
+}
+
+// MakeUnion creates a union type from multiple types, flattening nested unions.
+func MakeUnion(types ...Type) Type {
+	if len(types) == 0 {
+		return NeverType
+	}
+	if len(types) == 1 {
+		return types[0]
+	}
+
+	// Flatten nested unions
+	var flattened []Type
+	seen := make(map[string]bool)
+
+	for _, t := range types {
+		t = Unwrap(t)
+		if union, ok := t.(*Union); ok {
+			// Flatten nested union
+			for _, ut := range union.Types {
+				key := ut.String()
+				if !seen[key] {
+					flattened = append(flattened, ut)
+					seen[key] = true
+				}
+			}
+		} else {
+			key := t.String()
+			if !seen[key] {
+				flattened = append(flattened, t)
+				seen[key] = true
+			}
+		}
+	}
+
+	if len(flattened) == 1 {
+		return flattened[0]
+	}
+
+	return &Union{Types: flattened}
+}
+
+// MakeIntersection creates an intersection type from multiple types.
+// If all types are objects, it merges them into a single object.
+func MakeIntersection(types ...Type) Type {
+	if len(types) == 0 {
+		return NeverType
+	}
+	if len(types) == 1 {
+		return types[0]
+	}
+
+	// Try to merge as object
+	intersection := &Intersection{Types: types}
+	if merged := intersection.MergeAsObject(); merged != nil {
+		return merged
+	}
+
+	return intersection
 }
 
 // IsAssignableTo checks if a type is assignable to another.
@@ -503,10 +768,21 @@ func IsAssignableTo(from, to Type) bool {
 		return true
 	}
 
+	// Literal types are assignable to their base primitive type
+	if fromLit, ok := from.(*Literal); ok {
+		if toPrim, ok := to.(*Primitive); ok {
+			return fromLit.Kind == toPrim.Kind
+		}
+	}
+
 	// Null is assignable to nullable types
 	if p, ok := from.(*Primitive); ok && p.Kind == KindNull {
 		if _, ok := to.(*Nullable); ok {
 			return true
+		}
+		// Null is also assignable to union types containing null
+		if toUnion, ok := to.(*Union); ok {
+			return toUnion.ContainsNull()
 		}
 	}
 
@@ -515,6 +791,53 @@ func IsAssignableTo(from, to Type) bool {
 		if from.Equals(nullable.Inner) {
 			return true
 		}
+	}
+
+	// Union type assignability
+	// A type is assignable to a union if it's assignable to any member of the union
+	if toUnion, ok := to.(*Union); ok {
+		for _, t := range toUnion.Types {
+			if IsAssignableTo(from, t) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// A union is assignable to another type if all members are assignable to that type
+	if fromUnion, ok := from.(*Union); ok {
+		for _, t := range fromUnion.Types {
+			if !IsAssignableTo(t, to) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Intersection type assignability
+	// An intersection A & B is assignable to A, to B, or to any supertype
+	if fromIntersection, ok := from.(*Intersection); ok {
+		// Intersection is assignable to any of its component types
+		for _, t := range fromIntersection.Types {
+			if IsAssignableTo(t, to) {
+				return true
+			}
+		}
+		// Also check if merged form is assignable
+		if merged := fromIntersection.MergeAsObject(); merged != nil {
+			return IsAssignableTo(merged, to)
+		}
+		return false
+	}
+
+	// A type is assignable to an intersection if it's assignable to all members
+	if toIntersection, ok := to.(*Intersection); ok {
+		for _, t := range toIntersection.Types {
+			if !IsAssignableTo(from, t) {
+				return false
+			}
+		}
+		return true
 	}
 
 	// Class subtyping
@@ -532,6 +855,44 @@ func IsAssignableTo(from, to Type) bool {
 	if fromArr, ok := from.(*Array); ok {
 		if toArr, ok := to.(*Array); ok {
 			return IsAssignableTo(fromArr.Element, toArr.Element)
+		}
+	}
+
+	// Tuple type assignability
+	if fromTuple, ok := from.(*Tuple); ok {
+		if toTuple, ok := to.(*Tuple); ok {
+			// Tuples must have the same number of elements
+			if len(fromTuple.Elements) != len(toTuple.Elements) {
+				return false
+			}
+			// Each element must be assignable
+			for i := range fromTuple.Elements {
+				if !IsAssignableTo(fromTuple.Elements[i], toTuple.Elements[i]) {
+					return false
+				}
+			}
+			// Check rest elements
+			if fromTuple.Rest == nil && toTuple.Rest == nil {
+				return true
+			}
+			if fromTuple.Rest == nil || toTuple.Rest == nil {
+				return false
+			}
+			return IsAssignableTo(fromTuple.Rest, toTuple.Rest)
+		}
+	}
+
+	// Array to tuple assignment (for array literals)
+	// An array is assignable to a tuple if the array element type is assignable to all tuple element types
+	if fromArr, ok := from.(*Array); ok {
+		if toTuple, ok := to.(*Tuple); ok {
+			// Array element type must be assignable to each tuple element type
+			for _, elemType := range toTuple.Elements {
+				if !IsAssignableTo(fromArr.Element, elemType) {
+					return false
+				}
+			}
+			return true
 		}
 	}
 

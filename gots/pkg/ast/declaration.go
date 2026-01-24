@@ -158,15 +158,15 @@ func (d *DeclareClass) String() string {
 	return out.String()
 }
 
-// TupleType represents a tuple type for Go's multiple return values.
+// ReturnTupleType represents a tuple type for Go's multiple return values.
 // e.g., (int, Error | null)
-type TupleType struct {
+type ReturnTupleType struct {
 	Elements []Type
 }
 
-func (t *TupleType) typeNode()            {}
-func (t *TupleType) TokenLiteral() string { return t.String() }
-func (t *TupleType) String() string {
+func (t *ReturnTupleType) typeNode()            {}
+func (t *ReturnTupleType) TokenLiteral() string { return t.String() }
+func (t *ReturnTupleType) String() string {
 	elems := make([]string, len(t.Elements))
 	for i, e := range t.Elements {
 		elems[i] = e.String()

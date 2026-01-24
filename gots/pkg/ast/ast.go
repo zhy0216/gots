@@ -919,6 +919,66 @@ func (n *NullableType) String() string {
 	return fmt.Sprintf("%s | null", n.Inner.String())
 }
 
+// UnionType represents a union of multiple types (e.g., string | int | boolean).
+type UnionType struct {
+	Types []Type
+}
+
+func (u *UnionType) typeNode()            {}
+func (u *UnionType) TokenLiteral() string { return u.String() }
+func (u *UnionType) String() string {
+	types := make([]string, len(u.Types))
+	for i, t := range u.Types {
+		types[i] = t.String()
+	}
+	return strings.Join(types, " | ")
+}
+
+// IntersectionType represents an intersection of multiple types (e.g., A & B).
+type IntersectionType struct {
+	Types []Type
+}
+
+func (i *IntersectionType) typeNode()            {}
+func (i *IntersectionType) TokenLiteral() string { return i.String() }
+func (i *IntersectionType) String() string {
+	types := make([]string, len(i.Types))
+	for idx, t := range i.Types {
+		types[idx] = t.String()
+	}
+	return strings.Join(types, " & ")
+}
+
+// LiteralType represents a literal type (e.g., "hello", 42, true).
+type LiteralType struct {
+	Kind  PrimitiveKind // TypeString, TypeInt, TypeFloat, TypeBoolean
+	Value string        // The literal value as a string
+}
+
+func (l *LiteralType) typeNode()            {}
+func (l *LiteralType) TokenLiteral() string { return l.Value }
+func (l *LiteralType) String() string       { return l.Value }
+
+// TupleType represents a tuple type (e.g., [string, number] or [string, ...number[]]).
+type TupleType struct {
+	Token       token.Token // The '[' token
+	Elements    []Type      // Fixed-position element types
+	RestElement Type        // Optional rest element type (e.g., int[] in [string, ...int[]])
+}
+
+func (t *TupleType) typeNode()            {}
+func (t *TupleType) TokenLiteral() string { return t.Token.Literal }
+func (t *TupleType) String() string {
+	elements := make([]string, len(t.Elements))
+	for i, e := range t.Elements {
+		elements[i] = e.String()
+	}
+	if t.RestElement != nil {
+		return fmt.Sprintf("[%s, ...%s]", strings.Join(elements, ", "), t.RestElement.String())
+	}
+	return fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+}
+
 // NamedType represents a reference to a named type (type alias or class).
 type NamedType struct {
 	Name     string

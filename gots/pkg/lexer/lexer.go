@@ -166,7 +166,7 @@ func (l *Lexer) NextToken() token.Token {
 		if l.peekChar() == '&' {
 			tok = l.makeTwoCharToken(token.AND)
 		} else {
-			tok = l.newToken(token.ILLEGAL, l.ch)
+			tok = l.newToken(token.AMPERSAND, l.ch)
 		}
 	case '=':
 		if l.peekChar() == '=' {

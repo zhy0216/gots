@@ -79,6 +79,7 @@ const (
 	DOT       // .
 	ARROW     // =>
 	PIPE      // |
+	AMPERSAND // &
 	QUESTION  // ?
 	ELLIPSIS  // ...
 
@@ -217,6 +218,7 @@ var typeStrings = map[Type]string{
 	DOT:       ".",
 	ARROW:     "=>",
 	PIPE:      "|",
+	AMPERSAND: "&",
 	QUESTION:  "?",
 	ELLIPSIS:  "...",
 

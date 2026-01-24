@@ -376,7 +376,7 @@ func (p *Parser) parseTupleOrFunctionType() ast.Type {
 			returnType := p.parseType()
 			return &ast.FunctionType{ParamTypes: []ast.Type{}, ReturnType: returnType}
 		}
-		return &ast.TupleType{Elements: []ast.Type{}}
+		return &ast.ReturnTupleType{Elements: []ast.Type{}}
 	}
 
 	// Check if it looks like function params (name: type) or tuple (type, type)
@@ -410,7 +410,7 @@ func (p *Parser) parseTupleOrFunctionType() ast.Type {
 			returnType := p.parseType()
 			return &ast.FunctionType{ParamTypes: paramTypes, ReturnType: returnType}
 		}
-		return &ast.TupleType{Elements: paramTypes}
+		return &ast.ReturnTupleType{Elements: paramTypes}
 	}
 
 	// Parse as tuple
@@ -430,7 +430,7 @@ func (p *Parser) parseTupleOrFunctionType() ast.Type {
 		}
 	}
 
-	return &ast.TupleType{Elements: elements}
+	return &ast.ReturnTupleType{Elements: elements}
 }
 
 // parseDeclareType parses: type Name = Type
