@@ -1,7 +1,13 @@
 package types
 
+import (
+	"github.com/zhy0216/quickts/gots/pkg/ast"
+	"github.com/zhy0216/quickts/gots/pkg/declaration"
+)
+
 // GoPackageRegistry contains type information for Go standard library packages.
 // This allows the type checker to resolve imported Go functions.
+// NOTE: This registry is a fallback. The preferred way is to use .d.gts declaration files.
 var GoPackageRegistry = map[string]map[string]Type{
 	"fmt": {
 		"Println":  &Function{Params: []*Param{{Name: "args", Type: AnyType}}, ReturnType: VoidType},
@@ -86,8 +92,15 @@ var GoPackageConstants = map[string]map[string]Type{
 }
 
 // GetGoPackageFunction returns the type of a function from a Go package.
+// It first tries to load from .d.gts declaration files, then falls back to the hardcoded registry.
 // Returns nil if the package or function is not found.
 func GetGoPackageFunction(pkg, name string) Type {
+	// Try declaration loader first
+	if fn, err := declaration.DefaultLoader.GetFunction("go:"+pkg, name); err == nil {
+		return convertDeclFunctionToType(fn)
+	}
+
+	// Fall back to hardcoded registry
 	if pkgFuncs, ok := GoPackageRegistry[pkg]; ok {
 		if fn, ok := pkgFuncs[name]; ok {
 			return fn
@@ -100,4 +113,96 @@ func GetGoPackageFunction(pkg, name string) Type {
 		}
 	}
 	return nil
+}
+
+// GetGoPackageConstant returns the type of a constant from a Go package.
+func GetGoPackageConstant(pkg, name string) Type {
+	// Try declaration loader first
+	if t, err := declaration.DefaultLoader.GetConstant("go:"+pkg, name); err == nil {
+		return convertAstTypeToType(t)
+	}
+
+	// Fall back to hardcoded registry
+	if pkgConsts, ok := GoPackageConstants[pkg]; ok {
+		if c, ok := pkgConsts[name]; ok {
+			return c
+		}
+	}
+	return nil
+}
+
+// convertDeclFunctionToType converts a declaration.FunctionInfo to types.Type
+func convertDeclFunctionToType(fn *declaration.FunctionInfo) Type {
+	params := make([]*Param, len(fn.Params))
+	for i, p := range fn.Params {
+		params[i] = &Param{
+			Name: p.Name,
+			Type: convertAstTypeToType(p.ParamType),
+		}
+	}
+	return &Function{
+		Params:     params,
+		ReturnType: convertAstTypeToType(fn.ReturnType),
+	}
+}
+
+// convertAstTypeToType converts an ast.Type to types.Type
+func convertAstTypeToType(t ast.Type) Type {
+	if t == nil {
+		return AnyType
+	}
+	switch at := t.(type) {
+	case *ast.PrimitiveType:
+		switch at.Kind {
+		case ast.TypeInt:
+			return IntType
+		case ast.TypeFloat:
+			return FloatType
+		case ast.TypeString:
+			return StringType
+		case ast.TypeBoolean:
+			return BooleanType
+		case ast.TypeVoid:
+			return VoidType
+		case ast.TypeNull:
+			return NullType
+		}
+	case *ast.ArrayType:
+		return &Array{Element: convertAstTypeToType(at.ElementType)}
+	case *ast.NullableType:
+		return &Nullable{Inner: convertAstTypeToType(at.Inner)}
+	case *ast.AnyType:
+		return AnyType
+	case *ast.ByteType:
+		return IntType // byte maps to int in GoTS
+	case *ast.NamedType:
+		// For now, return any for named types (interfaces, classes, etc.)
+		return AnyType
+	case *ast.ObjectType:
+		props := make(map[string]*Property)
+		for _, p := range at.Properties {
+			props[p.Name] = &Property{
+				Name: p.Name,
+				Type: convertAstTypeToType(p.PropType),
+			}
+		}
+		return &Object{Properties: props}
+	case *ast.FunctionType:
+		params := make([]*Param, len(at.ParamTypes))
+		for i, pt := range at.ParamTypes {
+			params[i] = &Param{
+				Name: "",
+				Type: convertAstTypeToType(pt),
+			}
+		}
+		return &Function{
+			Params:     params,
+			ReturnType: convertAstTypeToType(at.ReturnType),
+		}
+	case *ast.TupleType:
+		// Tuples from declarations represent Go's multiple return values
+		// For now, we'll treat them as any since GoTS doesn't fully support tuples
+		return AnyType
+	}
+	return AnyType
 }
