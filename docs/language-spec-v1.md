@@ -1,15 +1,65 @@
 # GoTS Language Specification v1.0
 
-A restricted TypeScript subset compiled to bytecode and executed on a Go VM.
+## Overview
+
+GoTS is a statically-typed language with TypeScript-like syntax that compiles to bytecode and runs on a stack-based virtual machine. It features static typing, first-class functions, closures, classes with single inheritance, and automatic garbage collection.
 
 ---
 
-## 1. Design Goals
+## Table of Contents
 
-- **Minimal**: Smallest feature set for practical programming
-- **Static typing**: All types known at compile time
-- **TypeScript syntax**: Valid GoTS is valid TypeScript (subset)
-- **Simple implementation**: Easy to parse, compile, and execute
+1. [Lexical Elements](#1-lexical-elements)
+2. [Types](#2-types)
+3. [Expressions](#3-expressions)
+4. [Statements](#4-statements)
+5. [Functions](#5-functions)
+6. [Classes](#6-classes)
+7. [Built-in Functions](#7-built-in-functions)
+8. [Bytecode Reference](#8-bytecode-reference)
+
+---
+
+## 1. Lexical Elements
+
+### 1.1 Comments
+
+```typescript
+// Single-line comment
+```
+
+### 1.2 Identifiers
+
+Identifiers start with a letter or underscore and can contain letters, digits, and underscores.
+
+### 1.3 Keywords
+
+```
+let       const     function  return    if        else
+while     for       break     continue  class     extends
+new       this      super     constructor         type
+true      false     null
+```
+
+### 1.4 Type Keywords
+
+```
+number    string    boolean   void      null
+```
+
+### 1.5 Operators
+
+| Category | Operators |
+|----------|-----------|
+| Arithmetic | `+` `-` `*` `/` `%` |
+| Comparison | `==` `!=` `<` `>` `<=` `>=` |
+| Logical | `&&` `\|\|` `!` |
+| Assignment | `=` |
+
+### 1.6 Delimiters
+
+```
+( ) { } [ ] ; : , . => |
+```
 
 ---
 
@@ -17,27 +67,25 @@ A restricted TypeScript subset compiled to bytecode and executed on a Go VM.
 
 ### 2.1 Primitive Types
 
-| Type      | Description                     | Example Literals        |
-|-----------|---------------------------------|-------------------------|
-| `number`  | 64-bit floating point           | `42`, `3.14`, `-7`      |
-| `string`  | UTF-8 string                    | `"hello"`, `'world'`    |
-| `boolean` | Boolean value                   | `true`, `false`         |
-| `null`    | Absence of value                | `null`                  |
-| `void`    | No value (function return only) | -                       |
+| Type | Description | Example |
+|------|-------------|---------|
+| `number` | 64-bit floating point | `42`, `3.14` |
+| `string` | UTF-8 string | `"hello"` |
+| `boolean` | Boolean value | `true`, `false` |
+| `void` | No value | Used for functions |
+| `null` | Null value | `null` |
 
 ### 2.2 Array Types
 
 ```typescript
-let numbers: number[] = [1, 2, 3];
-let names: string[] = ["alice", "bob"];
-let matrix: number[][] = [[1, 2], [3, 4]];
+let arr: number[] = [1, 2, 3];
+let names: string[] = ["a", "b"];
 ```
 
 ### 2.3 Object Types
 
 ```typescript
 let point: { x: number, y: number } = { x: 10, y: 20 };
-let person: { name: string, age: number } = { name: "Alice", age: 30 };
 ```
 
 ### 2.4 Function Types
@@ -46,199 +94,142 @@ let person: { name: string, age: number } = { name: "Alice", age: 30 };
 let add: (a: number, b: number) => number = function(a: number, b: number): number {
     return a + b;
 };
-
-let callback: () => void = function(): void {
-    println("called");
-};
 ```
 
 ### 2.5 Nullable Types
 
-Use `| null` to allow null values:
-
 ```typescript
 let name: string | null = null;
-let value: number | null = 42;
 ```
 
 ### 2.6 Type Aliases
 
 ```typescript
 type Point = { x: number, y: number };
-type Callback = (value: number) => void;
-type MaybeString = string | null;
-
-let p: Point = { x: 1, y: 2 };
+let p: Point = { x: 0, y: 0 };
 ```
 
-### 2.7 Type Annotations
+### 2.7 Class Types
+
+```typescript
+class Animal { ... }
+let a: Animal = new Animal();
+```
+
+---
+
+## 3. Expressions
+
+### 3.1 Literals
+
+```typescript
+42              // number
+3.14            // number
+"hello"         // string
+true            // boolean
+false           // boolean
+null            // null
+[1, 2, 3]       // array
+{ x: 1, y: 2 }  // object
+```
+
+### 3.2 Binary Expressions
+
+```typescript
+a + b    // addition, string concatenation
+a - b    // subtraction
+a * b    // multiplication
+a / b    // division
+a % b    // modulo
+a == b   // equality
+a != b   // inequality
+a < b    // less than
+a > b    // greater than
+a <= b   // less or equal
+a >= b   // greater or equal
+a && b   // logical and
+a || b   // logical or
+```
+
+### 3.3 Unary Expressions
+
+```typescript
+-x       // negation
+!flag    // logical not
+```
+
+### 3.4 Function Calls
+
+```typescript
+foo(1, 2)
+obj.method(arg)
+```
+
+### 3.5 Property Access
+
+```typescript
+obj.property
+```
+
+### 3.6 Index Access
+
+```typescript
+arr[0]
+str[i]
+```
+
+### 3.7 Assignment
+
+```typescript
+x = 10
+arr[0] = 5
+obj.prop = value
+```
+
+### 3.8 New Expression
+
+```typescript
+new ClassName(args)
+```
+
+### 3.9 This/Super
+
+```typescript
+this.property
+super(args)
+```
+
+---
+
+## 4. Statements
+
+### 4.1 Variable Declaration
 
 ```typescript
 let x: number = 10;
-let name: string = "alice";
-let flag: boolean = true;
-let items: number[] = [1, 2, 3];
+const name: string = "GoTS";
 ```
 
-**Note**: Type inference is NOT supported in v1. All declarations require explicit types.
-
----
-
-## 3. Variables
-
-### 3.1 Let Declarations
-
-```typescript
-let x: number = 0;
-let message: string = "hello";
-let data: number[] = [];
-```
-
-- `let` declares a mutable variable
-- Initializer is **required**
-- Type annotation is **required**
-
-### 3.2 Const Declarations
-
-```typescript
-const PI: number = 3.14159;
-const GREETING: string = "Hello";
-const EMPTY: number[] = [];
-```
-
-- `const` declares an immutable binding
-- Cannot be reassigned after declaration
-- Note: Object/array contents can still be mutated
-
----
-
-## 4. Expressions
-
-### 4.1 Arithmetic Operators
-
-| Operator | Description    | Example     |
-|----------|----------------|-------------|
-| `+`      | Addition       | `a + b`     |
-| `-`      | Subtraction    | `a - b`     |
-| `*`      | Multiplication | `a * b`     |
-| `/`      | Division       | `a / b`     |
-| `%`      | Modulo         | `a % b`     |
-| `-`      | Unary negation | `-x`        |
-
-**String concatenation**: `+` also concatenates strings.
-
-```typescript
-let result: string = "Hello, " + "World";
-```
-
-### 4.2 Comparison Operators
-
-| Operator | Description              |
-|----------|--------------------------|
-| `==`     | Equal                    |
-| `!=`     | Not equal                |
-| `<`      | Less than                |
-| `>`      | Greater than             |
-| `<=`     | Less than or equal       |
-| `>=`     | Greater than or equal    |
-
-All comparisons return `boolean`.
-
-### 4.3 Logical Operators
-
-| Operator | Description | Example      |
-|----------|-------------|--------------|
-| `&&`     | Logical AND | `a && b`     |
-| `\|\|`   | Logical OR  | `a \|\| b`   |
-| `!`      | Logical NOT | `!flag`      |
-
-### 4.4 Assignment
-
-```typescript
-x = 10;          // Simple assignment
-x = x + 1;       // Compound (no += in v1)
-```
-
-### 4.5 Array Operations
-
-```typescript
-let arr: number[] = [1, 2, 3];
-
-// Indexing (0-based)
-let first: number = arr[0];
-arr[1] = 10;
-
-// Nested arrays
-let matrix: number[][] = [[1, 2], [3, 4]];
-let val: number = matrix[0][1];  // 2
-```
-
-### 4.6 Object Operations
-
-```typescript
-type Person = { name: string, age: number };
-let person: Person = { name: "Alice", age: 30 };
-
-// Property access
-let n: string = person.name;
-person.age = 31;
-```
-
-### 4.7 Grouping
-
-```typescript
-let result: number = (a + b) * c;
-```
-
----
-
-## 5. Statements
-
-### 5.1 Expression Statement
-
-Any expression followed by semicolon:
-
-```typescript
-x = x + 1;
-print("hello");
-```
-
-### 5.2 Block Statement
+### 4.2 Block Statement
 
 ```typescript
 {
-    let x: number = 10;
-    print(x);
+    statement1;
+    statement2;
 }
 ```
 
-Blocks create new lexical scopes.
-
-### 5.3 If Statement
+### 4.3 If Statement
 
 ```typescript
-if (condition) {
-    // then branch
-}
-
 if (condition) {
     // then branch
 } else {
     // else branch
 }
-
-if (condition1) {
-    // ...
-} else if (condition2) {
-    // ...
-} else {
-    // ...
-}
 ```
 
-**Note**: Braces are **required** (no single-statement bodies).
-
-### 5.4 While Statement
+### 4.4 While Statement
 
 ```typescript
 while (condition) {
@@ -246,7 +237,7 @@ while (condition) {
 }
 ```
 
-### 5.5 For Statement
+### 4.5 For Statement
 
 ```typescript
 for (let i: number = 0; i < 10; i = i + 1) {
@@ -254,79 +245,41 @@ for (let i: number = 0; i < 10; i = i + 1) {
 }
 ```
 
-All three clauses (init, condition, update) are **required**.
-
-### 5.6 Break and Continue
+### 4.6 Return Statement
 
 ```typescript
-while (true) {
-    if (done) {
-        break;
-    }
-    if (skip) {
-        continue;
-    }
-}
+return value;
+return;
 ```
 
-### 5.7 Return Statement
+### 4.7 Break/Continue
 
 ```typescript
-return;          // void function
-return value;    // returning a value
+break;
+continue;
 ```
 
 ---
 
-## 6. Functions
+## 5. Functions
 
-### 6.1 Function Declaration
+### 5.1 Function Declaration
 
 ```typescript
 function add(a: number, b: number): number {
     return a + b;
 }
-
-function greet(name: string): void {
-    println("Hello, " + name);
-}
-
-function noParams(): number {
-    return 42;
-}
 ```
 
-- Return type annotation is **required**
-- All parameters require type annotations
-- Functions are hoisted (can be called before declaration)
-
-### 6.2 Function Expressions
+### 5.2 Function Expression
 
 ```typescript
 let add: (a: number, b: number) => number = function(a: number, b: number): number {
     return a + b;
 };
-
-// Shorter with type alias
-type BinaryOp = (a: number, b: number) => number;
-let multiply: BinaryOp = function(a: number, b: number): number {
-    return a * b;
-};
 ```
 
-### 6.3 Function Calls
-
-```typescript
-let sum: number = add(1, 2);
-greet("World");
-
-// Calling function expressions
-let result: number = multiply(3, 4);
-```
-
-### 6.4 Closures
-
-Functions capture variables from their enclosing scope:
+### 5.3 Closures
 
 ```typescript
 function makeCounter(): () => number {
@@ -336,80 +289,37 @@ function makeCounter(): () => number {
         return count;
     };
 }
-
-let counter: () => number = makeCounter();
-println(counter());  // 1
-println(counter());  // 2
-println(counter());  // 3
-```
-
-### 6.5 Higher-Order Functions
-
-Functions can take functions as parameters and return functions:
-
-```typescript
-function apply(f: (x: number) => number, value: number): number {
-    return f(value);
-}
-
-function double(x: number): number {
-    return x * 2;
-}
-
-let result: number = apply(double, 5);  // 10
 ```
 
 ---
 
-## 7. Classes
+## 6. Classes
 
-### 7.1 Class Declaration
+### 6.1 Class Declaration
 
 ```typescript
 class Point {
-    x: number;
-    y: number;
+    x: number
+    y: number
 
     constructor(x: number, y: number) {
         this.x = x;
         this.y = y;
     }
 
-    distance(other: Point): number {
-        let dx: number = this.x - other.x;
-        let dy: number = this.y - other.y;
-        return sqrt(dx * dx + dy * dy);
+    distance(): number {
+        return sqrt(this.x * this.x + this.y * this.y);
     }
 }
 ```
 
-### 7.2 Instance Creation
-
-```typescript
-let p1: Point = new Point(0, 0);
-let p2: Point = new Point(3, 4);
-println(p1.distance(p2));  // 5
-```
-
-### 7.3 Class Features
-
-- **Fields**: Declared at class level with types
-- **Constructor**: Special method for initialization
-- **Methods**: Functions bound to instances
-- **this**: Reference to current instance
-
-### 7.4 Inheritance
+### 6.2 Inheritance
 
 ```typescript
 class Animal {
-    name: string;
-
+    name: string
     constructor(name: string) {
         this.name = name;
-    }
-
-    speak(): void {
-        println(this.name + " makes a sound");
     }
 }
 
@@ -417,532 +327,100 @@ class Dog extends Animal {
     constructor(name: string) {
         super(name);
     }
-
-    speak(): void {
-        println(this.name + " barks");
-    }
-}
-
-let dog: Dog = new Dog("Rex");
-dog.speak();  // "Rex barks"
-```
-
-- Single inheritance only
-- `super(...)` must be first statement in derived constructor
-- Methods can be overridden
-
-### 7.5 Class as Type
-
-```typescript
-let animal: Animal = new Dog("Rex");  // Polymorphism
-animal.speak();  // "Rex barks" (dynamic dispatch)
-```
-
----
-
-## 8. Null Handling
-
-### 8.1 Nullable Types
-
-```typescript
-let name: string | null = null;
-let value: number | null = 42;
-```
-
-### 8.2 Null Checks
-
-```typescript
-let name: string | null = getName();
-
-if (name != null) {
-    println(name);  // name is string here
-}
-```
-
-### 8.3 Null Assignment
-
-```typescript
-let x: string | null = "hello";
-x = null;  // OK
-
-let y: string = "world";
-y = null;  // ERROR: null not assignable to string
-```
-
----
-
-## 9. Built-in Functions
-
-| Function    | Signature                        | Description                    |
-|-------------|----------------------------------|--------------------------------|
-| `print`     | `(value: any): void`             | Print value to stdout          |
-| `println`   | `(value: any): void`             | Print value with newline       |
-| `len`       | `(s: string \| T[]): number`     | Get string/array length        |
-| `toString`  | `(n: number): string`            | Convert number to string       |
-| `toNumber`  | `(s: string): number`            | Parse string as number         |
-| `push`      | `(arr: T[], value: T): void`     | Append to array                |
-| `pop`       | `(arr: T[]): T \| null`          | Remove and return last element |
-| `sqrt`      | `(n: number): number`            | Square root                    |
-| `floor`     | `(n: number): number`            | Floor to integer               |
-| `ceil`      | `(n: number): number`            | Ceiling to integer             |
-| `abs`       | `(n: number): number`            | Absolute value                 |
-
----
-
-## 10. Comments
-
-```typescript
-// Single line comment
-
-/*
-   Multi-line
-   comment
-*/
-```
-
----
-
-## 11. Program Structure
-
-A program is a sequence of:
-1. Type aliases
-2. Class declarations
-3. Function declarations
-4. Variable declarations (global scope)
-5. Statements
-
-Execution begins at the first statement in global scope (top-to-bottom).
-
-```typescript
-// Type alias
-type Counter = () => number;
-
-// Class
-class Box {
-    value: number;
-    constructor(v: number) {
-        this.value = v;
-    }
-}
-
-// Function
-function increment(b: Box): void {
-    b.value = b.value + 1;
-}
-
-// Global variable
-let box: Box = new Box(0);
-
-// Main execution
-increment(box);
-increment(box);
-println(box.value);  // 2
-```
-
----
-
-## 12. Lexical Structure
-
-### 12.1 Keywords
-
-```
-let, const, function, return, if, else, while, for, break, continue,
-true, false, null, number, string, boolean, void,
-class, constructor, this, new, extends, super, type
-```
-
-### 12.2 Identifiers
-
-- Start with letter or underscore
-- Followed by letters, digits, or underscores
-- Case-sensitive
-
-### 12.3 Semicolons
-
-Semicolons are **required** (no automatic semicolon insertion).
-
----
-
-## 13. Operator Precedence (highest to lowest)
-
-| Precedence | Operators                   | Associativity |
-|------------|-----------------------------|---------------|
-| 1          | `()` `[]` `.` (access)      | Left          |
-| 2          | `new`                       | Right         |
-| 3          | `!`, `-` (unary)            | Right         |
-| 4          | `*`, `/`, `%`               | Left          |
-| 5          | `+`, `-`                    | Left          |
-| 6          | `<`, `>`, `<=`, `>=`        | Left          |
-| 7          | `==`, `!=`                  | Left          |
-| 8          | `&&`                        | Left          |
-| 9          | `\|\|`                      | Left          |
-| 10         | `=`                         | Right         |
-
----
-
-## 14. Scoping Rules
-
-- **Global scope**: Top-level declarations
-- **Class scope**: Fields and methods
-- **Function scope**: Parameters and local variables
-- **Block scope**: Variables declared in `{}` blocks
-- **Closure scope**: Captured variables from enclosing functions
-- **Shadowing**: Inner scope can shadow outer scope names
-
-```typescript
-let x: number = 1;        // global
-
-function foo(): void {
-    let x: number = 2;    // shadows global x
-    {
-        let x: number = 3; // shadows function x
-        print(x);          // 3
-    }
-    print(x);              // 2
-}
-
-print(x);                  // 1
-```
-
----
-
-## 15. Type Checking Rules
-
-### 15.1 Assignment Compatibility
-
-- Value type must match variable type exactly
-- Subclass instances assignable to superclass variables
-- `null` only assignable to nullable types (`T | null`)
-- No implicit type conversions
-
-### 15.2 Operator Type Rules
-
-| Operation           | Operand Types        | Result Type |
-|---------------------|----------------------|-------------|
-| `+` (arithmetic)    | `number`, `number`   | `number`    |
-| `+` (concat)        | `string`, `string`   | `string`    |
-| `-`, `*`, `/`, `%`  | `number`, `number`   | `number`    |
-| `<`, `>`, `<=`, `>=`| `number`, `number`   | `boolean`   |
-| `==`, `!=`          | same type, same type | `boolean`   |
-| `&&`, `\|\|`        | `boolean`, `boolean` | `boolean`   |
-| `!`                 | `boolean`            | `boolean`   |
-| `-` (unary)         | `number`             | `number`    |
-| `[]` (index)        | `T[]`, `number`      | `T`         |
-| `.` (property)      | `{...}` or class     | property type |
-
-### 15.3 Null Safety
-
-```typescript
-let x: string | null = maybeGetString();
-
-// Error: x might be null
-println(x.length);  // COMPILE ERROR
-
-// OK: null check first
-if (x != null) {
-    println(len(x));  // x is string here
 }
 ```
 
 ---
 
-## 16. Example Programs
+## 7. Built-in Functions
 
-### 16.1 Hello World
+### 7.1 I/O
 
-```typescript
-println("Hello, World!");
-```
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `println` | `(value: any) => void` | Print with newline |
+| `print` | `(value: any) => void` | Print without newline |
 
-### 16.2 Factorial
+### 7.2 Array Operations
 
-```typescript
-function factorial(n: number): number {
-    if (n <= 1) {
-        return 1;
-    }
-    return n * factorial(n - 1);
-}
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `len` | `(arr: T[]) => number` | Array/string length |
+| `push` | `(arr: T[], val: T) => number` | Append to array |
+| `pop` | `(arr: T[]) => T` | Remove last element |
 
-println(factorial(5));  // 120
-```
+### 7.3 Type Conversion
 
-### 16.3 FizzBuzz
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `typeof` | `(val: any) => string` | Get type name |
+| `tostring` | `(val: any) => string` | Convert to string |
+| `tonumber` | `(val: any) => number` | Convert to number |
 
-```typescript
-function fizzbuzz(n: number): void {
-    for (let i: number = 1; i <= n; i = i + 1) {
-        if (i % 15 == 0) {
-            println("FizzBuzz");
-        } else if (i % 3 == 0) {
-            println("Fizz");
-        } else if (i % 5 == 0) {
-            println("Buzz");
-        } else {
-            println(i);
-        }
-    }
-}
+### 7.4 Math Functions
 
-fizzbuzz(20);
-```
-
-### 16.4 Linked List
-
-```typescript
-class Node {
-    value: number;
-    next: Node | null;
-
-    constructor(value: number) {
-        this.value = value;
-        this.next = null;
-    }
-}
-
-class LinkedList {
-    head: Node | null;
-
-    constructor() {
-        this.head = null;
-    }
-
-    append(value: number): void {
-        let node: Node = new Node(value);
-        if (this.head == null) {
-            this.head = node;
-        } else {
-            let current: Node | null = this.head;
-            while (current != null && current.next != null) {
-                current = current.next;
-            }
-            if (current != null) {
-                current.next = node;
-            }
-        }
-    }
-
-    print(): void {
-        let current: Node | null = this.head;
-        while (current != null) {
-            println(current.value);
-            current = current.next;
-        }
-    }
-}
-
-let list: LinkedList = new LinkedList();
-list.append(1);
-list.append(2);
-list.append(3);
-list.print();
-```
-
-### 16.5 Higher-Order Functions
-
-```typescript
-type Predicate = (n: number) => boolean;
-
-function filter(arr: number[], pred: Predicate): number[] {
-    let result: number[] = [];
-    for (let i: number = 0; i < len(arr); i = i + 1) {
-        if (pred(arr[i])) {
-            push(result, arr[i]);
-        }
-    }
-    return result;
-}
-
-function isEven(n: number): boolean {
-    return n % 2 == 0;
-}
-
-let numbers: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-let evens: number[] = filter(numbers, isEven);
-
-for (let i: number = 0; i < len(evens); i = i + 1) {
-    println(evens[i]);  // 2, 4, 6, 8, 10
-}
-```
-
-### 16.6 Closure Counter
-
-```typescript
-type Counter = { increment: () => number, decrement: () => number, get: () => number };
-
-function createCounter(initial: number): Counter {
-    let count: number = initial;
-
-    return {
-        increment: function(): number {
-            count = count + 1;
-            return count;
-        },
-        decrement: function(): number {
-            count = count - 1;
-            return count;
-        },
-        get: function(): number {
-            return count;
-        }
-    };
-}
-
-let counter: Counter = createCounter(10);
-println(counter.increment());  // 11
-println(counter.increment());  // 12
-println(counter.decrement());  // 11
-println(counter.get());        // 11
-```
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `sqrt` | `(n: number) => number` | Square root |
+| `floor` | `(n: number) => number` | Floor |
+| `ceil` | `(n: number) => number` | Ceiling |
+| `abs` | `(n: number) => number` | Absolute value |
 
 ---
 
-## 17. What's NOT in v1
+## 8. Bytecode Reference
 
-Explicitly excluded for simplicity (candidates for v2+):
+### Opcodes
 
-- Type inference (`let x = 10`)
-- Arrow functions (`=>` in expressions, only in types)
-- Compound assignment (`+=`, `-=`, etc.)
-- Increment/decrement (`++`, `--`)
-- Ternary operator (`? :`)
-- Switch statement
-- Do-while loop
-- String interpolation (template literals)
-- Modules/imports
-- Interfaces (use type aliases with object types)
-- Access modifiers (public/private/protected)
-- Static members
-- Getters/setters
-- Optional properties
-- Spread operator
-- Destructuring
-- Generics
-- Union types beyond `T | null`
-- undefined (only null)
-
----
-
-## 18. Grammar (EBNF)
-
-```ebnf
-program        = { declaration } ;
-
-declaration    = typeAlias | classDecl | funcDecl | varDecl | statement ;
-
-typeAlias      = "type" IDENTIFIER "=" type ";" ;
-
-classDecl      = "class" IDENTIFIER [ "extends" IDENTIFIER ] "{" { classMember } "}" ;
-
-classMember    = fieldDecl | constructorDecl | methodDecl ;
-
-fieldDecl      = IDENTIFIER ":" type ";" ;
-
-constructorDecl = "constructor" "(" [ paramList ] ")" block ;
-
-methodDecl     = IDENTIFIER "(" [ paramList ] ")" ":" type block ;
-
-varDecl        = ( "let" | "const" ) IDENTIFIER ":" type "=" expression ";" ;
-
-funcDecl       = "function" IDENTIFIER "(" [ paramList ] ")" ":" type block ;
-
-paramList      = param { "," param } ;
-param          = IDENTIFIER ":" type ;
-
-type           = primaryType [ "|" "null" ] ;
-
-primaryType    = "number" | "string" | "boolean" | "void" | "null"
-               | IDENTIFIER
-               | primaryType "[" "]"
-               | "{" [ propTypeList ] "}"
-               | "(" [ paramTypeList ] ")" "=>" type
-               | "(" type ")" ;
-
-propTypeList   = propType { "," propType } ;
-propType       = IDENTIFIER ":" type ;
-
-paramTypeList  = type { "," type } ;
-
-statement      = exprStmt | block | ifStmt | whileStmt | forStmt
-               | returnStmt | breakStmt | continueStmt ;
-
-exprStmt       = expression ";" ;
-
-block          = "{" { declaration } "}" ;
-
-ifStmt         = "if" "(" expression ")" block [ "else" ( ifStmt | block ) ] ;
-
-whileStmt      = "while" "(" expression ")" block ;
-
-forStmt        = "for" "(" varDecl expression ";" expression ")" block ;
-
-returnStmt     = "return" [ expression ] ";" ;
-
-breakStmt      = "break" ";" ;
-
-continueStmt   = "continue" ";" ;
-
-expression     = assignment ;
-
-assignment     = ( call "." IDENTIFIER | call "[" expression "]" | IDENTIFIER ) "=" assignment
-               | logicOr ;
-
-logicOr        = logicAnd { "||" logicAnd } ;
-
-logicAnd       = equality { "&&" equality } ;
-
-equality       = comparison { ( "==" | "!=" ) comparison } ;
-
-comparison     = term { ( "<" | ">" | "<=" | ">=" ) term } ;
-
-term           = factor { ( "+" | "-" ) factor } ;
-
-factor         = unary { ( "*" | "/" | "%" ) unary } ;
-
-unary          = ( "!" | "-" ) unary | call ;
-
-call           = primary { "(" [ argList ] ")" | "." IDENTIFIER | "[" expression "]" } ;
-
-argList        = expression { "," expression } ;
-
-primary        = NUMBER | STRING | "true" | "false" | "null"
-               | "this"
-               | IDENTIFIER
-               | "(" expression ")"
-               | arrayLiteral
-               | objectLiteral
-               | functionExpr
-               | "new" IDENTIFIER "(" [ argList ] ")"
-               | "super" "(" [ argList ] ")" ;
-
-arrayLiteral   = "[" [ expression { "," expression } ] "]" ;
-
-objectLiteral  = "{" [ propList ] "}" ;
-
-propList       = property { "," property } ;
-
-property       = IDENTIFIER ":" expression ;
-
-functionExpr   = "function" "(" [ paramList ] ")" ":" type block ;
-```
-
----
-
-## 19. Summary
-
-**v1 provides:**
-- 4 primitive types + void + null
-- Arrays with indexing and mutation
-- Object literals with typed properties
-- Classes with inheritance and polymorphism
-- First-class functions and closures
-- Type aliases for complex types
-- Nullable types (`T | null`)
-- Variables (let/const)
-- Arithmetic, comparison, logical operators
-- Control flow (if/else, while, for, break, continue)
-- Functions with parameters and return values
-- Recursion
-- Block scoping
-
-This is sufficient to write any practical program while remaining feasible to implement.
+| Opcode | Hex | Description |
+|--------|-----|-------------|
+| OP_CONSTANT | 0x01 | Push constant |
+| OP_NULL | 0x02 | Push null |
+| OP_TRUE | 0x03 | Push true |
+| OP_FALSE | 0x04 | Push false |
+| OP_ADD | 0x10 | Add |
+| OP_SUBTRACT | 0x11 | Subtract |
+| OP_MULTIPLY | 0x12 | Multiply |
+| OP_DIVIDE | 0x13 | Divide |
+| OP_MODULO | 0x14 | Modulo |
+| OP_NEGATE | 0x15 | Negate |
+| OP_EQUAL | 0x20 | Equal |
+| OP_NOT_EQUAL | 0x21 | Not equal |
+| OP_LESS | 0x22 | Less than |
+| OP_LESS_EQUAL | 0x23 | Less or equal |
+| OP_GREATER | 0x24 | Greater than |
+| OP_GREATER_EQUAL | 0x25 | Greater or equal |
+| OP_NOT | 0x30 | Logical not |
+| OP_CONCAT | 0x40 | String concat |
+| OP_GET_LOCAL | 0x50 | Get local |
+| OP_SET_LOCAL | 0x51 | Set local |
+| OP_GET_GLOBAL | 0x52 | Get global |
+| OP_SET_GLOBAL | 0x53 | Set global |
+| OP_GET_UPVALUE | 0x54 | Get upvalue |
+| OP_SET_UPVALUE | 0x55 | Set upvalue |
+| OP_POP | 0x60 | Pop stack |
+| OP_POPN | 0x61 | Pop n values |
+| OP_DUP | 0x62 | Duplicate |
+| OP_JUMP | 0x70 | Jump |
+| OP_JUMP_BACK | 0x71 | Jump back |
+| OP_JUMP_IF_FALSE | 0x72 | Conditional jump |
+| OP_JUMP_IF_TRUE | 0x73 | Conditional jump |
+| OP_CALL | 0x80 | Call function |
+| OP_RETURN | 0x81 | Return |
+| OP_CLOSURE | 0x82 | Create closure |
+| OP_CLASS | 0x90 | Define class |
+| OP_GET_PROPERTY | 0x91 | Get property |
+| OP_SET_PROPERTY | 0x92 | Set property |
+| OP_METHOD | 0x93 | Define method |
+| OP_INVOKE | 0x94 | Invoke method |
+| OP_INHERIT | 0x95 | Set inheritance |
+| OP_GET_SUPER | 0x96 | Get super method |
+| OP_SUPER_INVOKE | 0x97 | Invoke super |
+| OP_ARRAY | 0xA0 | Create array |
+| OP_GET_INDEX | 0xA1 | Get index |
+| OP_SET_INDEX | 0xA2 | Set index |
+| OP_OBJECT | 0xB0 | Create object |
+| OP_CLOSE_UPVALUE | 0xC0 | Close upvalue |
+| OP_PRINT | 0xD0 | Print |
+| OP_PRINTLN | 0xD1 | Print line |
+| OP_BUILTIN | 0xE0 | Call builtin |

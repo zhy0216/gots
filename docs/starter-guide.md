@@ -1,19 +1,19 @@
 # GoTS Starter Guide
 
-A quick introduction to GoTS, a statically-typed TypeScript subset that compiles to bytecode and runs on a Go-based virtual machine.
+A quick introduction to GoTS, a statically-typed TypeScript subset that compiles to Go.
 
 ---
 
 ## What is GoTS?
 
-GoTS is a minimal, statically-typed programming language with TypeScript-like syntax. It compiles source code to bytecode which runs on a custom VM written in Go.
+GoTS is a minimal, statically-typed programming language with TypeScript-like syntax. It transpiles source code to Go, which is then compiled to native binaries.
 
 **Key features:**
 - TypeScript-compatible syntax (GoTS is a valid TypeScript subset)
 - Static type checking at compile time
 - First-class functions and closures
 - Classes with inheritance
-- Garbage collection
+- Compiles to native binaries via Go
 - Interactive REPL
 
 ---
@@ -45,24 +45,19 @@ Or simply:
 gots program.gts
 ```
 
-### Compile to Bytecode
+### Build a Native Binary
 
 ```bash
-gots compile program.gts              # Creates program.gtsb
-gots compile program.gts output.gtsb  # Custom output name
+gots build program.gts              # Creates program binary
+gots build program.gts -o myapp     # Custom output name
 ```
 
-### Execute Bytecode
+### Generate Go Source Code
 
 ```bash
-gots exec program.gtsb
-```
-
-### Disassemble Bytecode
-
-```bash
-gots disasm program.gtsb
-gots disasm program.gts    # Compiles first, then disassembles
+gots emit-go program.gts            # Creates program.go
+gots emit-go program.gts output.go  # Custom output name
+gots build program.gts --emit-go    # Alternative via build command
 ```
 
 ### Interactive REPL
@@ -72,13 +67,20 @@ gots repl
 ```
 
 ```
-GoTS REPL v0.1.0
+GoTS REPL v0.2.0 (Go transpiler)
 Type 'exit' or press Ctrl+D to quit
 
->>> let x: number = 42
+>>> let x: int = 42
 >>> println(x * 2)
 84
 >>> exit
+```
+
+### Other Commands
+
+```bash
+gots version    # Show version
+gots help       # Show help
 ```
 
 ---
@@ -96,16 +98,33 @@ println("Hello, World!");
 All variables require explicit type annotations.
 
 ```typescript
-let x: number = 10;
+let x: int = 10;
+let pi: float = 3.14159;
 let name: string = "Alice";
 let active: boolean = true;
-const PI: number = 3.14159;
+const MAX: int = 100;
+```
+
+### Numeric Types
+
+GoTS has two numeric types: `int` and `float`.
+
+```typescript
+let count: int = 42;        // Integer
+let price: float = 19.99;   // Floating point
+
+// Type rules:
+// int + int = int
+// int + float = float
+// float + float = float
+// Division (/) always returns float
+// Modulo (%) requires int operands
 ```
 
 ### Functions
 
 ```typescript
-function add(a: number, b: number): number {
+function add(a: int, b: int): int {
     return a + b;
 }
 
@@ -113,7 +132,7 @@ function greet(name: string): void {
     println("Hello, " + name);
 }
 
-let result: number = add(5, 3);
+let result: int = add(5, 3);
 greet("World");
 ```
 
@@ -128,14 +147,14 @@ if (x > 10) {
 }
 
 // While loop
-let i: number = 0;
+let i: int = 0;
 while (i < 5) {
     println(i);
     i = i + 1;
 }
 
 // For loop
-for (let j: number = 0; j < 5; j = j + 1) {
+for (let j: int = 0; j < 5; j = j + 1) {
     println(j);
 }
 ```
@@ -143,18 +162,18 @@ for (let j: number = 0; j < 5; j = j + 1) {
 ### Arrays
 
 ```typescript
-let numbers: number[] = [1, 2, 3, 4, 5];
+let numbers: int[] = [1, 2, 3, 4, 5];
 println(numbers[0]);     // 1
 println(len(numbers));   // 5
 
 push(numbers, 6);        // Append to array
-let last: number | null = pop(numbers);  // Remove last element
+let last: int = pop(numbers);  // Remove last element
 ```
 
 ### Objects
 
 ```typescript
-type Point = { x: number, y: number };
+type Point = { x: int, y: int };
 
 let origin: Point = { x: 0, y: 0 };
 println(origin.x);
@@ -165,7 +184,7 @@ origin.y = 10;
 
 ```typescript
 class Counter {
-    count: number;
+    count: int;
 
     constructor() {
         this.count = 0;
@@ -175,7 +194,7 @@ class Counter {
         this.count = this.count + 1;
     }
 
-    getCount(): number {
+    getCount(): int {
         return this.count;
     }
 }
@@ -218,15 +237,15 @@ dog.speak();  // "Rex barks"
 ### Closures
 
 ```typescript
-function makeCounter(): () => number {
-    let count: number = 0;
-    return function(): number {
+function makeCounter(): Function {
+    let count: int = 0;
+    return function(): int {
         count = count + 1;
         return count;
     };
 }
 
-let counter: () => number = makeCounter();
+let counter: Function = makeCounter();
 println(counter());  // 1
 println(counter());  // 2
 println(counter());  // 3
@@ -246,19 +265,21 @@ if (name != null) {
 
 ## Built-in Functions
 
-| Function    | Description                        |
-|-------------|------------------------------------|
-| `print(v)`  | Print value without newline        |
-| `println(v)`| Print value with newline           |
-| `len(s)`    | Get string or array length         |
-| `toString(n)` | Convert number to string         |
-| `toNumber(s)` | Parse string as number           |
-| `push(arr, v)` | Append value to array           |
-| `pop(arr)`  | Remove and return last element     |
-| `sqrt(n)`   | Square root                        |
-| `floor(n)`  | Round down to integer              |
-| `ceil(n)`   | Round up to integer                |
-| `abs(n)`    | Absolute value                     |
+| Function      | Description                        |
+|---------------|------------------------------------|
+| `print(v)`    | Print value without newline        |
+| `println(v)`  | Print value with newline           |
+| `len(s)`      | Get string or array length         |
+| `tostring(v)` | Convert value to string            |
+| `toint(v)`    | Convert value to int               |
+| `tofloat(v)`  | Convert value to float             |
+| `push(arr, v)`| Append value to array              |
+| `pop(arr)`    | Remove and return last element     |
+| `typeof(v)`   | Get type name as string            |
+| `sqrt(n)`     | Square root                        |
+| `floor(n)`    | Round down to integer              |
+| `ceil(n)`     | Round up to integer                |
+| `abs(n)`      | Absolute value                     |
 
 ---
 
@@ -267,8 +288,8 @@ if (name != null) {
 ```typescript
 // FizzBuzz in GoTS
 
-function fizzbuzz(n: number): void {
-    for (let i: number = 1; i <= n; i = i + 1) {
+function fizzbuzz(n: int): void {
+    for (let i: int = 1; i <= n; i = i + 1) {
         if (i % 15 == 0) {
             println("FizzBuzz");
         } else if (i % 3 == 0) {
@@ -286,21 +307,17 @@ fizzbuzz(20);
 
 ---
 
-## File Extensions
+## File Extension
 
 | Extension | Description                     |
 |-----------|---------------------------------|
 | `.gts`    | GoTS source file                |
-| `.gtsb`   | Compiled bytecode               |
-| `.gtsb.gz`| Compressed bytecode             |
 
 ---
 
 ## Further Reading
 
 - [Language Specification](language-spec-v1.md) - Complete language reference
-- [Bytecode Specification](bytecode-spec-v1.md) - VM internals and opcodes
-- [Implementation Plan](implementation-plan.md) - Project architecture
 
 ---
 
@@ -308,16 +325,17 @@ fizzbuzz(20);
 
 ```typescript
 // Types
-number, string, boolean, null, void
-number[], string[][]           // Arrays
-{ x: number, y: number }       // Object types
-(a: number) => string          // Function types
-string | null                  // Nullable types
+int, float, string, boolean, null, void
+int[], string[][]                  // Arrays
+{ x: int, y: float }               // Object types
+(a: int) => string                 // Function types
+Function                           // Dynamic function type
+string | null                      // Nullable types
 
 // Operators
-+ - * / %                      // Arithmetic
-== != < > <= >=                // Comparison
-&& || !                        // Logical
++ - * / %                          // Arithmetic
+== != < > <= >=                    // Comparison
+&& || !                            // Logical
 
 // Keywords
 let, const, function, return
