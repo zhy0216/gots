@@ -1760,58 +1760,65 @@ var builtins = map[string]types.Type{
 }
 
 func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
-	// Check for built-in function calls
+	// Check for built-in function calls (only if not shadowed by user-defined function)
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
-		if builtinType, isBuiltin := builtins[ident.Name]; isBuiltin {
-			fn := builtinType.(*types.Function)
-			args := make([]Expr, len(expr.Arguments))
-			for i, arg := range expr.Arguments {
-				args[i] = b.buildExpr(arg)
-			}
+		// First check if there's a user-defined function with this name
+		if varType, exists := b.scope.lookup(ident.Name); !exists {
+			// Not in scope, check if it's a builtin
+			if builtinType, isBuiltin := builtins[ident.Name]; isBuiltin {
+				fn := builtinType.(*types.Function)
+				args := make([]Expr, len(expr.Arguments))
+				for i, arg := range expr.Arguments {
+					args[i] = b.buildExpr(arg)
+				}
 
-			// Special case: pop returns the element type of the array
-			returnType := fn.ReturnType
-			if ident.Name == "pop" && len(args) > 0 {
-				argType := types.Unwrap(args[0].Type())
-				if arrType, ok := argType.(*types.Array); ok {
-					returnType = arrType.Element
+				// Special case: pop returns the element type of the array
+				returnType := fn.ReturnType
+				if ident.Name == "pop" && len(args) > 0 {
+					argType := types.Unwrap(args[0].Type())
+					if arrType, ok := argType.(*types.Array); ok {
+						returnType = arrType.Element
+					}
+				}
+
+				// Special case: map returns array of callback return type
+				if ident.Name == "map" && len(args) > 0 {
+					argType := types.Unwrap(args[0].Type())
+					if arrType, ok := argType.(*types.Array); ok {
+						returnType = arrType // Default to same array type
+					}
+				}
+
+				// Special case: filter returns same array type as input
+				if ident.Name == "filter" && len(args) > 0 {
+					argType := types.Unwrap(args[0].Type())
+					if arrType, ok := argType.(*types.Array); ok {
+						returnType = arrType
+					}
+				}
+
+				// Special case: find returns element type of array
+				if ident.Name == "find" && len(args) > 0 {
+					argType := types.Unwrap(args[0].Type())
+					if arrType, ok := argType.(*types.Array); ok {
+						returnType = arrType.Element
+					}
+				}
+
+				// Special case: reduce returns the type of initial value
+				if ident.Name == "reduce" && len(args) > 1 {
+					returnType = args[1].Type()
+				}
+
+				return &BuiltinCall{
+					Name:     ident.Name,
+					Args:     args,
+					ExprType: returnType,
 				}
 			}
-
-			// Special case: map returns array of callback return type
-			if ident.Name == "map" && len(args) > 0 {
-				argType := types.Unwrap(args[0].Type())
-				if arrType, ok := argType.(*types.Array); ok {
-					returnType = arrType // Default to same array type
-				}
-			}
-
-			// Special case: filter returns same array type as input
-			if ident.Name == "filter" && len(args) > 0 {
-				argType := types.Unwrap(args[0].Type())
-				if arrType, ok := argType.(*types.Array); ok {
-					returnType = arrType
-				}
-			}
-
-			// Special case: find returns element type of array
-			if ident.Name == "find" && len(args) > 0 {
-				argType := types.Unwrap(args[0].Type())
-				if arrType, ok := argType.(*types.Array); ok {
-					returnType = arrType.Element
-				}
-			}
-
-			// Special case: reduce returns the type of initial value
-			if ident.Name == "reduce" && len(args) > 1 {
-				returnType = args[1].Type()
-			}
-
-			return &BuiltinCall{
-				Name:     ident.Name,
-				Args:     args,
-				ExprType: returnType,
-			}
+		} else {
+			// User-defined function exists in scope, let it be handled by normal call logic below
+			_ = varType // Suppress unused warning
 		}
 	}
 

@@ -2102,39 +2102,104 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 			if exprType, ok := expr.ExprType.(*types.Array); ok {
 				resultElemType = g.goType(exprType.Element)
 			}
-			return fmt.Sprintf("func() []%s { result := make([]%s, 0); for _, v := range %s { result = append(result, %s(v)) }; return result }()", resultElemType, resultElemType, obj, args[0])
+			// Check how many parameters the callback expects
+			var callbackCall, forClause string
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && len(callbackType.Params) >= 2 {
+				callbackCall = fmt.Sprintf("%s(v, i)", args[0])
+				forClause = "for i, v := range"
+			} else {
+				callbackCall = fmt.Sprintf("%s(v)", args[0])
+				forClause = "for _, v := range"
+			}
+			return fmt.Sprintf("func() []%s { result := make([]%s, 0); %s %s { result = append(result, %s) }; return result }()", resultElemType, resultElemType, forClause, obj, callbackCall)
 
 		case "filter":
 			// arr.filter(callback) => func() []T { result := make([]T, 0); for i, v := range arr { if callback(v, i) { result = append(result, v) } }; return result }()
-			return fmt.Sprintf("func() []%s { result := make([]%s, 0); for _, v := range %s { if %s(v) { result = append(result, v) } }; return result }()", elemType, elemType, obj, args[0])
+			// Check how many parameters the callback expects
+			var callbackCall, forClause string
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && len(callbackType.Params) >= 2 {
+				callbackCall = fmt.Sprintf("%s(v, i)", args[0])
+				forClause = "for i, v := range"
+			} else {
+				callbackCall = fmt.Sprintf("%s(v)", args[0])
+				forClause = "for _, v := range"
+			}
+			return fmt.Sprintf("func() []%s { result := make([]%s, 0); %s %s { if %s { result = append(result, v) } }; return result }()", elemType, elemType, forClause, obj, callbackCall)
 
 		case "reduce":
-			// arr.reduce(callback, initialValue) => func() U { acc := initialValue; for _, v := range arr { acc = callback(acc, v) }; return acc }()
+			// Check how many parameters the callback expects
 			accType := "interface{}"
 			if len(args) > 1 {
 				accType = g.goType(expr.Args[1].Type())
 			}
-			return fmt.Sprintf("func() %s { acc := %s; for _, v := range %s { acc = %s(acc, v) }; return acc }()", accType, args[1], obj, args[0])
+			var callbackCall, forClause string
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && len(callbackType.Params) >= 3 {
+				callbackCall = fmt.Sprintf("%s(acc, v, i)", args[0])
+				forClause = "for i, v := range"
+			} else {
+				callbackCall = fmt.Sprintf("%s(acc, v)", args[0])
+				forClause = "for _, v := range"
+			}
+			return fmt.Sprintf("func() %s { acc := %s; %s %s { acc = %s }; return acc }()", accType, args[1], forClause, obj, callbackCall)
 
 		case "forEach":
-			// arr.forEach(callback) => func() { for i, v := range arr { callback(v, i) } }()
-			return fmt.Sprintf("func() { for _, v := range %s { %s(v) } }()", obj, args[0])
+			// Check how many parameters the callback expects
+			var callbackCall, forClause string
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && len(callbackType.Params) >= 2 {
+				callbackCall = fmt.Sprintf("%s(v, i)", args[0])
+				forClause = "for i, v := range"
+			} else {
+				callbackCall = fmt.Sprintf("%s(v)", args[0])
+				forClause = "for _, v := range"
+			}
+			return fmt.Sprintf("func() { %s %s { %s } }()", forClause, obj, callbackCall)
 
 		case "find":
-			// arr.find(callback) => func() *T { for i, v := range arr { if callback(v, i) { return &v } }; return nil }()
-			return fmt.Sprintf("func() *%s { for _, v := range %s { if %s(v) { return &v } }; return nil }()", elemType, obj, args[0])
+			// Check how many parameters the callback expects
+			var callbackCall, forClause string
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && len(callbackType.Params) >= 2 {
+				callbackCall = fmt.Sprintf("%s(v, i)", args[0])
+				forClause = "for i, v := range"
+			} else {
+				callbackCall = fmt.Sprintf("%s(v)", args[0])
+				forClause = "for _, v := range"
+			}
+			return fmt.Sprintf("func() *%s { %s %s { if %s { return &v } }; return nil }()", elemType, forClause, obj, callbackCall)
 
 		case "findIndex":
-			// arr.findIndex(callback) => func() int { for i, v := range arr { if callback(v) { return i } }; return -1 }()
-			return fmt.Sprintf("func() int { for i, v := range %s { if %s(v) { return i } }; return -1 }()", obj, args[0])
+			// Check how many parameters the callback expects
+			var callbackCall string
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && len(callbackType.Params) >= 2 {
+				callbackCall = fmt.Sprintf("%s(v, i)", args[0])
+			} else {
+				callbackCall = fmt.Sprintf("%s(v)", args[0])
+			}
+			// findIndex always needs the index, so always use 'for i, v := range'
+			return fmt.Sprintf("func() int { for i, v := range %s { if %s { return i } }; return -1 }()", obj, callbackCall)
 
 		case "some":
-			// arr.some(callback) => func() bool { for i, v := range arr { if callback(v, i) { return true } }; return false }()
-			return fmt.Sprintf("func() bool { for _, v := range %s { if %s(v) { return true } }; return false }()", obj, args[0])
+			// Check how many parameters the callback expects
+			var callbackCall, forClause string
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && len(callbackType.Params) >= 2 {
+				callbackCall = fmt.Sprintf("%s(v, i)", args[0])
+				forClause = "for i, v := range"
+			} else {
+				callbackCall = fmt.Sprintf("%s(v)", args[0])
+				forClause = "for _, v := range"
+			}
+			return fmt.Sprintf("func() bool { %s %s { if %s { return true } }; return false }()", forClause, obj, callbackCall)
 
 		case "every":
-			// arr.every(callback) => func() bool { for _, v := range arr { if !callback(v) { return false } }; return true }()
-			return fmt.Sprintf("func() bool { for _, v := range %s { if !%s(v) { return false } }; return true }()", obj, args[0])
+			// Check how many parameters the callback expects
+			var callbackCall, forClause string
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && len(callbackType.Params) >= 2 {
+				callbackCall = fmt.Sprintf("%s(v, i)", args[0])
+				forClause = "for i, v := range"
+			} else {
+				callbackCall = fmt.Sprintf("%s(v)", args[0])
+				forClause = "for _, v := range"
+			}
+			return fmt.Sprintf("func() bool { %s %s { if !%s { return false } }; return true }()", forClause, obj, callbackCall)
 		}
 	}
 
