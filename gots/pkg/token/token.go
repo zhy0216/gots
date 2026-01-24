@@ -97,6 +97,9 @@ const (
 	CASE        // case
 	DEFAULT     // default
 	OF          // of
+	TRY         // try
+	CATCH       // catch
+	THROW       // throw
 
 	// Type keywords
 	INT_TYPE     // int
@@ -214,6 +217,9 @@ var typeStrings = map[Type]string{
 	CASE:        "case",
 	DEFAULT:     "default",
 	OF:          "of",
+	TRY:         "try",
+	CATCH:       "catch",
+	THROW:       "throw",
 
 	// Type keywords
 	INT_TYPE:     "int",
@@ -247,6 +253,9 @@ var keywords = map[string]Type{
 	"case":        CASE,
 	"default":     DEFAULT,
 	"of":          OF,
+	"try":         TRY,
+	"catch":       CATCH,
+	"throw":       THROW,
 	"true":        TRUE,
 	"false":       FALSE,
 	"null":        NULL,
@@ -270,7 +279,8 @@ func IsKeyword(t Type) bool {
 	switch t {
 	case LET, CONST, FUNCTION, RETURN, IF, ELSE, WHILE, FOR,
 		BREAK, CONTINUE, CLASS, EXTENDS, NEW, THIS, SUPER,
-		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL,
+		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL, SWITCH, CASE, DEFAULT, OF,
+		TRY, CATCH, THROW,
 		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE:
 		return true
 	}

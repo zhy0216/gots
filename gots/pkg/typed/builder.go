@@ -19,6 +19,7 @@ type Builder struct {
 	narrowing    map[string]types.Type
 	loopDepth    int
 	scopeDepth   int
+	constVars    map[string]bool // Track which variables are const (scoped)
 }
 
 // Error represents a type checking error.
@@ -34,19 +35,36 @@ func (e *Error) String() string {
 
 // Scope represents a lexical scope.
 type Scope struct {
-	parent   *Scope
-	bindings map[string]types.Type
+	parent    *Scope
+	bindings  map[string]types.Type
+	constVars map[string]bool
 }
 
 func newScope(parent *Scope) *Scope {
 	return &Scope{
-		parent:   parent,
-		bindings: make(map[string]types.Type),
+		parent:    parent,
+		bindings:  make(map[string]types.Type),
+		constVars: make(map[string]bool),
 	}
 }
 
 func (s *Scope) define(name string, typ types.Type) {
 	s.bindings[name] = typ
+}
+
+func (s *Scope) defineConst(name string, typ types.Type) {
+	s.bindings[name] = typ
+	s.constVars[name] = true
+}
+
+func (s *Scope) isConst(name string) bool {
+	if isConst, ok := s.constVars[name]; ok {
+		return isConst
+	}
+	if s.parent != nil {
+		return s.parent.isConst(name)
+	}
+	return false
 }
 
 func (s *Scope) lookup(name string) (types.Type, bool) {
@@ -67,6 +85,7 @@ func NewBuilder() *Builder {
 		typeAliases: make(map[string]types.Type),
 		classes:     make(map[string]*types.Class),
 		narrowing:   make(map[string]types.Type),
+		constVars:   make(map[string]bool),
 	}
 
 	// Pre-define built-in type aliases
@@ -342,6 +361,12 @@ func (b *Builder) buildStmt(stmt ast.Statement) Stmt {
 	case *ast.ContinueStmt:
 		return &ContinueStmt{}
 
+	case *ast.TryStmt:
+		return b.buildTryStmt(s)
+
+	case *ast.ThrowStmt:
+		return b.buildThrowStmt(s)
+
 	case *ast.FuncDecl:
 		return b.buildFuncDecl(s)
 
@@ -381,7 +406,11 @@ func (b *Builder) buildVarDecl(decl *ast.VarDecl) *VarDecl {
 		varType = types.AnyType
 	}
 
-	b.scope.define(decl.Name, varType)
+	if decl.IsConst {
+		b.scope.defineConst(decl.Name, varType)
+	} else {
+		b.scope.define(decl.Name, varType)
+	}
 
 	return &VarDecl{
 		Name:    decl.Name,
@@ -580,6 +609,42 @@ func (b *Builder) buildSwitchStmt(stmt *ast.SwitchStmt) *SwitchStmt {
 		Discriminant: discriminant,
 		Cases:        cases,
 	}
+}
+
+func (b *Builder) buildTryStmt(stmt *ast.TryStmt) *TryStmt {
+	// Build the try block
+	tryBlock := b.buildBlock(stmt.TryBlock)
+
+	// Build the catch block with the catch parameter in scope
+	b.pushScope()
+	// The catch parameter has type 'any' since any error can be thrown
+	b.scope.define(stmt.CatchParam, types.AnyType)
+	catchBlock := &BlockStmt{}
+	stmts := make([]Stmt, 0, len(stmt.CatchBlock.Statements))
+	for _, s := range stmt.CatchBlock.Statements {
+		if typedStmt := b.buildStmt(s); typedStmt != nil {
+			stmts = append(stmts, typedStmt)
+		}
+	}
+	catchBlock.Stmts = stmts
+	b.popScope()
+
+	catchParam := &VarDecl{
+		Name:    stmt.CatchParam,
+		VarType: types.AnyType,
+		IsConst: false,
+	}
+
+	return &TryStmt{
+		TryBlock:   tryBlock,
+		CatchParam: catchParam,
+		CatchBlock: catchBlock,
+	}
+}
+
+func (b *Builder) buildThrowStmt(stmt *ast.ThrowStmt) *ThrowStmt {
+	value := b.buildExpr(stmt.Value)
+	return &ThrowStmt{Value: value}
 }
 
 func (b *Builder) buildReturnStmt(stmt *ast.ReturnStmt) *ReturnStmt {
@@ -832,56 +897,30 @@ func (b *Builder) buildBinaryExpr(expr *ast.BinaryExpr) Expr {
 
 	var resultType types.Type
 
-	// Helper to check if type is numeric (int, float, or any for dynamic typing)
-	isNumeric := func(t types.Type) bool {
-		t = types.Unwrap(t)
-		if p, ok := t.(*types.Primitive); ok {
-			return p.Kind == types.KindInt || p.Kind == types.KindFloat || p.Kind == types.KindAny
-		}
-		return false
-	}
-
-	// Helper to get numeric result type (any if either is any, int if both int, else float)
-	numericResult := func(l, r types.Type) types.Type {
-		l = types.Unwrap(l)
-		r = types.Unwrap(r)
-		lp, lok := l.(*types.Primitive)
-		rp, rok := r.(*types.Primitive)
-		if lok && rok {
-			if lp.Kind == types.KindAny || rp.Kind == types.KindAny {
-				return types.AnyType
-			}
-			if lp.Kind == types.KindInt && rp.Kind == types.KindInt {
-				return types.IntType
-			}
-		}
-		return types.FloatType
-	}
-
 	switch expr.Op {
 	case token.PLUS:
 		if left.Type().Equals(types.StringType) && right.Type().Equals(types.StringType) {
 			resultType = types.StringType
 		} else {
-			if !isNumeric(left.Type()) || !isNumeric(right.Type()) {
+			if !types.IsNumeric(left.Type()) || !types.IsNumeric(right.Type()) {
 				b.error(expr.Token.Line, expr.Token.Column,
 					"operator + requires number or string, got %s and %s",
 					left.Type().String(), right.Type().String())
 			}
-			resultType = numericResult(left.Type(), right.Type())
+			resultType = types.NumericResultType(left.Type(), right.Type())
 		}
 
 	case token.MINUS, token.STAR:
-		if !isNumeric(left.Type()) || !isNumeric(right.Type()) {
+		if !types.IsNumeric(left.Type()) || !types.IsNumeric(right.Type()) {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"operator %s requires numbers, got %s and %s",
 				op, left.Type().String(), right.Type().String())
 		}
-		resultType = numericResult(left.Type(), right.Type())
+		resultType = types.NumericResultType(left.Type(), right.Type())
 
 	case token.SLASH:
 		// Division always produces float (or any if either operand is any)
-		if !isNumeric(left.Type()) || !isNumeric(right.Type()) {
+		if !types.IsNumeric(left.Type()) || !types.IsNumeric(right.Type()) {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"operator / requires numbers, got %s and %s",
 				left.Type().String(), right.Type().String())
@@ -894,15 +933,15 @@ func (b *Builder) buildBinaryExpr(expr *ast.BinaryExpr) Expr {
 
 	case token.PERCENT:
 		// Modulo requires int operands
-		if !isNumeric(left.Type()) || !isNumeric(right.Type()) {
+		if !types.IsNumeric(left.Type()) || !types.IsNumeric(right.Type()) {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"operator %% requires numbers, got %s and %s",
 				left.Type().String(), right.Type().String())
 		}
-		resultType = numericResult(left.Type(), right.Type())
+		resultType = types.NumericResultType(left.Type(), right.Type())
 
 	case token.LT, token.GT, token.LTE, token.GTE:
-		if !isNumeric(left.Type()) || !isNumeric(right.Type()) {
+		if !types.IsNumeric(left.Type()) || !types.IsNumeric(right.Type()) {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"comparison requires numbers, got %s and %s",
 				left.Type().String(), right.Type().String())
@@ -943,20 +982,11 @@ func (b *Builder) buildUnaryExpr(expr *ast.UnaryExpr) Expr {
 	operand := b.buildExpr(expr.Operand)
 	op := expr.Token.Literal
 
-	// Helper to check if type is numeric (int, float, or any)
-	isNumeric := func(t types.Type) bool {
-		t = types.Unwrap(t)
-		if p, ok := t.(*types.Primitive); ok {
-			return p.Kind == types.KindInt || p.Kind == types.KindFloat || p.Kind == types.KindAny
-		}
-		return false
-	}
-
 	var resultType types.Type
 
 	switch expr.Op {
 	case token.MINUS:
-		if !isNumeric(operand.Type()) {
+		if !types.IsNumeric(operand.Type()) {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"unary - requires number, got %s", operand.Type().String())
 		}
@@ -1006,10 +1036,20 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 			for i, arg := range expr.Arguments {
 				args[i] = b.buildExpr(arg)
 			}
+
+			// Special case: pop returns the element type of the array
+			returnType := fn.ReturnType
+			if ident.Name == "pop" && len(args) > 0 {
+				argType := types.Unwrap(args[0].Type())
+				if arrType, ok := argType.(*types.Array); ok {
+					returnType = arrType.Element
+				}
+			}
+
 			return &BuiltinCall{
 				Name:     ident.Name,
 				Args:     args,
-				ExprType: fn.ReturnType,
+				ExprType: returnType,
 			}
 		}
 	}
@@ -1105,7 +1145,28 @@ func (b *Builder) buildIndexExpr(expr *ast.IndexExpr) Expr {
 
 func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 	object := b.buildExpr(expr.Object)
-	objectType := types.Unwrap(object.Type())
+	objectType := object.Type()
+
+	// Handle nullable types with optional chaining
+	isNullable := false
+	if nullable, ok := objectType.(*types.Nullable); ok {
+		if expr.Optional {
+			// With optional chaining, unwrap the nullable type
+			objectType = nullable.Inner
+			isNullable = true
+		} else {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"cannot access property on type %s", objectType.String())
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				Optional: expr.Optional,
+				ExprType: types.AnyType,
+			}
+		}
+	}
+
+	objectType = types.Unwrap(objectType)
 
 	var resultType types.Type
 
@@ -1140,6 +1201,11 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 		b.error(expr.Token.Line, expr.Token.Column,
 			"cannot access property on type %s", objectType.String())
 		resultType = types.AnyType
+	}
+
+	// If original was nullable and using optional chaining, result is also nullable
+	if isNullable && expr.Optional {
+		resultType = &types.Nullable{Inner: resultType}
 	}
 
 	return &PropertyExpr{
@@ -1367,6 +1433,14 @@ func (b *Builder) buildAssignExpr(expr *ast.AssignExpr) Expr {
 	value := b.buildExpr(expr.Value)
 	target := b.buildExpr(expr.Target)
 
+	// Check for const reassignment
+	if ident, ok := expr.Target.(*ast.Identifier); ok {
+		if b.scope.isConst(ident.Name) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"cannot assign to const variable '%s'", ident.Name)
+		}
+	}
+
 	if !types.IsAssignableTo(value.Type(), target.Type()) {
 		b.error(expr.Token.Line, expr.Token.Column,
 			"cannot assign %s to %s", value.Type().String(), target.Type().String())
@@ -1384,13 +1458,12 @@ func (b *Builder) buildCompoundAssignExpr(expr *ast.CompoundAssignExpr) Expr {
 	value := b.buildExpr(expr.Value)
 	op := expr.Token.Literal
 
-	// Helper to check if type is numeric (int, float, or any)
-	isNumeric := func(t types.Type) bool {
-		t = types.Unwrap(t)
-		if p, ok := t.(*types.Primitive); ok {
-			return p.Kind == types.KindInt || p.Kind == types.KindFloat || p.Kind == types.KindAny
+	// Check for const reassignment
+	if ident, ok := expr.Target.(*ast.Identifier); ok {
+		if b.scope.isConst(ident.Name) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"cannot assign to const variable '%s'", ident.Name)
 		}
-		return false
 	}
 
 	var resultType types.Type
@@ -1400,7 +1473,7 @@ func (b *Builder) buildCompoundAssignExpr(expr *ast.CompoundAssignExpr) Expr {
 		if target.Type().Equals(types.StringType) && value.Type().Equals(types.StringType) {
 			resultType = types.StringType
 		} else {
-			if !isNumeric(target.Type()) || !isNumeric(value.Type()) {
+			if !types.IsNumeric(target.Type()) || !types.IsNumeric(value.Type()) {
 				b.error(expr.Token.Line, expr.Token.Column,
 					"operator += requires numbers or strings, got %s and %s",
 					target.Type().String(), value.Type().String())
@@ -1408,7 +1481,7 @@ func (b *Builder) buildCompoundAssignExpr(expr *ast.CompoundAssignExpr) Expr {
 			resultType = target.Type() // Preserve original type
 		}
 	default:
-		if !isNumeric(target.Type()) || !isNumeric(value.Type()) {
+		if !types.IsNumeric(target.Type()) || !types.IsNumeric(value.Type()) {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"operator %s requires numbers, got %s and %s",
 				op, target.Type().String(), value.Type().String())
@@ -1428,16 +1501,15 @@ func (b *Builder) buildUpdateExpr(expr *ast.UpdateExpr) Expr {
 	operand := b.buildExpr(expr.Operand)
 	op := expr.Token.Literal
 
-	// Helper to check if type is numeric (int, float, or any)
-	isNumeric := func(t types.Type) bool {
-		t = types.Unwrap(t)
-		if p, ok := t.(*types.Primitive); ok {
-			return p.Kind == types.KindInt || p.Kind == types.KindFloat || p.Kind == types.KindAny
+	// Check for const reassignment
+	if ident, ok := expr.Operand.(*ast.Identifier); ok {
+		if b.scope.isConst(ident.Name) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"cannot assign to const variable '%s'", ident.Name)
 		}
-		return false
 	}
 
-	if !isNumeric(operand.Type()) {
+	if !types.IsNumeric(operand.Type()) {
 		b.error(expr.Token.Line, expr.Token.Column,
 			"operator %s requires number, got %s", op, operand.Type().String())
 	}

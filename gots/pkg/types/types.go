@@ -487,6 +487,19 @@ func LeastUpperBound(a, b Type) Type {
 		return MakeNullable(a)
 	}
 
+	// One nullable, one not - check if non-nullable matches inner type
+	// e.g., LUB(string, string | null) = string | null
+	if aNullable, ok := a.(*Nullable); ok {
+		if aNullable.Inner.Equals(b) {
+			return a // Return the nullable type
+		}
+	}
+	if bNullable, ok := b.(*Nullable); ok {
+		if bNullable.Inner.Equals(a) {
+			return b // Return the nullable type
+		}
+	}
+
 	// Both nullable - LUB of inner types, then wrap
 	if aNullable, ok := a.(*Nullable); ok {
 		if bNullable, ok := b.(*Nullable); ok {
@@ -515,4 +528,31 @@ func LeastUpperBound(a, b Type) Type {
 
 	// No common type found - return any (error recovery)
 	return AnyType
+}
+
+// IsNumeric checks if a type is int, float, or any (for dynamic typing support).
+func IsNumeric(t Type) bool {
+	t = Unwrap(t)
+	if p, ok := t.(*Primitive); ok {
+		return p.Kind == KindInt || p.Kind == KindFloat || p.Kind == KindAny
+	}
+	return false
+}
+
+// NumericResultType returns the result type for numeric operations.
+// Returns any if either operand is any, int if both are int, else float.
+func NumericResultType(left, right Type) Type {
+	left = Unwrap(left)
+	right = Unwrap(right)
+	lp, lok := left.(*Primitive)
+	rp, rok := right.(*Primitive)
+	if lok && rok {
+		if lp.Kind == KindAny || rp.Kind == KindAny {
+			return AnyType
+		}
+		if lp.Kind == KindInt && rp.Kind == KindInt {
+			return IntType
+		}
+	}
+	return FloatType
 }

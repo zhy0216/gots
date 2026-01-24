@@ -16,7 +16,8 @@ type Generator struct {
 	buf            *bytes.Buffer
 	indent         int
 	imports        map[string]bool
-	currentRetType types.Type // Track return type for type assertions
+	currentRetType types.Type        // Track return type for type assertions
+	currentClass   *typed.ClassDecl  // Track current class for super() handling
 }
 
 // Generate produces Go source code from a typed program.
@@ -119,6 +120,11 @@ func (g *Generator) collectImportsFromStmt(stmt typed.Stmt) {
 		if s.Value != nil {
 			g.collectImportsFromExpr(s.Value)
 		}
+	case *typed.TryStmt:
+		g.collectImportsFromBlock(s.TryBlock)
+		g.collectImportsFromBlock(s.CatchBlock)
+	case *typed.ThrowStmt:
+		g.collectImportsFromExpr(s.Value)
 	case *typed.FuncDecl:
 		g.collectImportsFromBlock(s.Body)
 	case *typed.ClassDecl:
@@ -522,10 +528,16 @@ func (g *Generator) genClass(class *typed.ClassDecl) {
 		g.indent++
 		g.writeln("this := &%s{}", name)
 
+		// Set current class for super() handling
+		prevClass := g.currentClass
+		g.currentClass = class
+
 		// Generate constructor body
 		for _, stmt := range class.Constructor.Body.Stmts {
 			g.genStmt(stmt)
 		}
+
+		g.currentClass = prevClass
 
 		g.writeln("return this")
 		g.indent--
@@ -696,6 +708,12 @@ func (g *Generator) genStmt(stmt typed.Stmt) {
 	case *typed.ContinueStmt:
 		g.writeln("continue")
 
+	case *typed.TryStmt:
+		g.genTryStmt(s)
+
+	case *typed.ThrowStmt:
+		g.genThrowStmt(s)
+
 	case *typed.FuncDecl:
 		g.genFuncDecl(s)
 
@@ -726,6 +744,26 @@ func (g *Generator) genVarDecl(decl *typed.VarDecl) {
 
 // genExprWithContext generates an expression with knowledge of the target type context
 func (g *Generator) genExprWithContext(expr typed.Expr, targetType types.Type) string {
+	// Don't wrap null literals - they should just be nil
+	if _, isNull := expr.(*typed.NullLit); isNull {
+		return "nil"
+	}
+
+	// Handle assigning a non-pointer value to a nullable (pointer) type
+	// e.g., `var name: string | null = "Alice"` needs to become `func() *string { v := "Alice"; return &v }()`
+	if nullable, ok := types.Unwrap(targetType).(*types.Nullable); ok {
+		exprType := types.Unwrap(expr.Type())
+		// Check if expr type is not already nullable (i.e., not a pointer)
+		if _, exprIsNullable := exprType.(*types.Nullable); !exprIsNullable {
+			// For class types, we don't need pointer wrapping since classes are already pointers
+			if _, isClass := nullable.Inner.(*types.Class); !isClass {
+				ptrGoType := g.goType(targetType)
+				value := g.genExpr(expr)
+				return fmt.Sprintf("func() %s { v := %s; return &v }()", ptrGoType, value)
+			}
+		}
+	}
+
 	// Handle array literals where the expression type is any[] but target is concrete[]
 	if arrLit, ok := expr.(*typed.ArrayLit); ok {
 		if targetArr, ok := targetType.(*types.Array); ok {
@@ -799,13 +837,31 @@ func (g *Generator) genForStmt(stmt *typed.ForStmt) {
 }
 
 func (g *Generator) genForOfStmt(stmt *typed.ForOfStmt) {
-	g.writeln("for _, %s := range %s {", goName(stmt.Variable.Name), g.genExpr(stmt.Iterable))
-	g.indent++
-	for _, inner := range stmt.Body.Stmts {
-		g.genStmt(inner)
+	varName := goName(stmt.Variable.Name)
+	iterable := g.genExpr(stmt.Iterable)
+
+	// Check if we're iterating over a string (range returns runes, need to convert to string)
+	iterType := types.Unwrap(stmt.Iterable.Type())
+	if prim, ok := iterType.(*types.Primitive); ok && prim.Kind == types.KindString {
+		// For string iteration, convert rune to string
+		g.writeln("for _, _r := range %s {", iterable)
+		g.indent++
+		g.writeln("%s := string(_r)", varName)
+		for _, inner := range stmt.Body.Stmts {
+			g.genStmt(inner)
+		}
+		g.indent--
+		g.writeln("}")
+	} else {
+		// Standard array iteration
+		g.writeln("for _, %s := range %s {", varName, iterable)
+		g.indent++
+		for _, inner := range stmt.Body.Stmts {
+			g.genStmt(inner)
+		}
+		g.indent--
+		g.writeln("}")
 	}
-	g.indent--
-	g.writeln("}")
 }
 
 func (g *Generator) genSwitchStmt(stmt *typed.SwitchStmt) {
@@ -823,6 +879,46 @@ func (g *Generator) genSwitchStmt(stmt *typed.SwitchStmt) {
 		g.indent--
 	}
 	g.writeln("}")
+}
+
+func (g *Generator) genTryStmt(stmt *typed.TryStmt) {
+	// Generate try/catch using Go's defer/recover pattern
+	// try { ... } catch (e) { ... }
+	// becomes:
+	// func() {
+	//     defer func() {
+	//         if r := recover(); r != nil {
+	//             e := r
+	//             // catch block
+	//         }
+	//     }()
+	//     // try block
+	// }()
+
+	g.writeln("func() {")
+	g.indent++
+	g.writeln("defer func() {")
+	g.indent++
+	g.writeln("if r := recover(); r != nil {")
+	g.indent++
+	g.writeln("%s := r", goName(stmt.CatchParam.Name))
+	g.writeln("_ = %s // prevent unused variable error", goName(stmt.CatchParam.Name))
+	for _, inner := range stmt.CatchBlock.Stmts {
+		g.genStmt(inner)
+	}
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}()")
+	for _, inner := range stmt.TryBlock.Stmts {
+		g.genStmt(inner)
+	}
+	g.indent--
+	g.writeln("}()")
+}
+
+func (g *Generator) genThrowStmt(stmt *typed.ThrowStmt) {
+	g.writeln("panic(%s)", g.genExpr(stmt.Value))
 }
 
 // ----------------------------------------------------------------------------
@@ -929,8 +1025,26 @@ func (g *Generator) genBinaryExpr(expr *typed.BinaryExpr) string {
 
 	switch expr.Op {
 	case "??":
-		// Nullish coalescing - use helper or inline
-		return fmt.Sprintf("func() interface{} { if %s != nil { return %s }; return %s }()", left, left, right)
+		// Nullish coalescing - return proper typed result
+		resultGoType := g.goType(expr.ExprType)
+		resultType := types.Unwrap(expr.ExprType)
+
+		// Check if left operand is a nullable type
+		if nullable, ok := types.Unwrap(leftType).(*types.Nullable); ok {
+			// Check if result type is also nullable (we keep the pointer)
+			if _, resultIsNullable := resultType.(*types.Nullable); resultIsNullable {
+				// Result is nullable, don't dereference
+				return fmt.Sprintf("func() %s { if %s != nil { return %s }; return %s }()", resultGoType, left, left, right)
+			}
+			// For class types, don't dereference since classes are already pointers
+			if _, isClass := nullable.Inner.(*types.Class); isClass {
+				return fmt.Sprintf("func() %s { if %s != nil { return %s }; return %s }()", resultGoType, left, left, right)
+			}
+			// For primitive nullable types, dereference when non-nil
+			return fmt.Sprintf("func() %s { if %s != nil { return *%s }; return %s }()", resultGoType, left, left, right)
+		}
+		// Left is already non-nullable (shouldn't happen in practice for ??)
+		return fmt.Sprintf("func() %s { if %s != nil { return %s }; return %s }()", resultGoType, left, left, right)
 	case "%":
 		// Modulo - works directly on int in Go, need math.Mod for float64
 		if lp, ok := leftType.(*types.Primitive); ok && lp.Kind == types.KindFloat {
@@ -970,6 +1084,18 @@ func (g *Generator) genCallExpr(expr *typed.CallExpr) string {
 	args := make([]string, len(expr.Args))
 	for i, arg := range expr.Args {
 		args[i] = g.genExpr(arg)
+	}
+
+	// Handle optional chaining: fn?.()
+	if expr.Optional {
+		resultType := g.goType(expr.ExprType)
+		argsStr := strings.Join(args, ", ")
+		if resultType == "" || resultType == "interface{}" {
+			return fmt.Sprintf("func() interface{} { if %s != nil { return gts_call(%s, %s) }; return nil }()",
+				callee, callee, argsStr)
+		}
+		return fmt.Sprintf("func() %s { if %s != nil { return %s(%s) }; var zero %s; return zero }()",
+			resultType, callee, callee, argsStr, resultType)
 	}
 
 	// Check if the callee is a generic function (interface{} type)
@@ -1041,7 +1167,13 @@ func (g *Generator) genBuiltinCall(expr *typed.BuiltinCall) string {
 		return fmt.Sprintf("%s = append(%s, %s)", args[0], args[0], valueExpr)
 	case "pop":
 		// Pop returns and removes the last element
-		return fmt.Sprintf("func() interface{} { n := len(%s); v := %s[n-1]; %s = %s[:n-1]; return v }()", args[0], args[0], args[0], args[0])
+		// Return the proper element type
+		elemType := "interface{}"
+		arrType := types.Unwrap(expr.Args[0].Type())
+		if arr, ok := arrType.(*types.Array); ok {
+			elemType = g.goType(arr.Element)
+		}
+		return fmt.Sprintf("func() %s { n := len(%s); v := %s[n-1]; %s = %s[:n-1]; return v }()", elemType, args[0], args[0], args[0], args[0])
 	case "typeof":
 		return fmt.Sprintf("gts_typeof(%s)", args[0])
 	case "tostring":
@@ -1067,12 +1199,47 @@ func (g *Generator) genIndexExpr(expr *typed.IndexExpr) string {
 	object := g.genExpr(expr.Object)
 	index := g.genExpr(expr.Index)
 
+	if expr.Optional {
+		// Optional chaining: obj?.[index]
+		// Generate: func() T { if obj != nil { return obj[int(index)] }; return nil }()
+		resultType := g.goType(expr.ExprType)
+		return fmt.Sprintf("func() %s { if %s != nil { return %s[int(%s)] }; var zero %s; return zero }()",
+			resultType, object, object, index, resultType)
+	}
+
 	// Convert float64 index to int
 	return fmt.Sprintf("%s[int(%s)]", object, index)
 }
 
 func (g *Generator) genPropertyExpr(expr *typed.PropertyExpr) string {
 	object := g.genExpr(expr.Object)
+
+	if expr.Optional {
+		// Optional chaining: obj?.prop
+		// Generate: func() T { if obj != nil { return obj.Prop }; return nil }()
+		resultType := g.goType(expr.ExprType)
+		propAccess := fmt.Sprintf("%s.%s", object, exportName(expr.Property))
+
+		// Check if we need to take address of the property (for nullable primitive types)
+		// The result type will be a pointer for nullable types
+		if strings.HasPrefix(resultType, "*") {
+			// Check if it's a pointer to a class (e.g., *Person) vs pointer to primitive (e.g., *string)
+			innerType := resultType[1:]
+			// If the inner type starts with uppercase, it's likely a class
+			if len(innerType) > 0 && innerType[0] >= 'A' && innerType[0] <= 'Z' {
+				// It's a class pointer, can return directly
+				return fmt.Sprintf("func() %s { if %s != nil { return %s }; return nil }()",
+					resultType, object, propAccess)
+			}
+			// It's a pointer to a primitive type, need to take address
+			return fmt.Sprintf("func() %s { if %s != nil { v := %s; return &v }; return nil }()",
+				resultType, object, propAccess)
+		}
+
+		return fmt.Sprintf("func() %s { if %s != nil { return %s }; var zero %s; return zero }()",
+			resultType, object, propAccess, resultType)
+	}
+
 	return fmt.Sprintf("%s.%s", object, exportName(expr.Property))
 }
 
@@ -1190,7 +1357,12 @@ func (g *Generator) genSuperExpr(expr *typed.SuperExpr) string {
 	for i, arg := range expr.Args {
 		args[i] = g.genExpr(arg)
 	}
-	// Super calls are handled specially in constructor - just assign parent fields
+	// Generate parent struct initialization: this.ParentName = *NewParent(args...)
+	if g.currentClass != nil && g.currentClass.Super != "" {
+		parentName := exportName(g.currentClass.Super)
+		return fmt.Sprintf("this.%s = *New%s(%s)", parentName, parentName, strings.Join(args, ", "))
+	}
+	// Fallback - should not happen if type checker is working
 	return fmt.Sprintf("/* super(%s) */", strings.Join(args, ", "))
 }
 
@@ -1286,7 +1458,11 @@ func (g *Generator) goType(t types.Type) string {
 		return fmt.Sprintf("func(%s) %s", strings.Join(params, ", "), retType)
 
 	case *types.Nullable:
-		// Use pointer for nullable
+		// Use pointer for nullable, but class types are already pointers
+		if _, isClass := typ.Inner.(*types.Class); isClass {
+			// Class types are already *ClassName, so nullable class is just *ClassName (can be nil)
+			return g.goType(typ.Inner)
+		}
 		inner := g.goType(typ.Inner)
 		return "*" + inner
 

@@ -622,3 +622,62 @@ func TestNullishCoalescing(t *testing.T) {
 		let y: int = x ?? 0;
 	`)
 }
+
+// ============================================================
+// Const Validation Tests
+// ============================================================
+
+func TestConstReassignment(t *testing.T) {
+	// Direct reassignment to const should fail
+	expectError(t, `
+		const x: int = 10;
+		x = 20;
+	`, "cannot assign to const")
+
+	// Reassignment to let should work
+	expectNoErrors(t, `
+		let x: int = 10;
+		x = 20;
+	`)
+}
+
+func TestConstCompoundAssign(t *testing.T) {
+	// Compound assignment to const should fail
+	expectError(t, `
+		const x: int = 10;
+		x += 5;
+	`, "cannot assign to const")
+
+	expectError(t, `
+		const x: int = 10;
+		x -= 5;
+	`, "cannot assign to const")
+
+	expectError(t, `
+		const x: int = 10;
+		x *= 2;
+	`, "cannot assign to const")
+}
+
+func TestConstIncrement(t *testing.T) {
+	// Increment/decrement on const should fail
+	expectError(t, `
+		const x: int = 10;
+		x++;
+	`, "cannot assign to const")
+
+	expectError(t, `
+		const x: int = 10;
+		++x;
+	`, "cannot assign to const")
+
+	expectError(t, `
+		const x: int = 10;
+		x--;
+	`, "cannot assign to const")
+
+	expectError(t, `
+		const x: int = 10;
+		--x;
+	`, "cannot assign to const")
+}

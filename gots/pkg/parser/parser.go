@@ -239,6 +239,10 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseTypeAlias()
 	case token.SWITCH:
 		return p.parseSwitchStatement()
+	case token.TRY:
+		return p.parseTryStatement()
+	case token.THROW:
+		return p.parseThrowStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -1461,4 +1465,60 @@ func (p *Parser) parseCaseClause() *ast.CaseClause {
 	}
 
 	return clause
+}
+
+// parseTryStatement parses a try/catch statement
+func (p *Parser) parseTryStatement() *ast.TryStmt {
+	stmt := &ast.TryStmt{Token: p.curToken}
+
+	// Parse the try block
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	stmt.TryBlock = p.parseBlockStatement()
+
+	// Expect 'catch'
+	if !p.expectPeek(token.CATCH) {
+		p.errors = append(p.errors, "expected 'catch' after try block")
+		return nil
+	}
+
+	// Parse catch parameter: catch (e)
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	stmt.CatchParam = p.curToken.Literal
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	// Parse the catch block
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	stmt.CatchBlock = p.parseBlockStatement()
+
+	return stmt
+}
+
+// parseThrowStatement parses a throw statement
+func (p *Parser) parseThrowStatement() *ast.ThrowStmt {
+	stmt := &ast.ThrowStmt{Token: p.curToken}
+
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
 }

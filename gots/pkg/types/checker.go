@@ -57,21 +57,40 @@ func (e *Error) String() string {
 
 // Scope represents a lexical scope with variable bindings.
 type Scope struct {
-	parent   *Scope
-	bindings map[string]Type
+	parent    *Scope
+	bindings  map[string]Type
+	constVars map[string]bool // Track which variables are const
 }
 
 // NewScope creates a new scope with an optional parent.
 func NewScope(parent *Scope) *Scope {
 	return &Scope{
-		parent:   parent,
-		bindings: make(map[string]Type),
+		parent:    parent,
+		bindings:  make(map[string]Type),
+		constVars: make(map[string]bool),
 	}
 }
 
 // Define adds a binding to the current scope.
 func (s *Scope) Define(name string, typ Type) {
 	s.bindings[name] = typ
+}
+
+// DefineConst adds a const binding to the current scope.
+func (s *Scope) DefineConst(name string, typ Type) {
+	s.bindings[name] = typ
+	s.constVars[name] = true
+}
+
+// IsConst checks if a variable is const, searching up the scope chain.
+func (s *Scope) IsConst(name string) bool {
+	if isConst, ok := s.constVars[name]; ok {
+		return isConst
+	}
+	if s.parent != nil {
+		return s.parent.IsConst(name)
+	}
+	return false
 }
 
 // Lookup finds a binding, searching up the scope chain.
@@ -371,6 +390,12 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.ContinueStmt:
 		c.checkContinueStmt(s)
 
+	case *ast.TryStmt:
+		c.checkTryStmt(s)
+
+	case *ast.ThrowStmt:
+		c.checkThrowStmt(s)
+
 	case *ast.FuncDecl:
 		c.checkFuncDecl(s)
 
@@ -405,7 +430,11 @@ func (c *Checker) checkVarDecl(decl *ast.VarDecl) {
 		declaredType = c.inferType(decl.Value)
 	}
 
-	c.scope.Define(decl.Name, declaredType)
+	if decl.IsConst {
+		c.scope.DefineConst(decl.Name, declaredType)
+	} else {
+		c.scope.Define(decl.Name, declaredType)
+	}
 }
 
 // inferType infers the type of an expression for type inference.
@@ -529,6 +558,28 @@ func (c *Checker) checkContinueStmt(stmt *ast.ContinueStmt) {
 	if c.loopDepth == 0 {
 		c.error(stmt.Token.Line, stmt.Token.Column, "continue outside loop")
 	}
+}
+
+func (c *Checker) checkTryStmt(stmt *ast.TryStmt) {
+	// Check the try block
+	c.pushScope()
+	for _, s := range stmt.TryBlock.Statements {
+		c.checkStatement(s)
+	}
+	c.popScope()
+
+	// Check the catch block with catch parameter in scope
+	c.pushScope()
+	c.scope.Define(stmt.CatchParam, AnyType)
+	for _, s := range stmt.CatchBlock.Statements {
+		c.checkStatement(s)
+	}
+	c.popScope()
+}
+
+func (c *Checker) checkThrowStmt(stmt *ast.ThrowStmt) {
+	// Throw can throw any expression
+	c.checkExpr(stmt.Value)
 }
 
 func (c *Checker) checkFuncDecl(decl *ast.FuncDecl) {
@@ -1044,6 +1095,12 @@ func (c *Checker) checkAssignExpr(expr *ast.AssignExpr) Type {
 
 	switch target := expr.Target.(type) {
 	case *ast.Identifier:
+		// Check for const reassignment
+		if c.scope.IsConst(target.Name) {
+			c.error(expr.Token.Line, expr.Token.Column,
+				"cannot assign to const variable '%s'", target.Name)
+		}
+
 		varType, found := c.scope.Lookup(target.Name)
 		if !found {
 			c.error(expr.Token.Line, expr.Token.Column,
@@ -1177,6 +1234,14 @@ func (c *Checker) checkSwitchStmt(stmt *ast.SwitchStmt) {
 
 // checkCompoundAssignExpr checks compound assignment expressions (+=, -=, etc.).
 func (c *Checker) checkCompoundAssignExpr(expr *ast.CompoundAssignExpr) Type {
+	// Check for const reassignment
+	if ident, ok := expr.Target.(*ast.Identifier); ok {
+		if c.scope.IsConst(ident.Name) {
+			c.error(expr.Token.Line, expr.Token.Column,
+				"cannot assign to const variable '%s'", ident.Name)
+		}
+	}
+
 	targetType := c.checkExpr(expr.Target)
 	valueType := c.checkExpr(expr.Value)
 
@@ -1205,6 +1270,14 @@ func (c *Checker) checkCompoundAssignExpr(expr *ast.CompoundAssignExpr) Type {
 
 // checkUpdateExpr checks increment/decrement expressions.
 func (c *Checker) checkUpdateExpr(expr *ast.UpdateExpr) Type {
+	// Check for const reassignment
+	if ident, ok := expr.Operand.(*ast.Identifier); ok {
+		if c.scope.IsConst(ident.Name) {
+			c.error(expr.Token.Line, expr.Token.Column,
+				"cannot assign to const variable '%s'", ident.Name)
+		}
+	}
+
 	operandType := c.checkExpr(expr.Operand)
 
 	if !isNumericType(operandType) {

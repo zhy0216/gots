@@ -101,6 +101,22 @@ type ContinueStmt struct{}
 
 func (c *ContinueStmt) stmtNode() {}
 
+// TryStmt represents a try/catch statement.
+type TryStmt struct {
+	TryBlock   *BlockStmt
+	CatchParam *VarDecl // The catch parameter (e.g., 'e' in catch(e))
+	CatchBlock *BlockStmt
+}
+
+func (t *TryStmt) stmtNode() {}
+
+// ThrowStmt represents a throw statement.
+type ThrowStmt struct {
+	Value Expr
+}
+
+func (t *ThrowStmt) stmtNode() {}
+
 // FuncDecl represents a top-level function declaration.
 type FuncDecl struct {
 	Name       string
