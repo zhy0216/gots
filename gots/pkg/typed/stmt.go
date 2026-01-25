@@ -169,6 +169,7 @@ type FuncDecl struct {
 	ReturnType types.Type
 	Body       *BlockStmt
 	Captures   []*Capture // For closures
+	IsAsync    bool       // true if declared with 'async' keyword
 }
 
 func (f *FuncDecl) stmtNode() {}

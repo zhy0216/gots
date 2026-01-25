@@ -701,6 +701,186 @@ func (g *Generator) genRuntime() {
 	g.writeln("return true")
 	g.indent--
 	g.writeln("}")
+	g.writeln("")
+
+	// Promise runtime type and helpers
+	g.genPromiseRuntime()
+}
+
+// genPromiseRuntime generates the Promise type and related helpers.
+func (g *Generator) genPromiseRuntime() {
+	// Promise struct
+	g.writeln("// GTS_Promise represents a JavaScript-style Promise")
+	g.writeln("type GTS_Promise[T any] struct {")
+	g.indent++
+	g.writeln("done    chan struct{}")
+	g.writeln("value   T")
+	g.writeln("err     error")
+	g.writeln("settled bool")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Promise constructor
+	g.writeln("func GTS_NewPromise[T any](executor func(resolve func(T), reject func(error))) *GTS_Promise[T] {")
+	g.indent++
+	g.writeln("p := &GTS_Promise[T]{done: make(chan struct{})}")
+	g.writeln("go func() {")
+	g.indent++
+	g.writeln("defer func() {")
+	g.indent++
+	g.writeln("if r := recover(); r != nil {")
+	g.indent++
+	g.writeln("if err, ok := r.(error); ok {")
+	g.indent++
+	g.writeln("p.err = err")
+	g.indent--
+	g.writeln("} else {")
+	g.indent++
+	g.writeln("p.err = fmt.Errorf(\"%%v\", r)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("if !p.settled {")
+	g.indent++
+	g.writeln("p.settled = true")
+	g.writeln("close(p.done)")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}()")
+	g.writeln("resolve := func(v T) {")
+	g.indent++
+	g.writeln("if !p.settled {")
+	g.indent++
+	g.writeln("p.value = v")
+	g.writeln("p.settled = true")
+	g.writeln("close(p.done)")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("reject := func(e error) {")
+	g.indent++
+	g.writeln("if !p.settled {")
+	g.indent++
+	g.writeln("p.err = e")
+	g.writeln("p.settled = true")
+	g.writeln("close(p.done)")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("executor(resolve, reject)")
+	g.indent--
+	g.writeln("}()")
+	g.writeln("return p")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_await helper
+	g.writeln("func gts_await[T any](p *GTS_Promise[T]) T {")
+	g.indent++
+	g.writeln("<-p.done")
+	g.writeln("if p.err != nil {")
+	g.indent++
+	g.writeln("panic(p.err)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return p.value")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Promise.resolve static method
+	g.writeln("func GTS_Promise_Resolve[T any](value T) *GTS_Promise[T] {")
+	g.indent++
+	g.writeln("return GTS_NewPromise(func(resolve func(T), reject func(error)) {")
+	g.indent++
+	g.writeln("resolve(value)")
+	g.indent--
+	g.writeln("})")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Promise.reject static method
+	g.writeln("func GTS_Promise_Reject[T any](err error) *GTS_Promise[T] {")
+	g.indent++
+	g.writeln("return GTS_NewPromise(func(resolve func(T), reject func(error)) {")
+	g.indent++
+	g.writeln("reject(err)")
+	g.indent--
+	g.writeln("})")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Promise.all
+	g.writeln("func GTS_Promise_All[T any](promises []*GTS_Promise[T]) *GTS_Promise[[]T] {")
+	g.indent++
+	g.writeln("return GTS_NewPromise(func(resolve func([]T), reject func(error)) {")
+	g.indent++
+	g.writeln("results := make([]T, len(promises))")
+	g.writeln("for i, p := range promises {")
+	g.indent++
+	g.writeln("<-p.done")
+	g.writeln("if p.err != nil {")
+	g.indent++
+	g.writeln("reject(p.err)")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("results[i] = p.value")
+	g.indent--
+	g.writeln("}")
+	g.writeln("resolve(results)")
+	g.indent--
+	g.writeln("})")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Promise.race
+	g.writeln("func GTS_Promise_Race[T any](promises []*GTS_Promise[T]) *GTS_Promise[T] {")
+	g.indent++
+	g.writeln("return GTS_NewPromise(func(resolve func(T), reject func(error)) {")
+	g.indent++
+	g.writeln("done := make(chan struct{})")
+	g.writeln("for _, p := range promises {")
+	g.indent++
+	g.writeln("go func(pr *GTS_Promise[T]) {")
+	g.indent++
+	g.writeln("<-pr.done")
+	g.writeln("select {")
+	g.writeln("case <-done:")
+	g.indent++
+	g.writeln("return")
+	g.indent--
+	g.writeln("default:")
+	g.indent++
+	g.writeln("close(done)")
+	g.writeln("if pr.err != nil {")
+	g.indent++
+	g.writeln("reject(pr.err)")
+	g.indent--
+	g.writeln("} else {")
+	g.indent++
+	g.writeln("resolve(pr.value)")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}(p)")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("})")
+	g.indent--
+	g.writeln("}")
 }
 
 // genEnum generates a Go type and const block for an enum.
@@ -881,21 +1061,69 @@ func (g *Generator) genFuncDecl(fn *typed.FuncDecl) {
 		typeParamStr = fmt.Sprintf("[%s]", strings.Join(typeParams, ", "))
 	}
 
-	if returnType == "" {
-		g.writeln("func %s%s(%s) {", goName(fn.Name), typeParamStr, strings.Join(params, ", "))
+	if fn.IsAsync {
+		// Async function: returns Promise
+		// Extract the inner type from Promise<T>
+		promiseType, ok := fn.ReturnType.(*types.Promise)
+		if !ok {
+			// Fallback if type is not Promise
+			promiseType = &types.Promise{Value: types.VoidType}
+		}
+		innerType := g.goType(promiseType.Value)
+		if innerType == "" {
+			innerType = "interface{}"
+		}
+
+		g.writeln("func %s%s(%s) *GTS_Promise[%s] {", goName(fn.Name), typeParamStr, strings.Join(params, ", "), innerType)
+		g.indent++
+		g.writeln("return GTS_NewPromise(func(__resolve func(%s), __reject func(error)) {", innerType)
+		g.indent++
+
+		// Generate body with transformed returns
+		g.genAsyncBody(fn.Body, innerType)
+
+		g.indent--
+		g.writeln("})")
+		g.indent--
+		g.writeln("}")
 	} else {
-		g.writeln("func %s%s(%s) %s {", goName(fn.Name), typeParamStr, strings.Join(params, ", "), returnType)
-	}
-	g.indent++
+		// Regular function
+		if returnType == "" {
+			g.writeln("func %s%s(%s) {", goName(fn.Name), typeParamStr, strings.Join(params, ", "))
+		} else {
+			g.writeln("func %s%s(%s) %s {", goName(fn.Name), typeParamStr, strings.Join(params, ", "), returnType)
+		}
+		g.indent++
 
-	for _, stmt := range fn.Body.Stmts {
-		g.genStmt(stmt)
-	}
+		for _, stmt := range fn.Body.Stmts {
+			g.genStmt(stmt)
+		}
 
-	g.indent--
-	g.writeln("}")
+		g.indent--
+		g.writeln("}")
+	}
 
 	g.currentRetType = savedRetType
+}
+
+// genAsyncBody generates the body of an async function, transforming return statements.
+func (g *Generator) genAsyncBody(body *typed.BlockStmt, innerType string) {
+	for _, stmt := range body.Stmts {
+		if ret, ok := stmt.(*typed.ReturnStmt); ok {
+			// Transform return x into __resolve(x); return
+			if ret.Value != nil {
+				g.writeln("__resolve(%s)", g.genExpr(ret.Value))
+			} else {
+				// For void returns in Promise<void>
+				if innerType == "interface{}" {
+					g.writeln("__resolve(nil)")
+				}
+			}
+			g.writeln("return")
+		} else {
+			g.genStmt(stmt)
+		}
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -1366,6 +1594,9 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 
 	case *typed.MethodCallExpr:
 		return g.genMethodCallExpr(e)
+
+	case *typed.AwaitExpr:
+		return g.genAwaitExpr(e)
 	}
 
 	return "nil"
@@ -1888,6 +2119,15 @@ func (g *Generator) genUpdateExpr(expr *typed.UpdateExpr) string {
 	return fmt.Sprintf("%s%s", operand, expr.Op)
 }
 
+func (g *Generator) genAwaitExpr(expr *typed.AwaitExpr) string {
+	arg := g.genExpr(expr.Argument)
+	resultType := g.goType(expr.ExprType)
+	if resultType == "" {
+		resultType = "interface{}"
+	}
+	return fmt.Sprintf("gts_await[%s](%s)", resultType, arg)
+}
+
 func (g *Generator) genMapLit(expr *typed.MapLit) string {
 	mapType := expr.ExprType.(*types.Map)
 	goKeyType := g.goType(mapType.Key)
@@ -2325,6 +2565,13 @@ func (g *Generator) goType(t types.Type) string {
 
 	case *types.Set:
 		return fmt.Sprintf("map[%s]struct{}", g.goType(typ.Element))
+
+	case *types.Promise:
+		innerType := g.goType(typ.Value)
+		if innerType == "" {
+			innerType = "interface{}" // void becomes interface{}
+		}
+		return fmt.Sprintf("*GTS_Promise[%s]", innerType)
 
 	case *types.Enum:
 		return exportName(typ.Name)

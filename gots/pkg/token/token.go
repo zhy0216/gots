@@ -109,6 +109,8 @@ const (
 	CATCH       // catch
 	THROW       // throw
 	ENUM        // enum
+	ASYNC       // async
+	AWAIT       // await
 
 	// Type keywords
 	INT_TYPE     // int
@@ -249,6 +251,8 @@ var typeStrings = map[Type]string{
 	CATCH:       "catch",
 	THROW:       "throw",
 	ENUM:        "enum",
+	ASYNC:       "async",
+	AWAIT:       "await",
 
 	// Type keywords
 	INT_TYPE:     "int",
@@ -297,6 +301,8 @@ var keywords = map[string]Type{
 	"catch":       CATCH,
 	"throw":       THROW,
 	"enum":        ENUM,
+	"async":       ASYNC,
+	"await":       AWAIT,
 	"true":        TRUE,
 	"false":       FALSE,
 	"null":        NULL,
@@ -330,7 +336,7 @@ func IsKeyword(t Type) bool {
 	case LET, CONST, FUNCTION, RETURN, IF, ELSE, WHILE, FOR,
 		BREAK, CONTINUE, CLASS, EXTENDS, NEW, THIS, SUPER,
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL, SWITCH, CASE, DEFAULT, OF,
-		TRY, CATCH, THROW, ENUM,
+		TRY, CATCH, THROW, ENUM, ASYNC, AWAIT,
 		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
 		MAP, SET, INTERFACE, IMPORT, FROM, EXPORT, DECLARE, MODULE, AS:
 		return true

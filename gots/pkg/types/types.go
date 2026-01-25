@@ -216,6 +216,32 @@ func (s *Set) Equals(other Type) bool {
 }
 
 // ----------------------------------------------------------------------------
+// Promise Type
+// ----------------------------------------------------------------------------
+
+// Promise represents a Promise<T> type.
+type Promise struct {
+	Value Type // The resolved value type T
+}
+
+func (p *Promise) typeNode() {}
+func (p *Promise) String() string {
+	return fmt.Sprintf("Promise<%s>", p.Value.String())
+}
+
+func (p *Promise) Equals(other Type) bool {
+	if op, ok := other.(*Promise); ok {
+		return p.Value.Equals(op.Value)
+	}
+	return false
+}
+
+// Unwrap returns the inner value type.
+func (p *Promise) Unwrap() Type {
+	return p.Value
+}
+
+// ----------------------------------------------------------------------------
 // Enum Type
 // ----------------------------------------------------------------------------
 
@@ -1305,6 +1331,8 @@ func substituteType(t Type, subst map[string]Type) Type {
 		}
 	case *Set:
 		return &Set{Element: substituteType(typ.Element, subst)}
+	case *Promise:
+		return &Promise{Value: substituteType(typ.Value, subst)}
 	case *Nullable:
 		return &Nullable{Inner: substituteType(typ.Inner, subst)}
 	case *Function:
@@ -1337,6 +1365,8 @@ func typeNameForInstantiation(t Type) string {
 		return "map_" + typeNameForInstantiation(typ.Key) + "_" + typeNameForInstantiation(typ.Value)
 	case *Set:
 		return "set_" + typeNameForInstantiation(typ.Element)
+	case *Promise:
+		return "promise_" + typeNameForInstantiation(typ.Value)
 	default:
 		return "unknown"
 	}

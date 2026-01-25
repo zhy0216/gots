@@ -260,6 +260,7 @@ type FunctionExpr struct {
 	Params     []*Parameter
 	ReturnType Type
 	Body       *Block
+	IsAsync    bool // true if declared with 'async' keyword
 }
 
 func (f *FunctionExpr) expressionNode()      {}
@@ -357,6 +358,7 @@ type ArrowFunctionExpr struct {
 	ReturnType Type
 	Body       *Block     // For block body: () => { ... }
 	Expression Expression // For expression body: () => expr
+	IsAsync    bool       // true if declared with 'async' keyword
 }
 
 func (a *ArrowFunctionExpr) expressionNode()      {}
@@ -508,6 +510,16 @@ type SpreadExpr struct {
 func (s *SpreadExpr) expressionNode()      {}
 func (s *SpreadExpr) TokenLiteral() string { return s.Token.Literal }
 func (s *SpreadExpr) String() string       { return fmt.Sprintf("...%s", s.Argument.String()) }
+
+// AwaitExpr represents an await expression.
+type AwaitExpr struct {
+	Token    token.Token // The 'await' token
+	Argument Expression  // The promise being awaited
+}
+
+func (a *AwaitExpr) expressionNode()      {}
+func (a *AwaitExpr) TokenLiteral() string { return a.Token.Literal }
+func (a *AwaitExpr) String() string       { return fmt.Sprintf("await %s", a.Argument.String()) }
 
 // Block represents a block of statements.
 type Block struct {
@@ -699,6 +711,7 @@ type FuncDecl struct {
 	Params     []*Parameter
 	ReturnType Type
 	Body       *Block
+	IsAsync    bool // true if declared with 'async' keyword
 }
 
 func (f *FuncDecl) statementNode()       {}
@@ -1034,6 +1047,17 @@ func (s *SetType) typeNode()            {}
 func (s *SetType) TokenLiteral() string { return s.String() }
 func (s *SetType) String() string {
 	return fmt.Sprintf("Set<%s>", s.ElementType.String())
+}
+
+// PromiseType represents a Promise<T> type.
+type PromiseType struct {
+	ResultType Type // The resolved value type T
+}
+
+func (p *PromiseType) typeNode()            {}
+func (p *PromiseType) TokenLiteral() string { return p.String() }
+func (p *PromiseType) String() string {
+	return fmt.Sprintf("Promise<%s>", p.ResultType.String())
 }
 
 // InterfaceType represents an interface type reference.

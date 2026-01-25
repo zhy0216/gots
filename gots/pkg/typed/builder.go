@@ -28,6 +28,7 @@ type Builder struct {
 	scopeDepth      int
 	constVars       map[string]bool                 // Track which variables are const (scoped)
 	typeParamScope  map[string]*types.TypeParameter // Type parameters currently in scope
+	inAsyncFunc     bool                            // Track if we're inside an async function
 }
 
 // Error represents a type checking error.
@@ -747,10 +748,21 @@ func (b *Builder) resolveType(astType ast.Type) types.Type {
 			Element: b.resolveType(t.ElementType),
 		}
 
+	case *ast.PromiseType:
+		return &types.Promise{
+			Value: b.resolveType(t.ResultType),
+		}
+
 	case *ast.NamedType:
 		// First check if it's a type parameter in scope
 		if tp, ok := b.typeParamScope[t.Name]; ok {
 			return tp
+		}
+		// Check for Promise<T>
+		if t.Name == "Promise" && len(t.TypeArgs) == 1 {
+			return &types.Promise{
+				Value: b.resolveType(t.TypeArgs[0]),
+			}
 		}
 		// Check for generic class instantiation (e.g., Stack<int>)
 		if len(t.TypeArgs) > 0 {
@@ -1216,14 +1228,28 @@ func (b *Builder) buildReturnStmt(stmt *ast.ReturnStmt) *ReturnStmt {
 	var value Expr
 	if stmt.Value != nil {
 		value = b.buildExpr(stmt.Value)
-		if !types.IsAssignableTo(value.Type(), b.currentFunc.ReturnType) {
+		// In async functions returning Promise<T>, we return T, not Promise<T>
+		expectedType := b.currentFunc.ReturnType
+		if b.inAsyncFunc {
+			if promiseType, ok := expectedType.(*types.Promise); ok {
+				expectedType = promiseType.Value
+			}
+		}
+		if !types.IsAssignableTo(value.Type(), expectedType) {
 			b.error(stmt.Token.Line, stmt.Token.Column,
-				"cannot return %s, expected %s", value.Type().String(), b.currentFunc.ReturnType.String())
+				"cannot return %s, expected %s", value.Type().String(), expectedType.String())
 		}
 	} else {
-		if !b.currentFunc.ReturnType.Equals(types.VoidType) {
+		// In async functions returning Promise<void>, empty return is OK
+		expectedType := b.currentFunc.ReturnType
+		if b.inAsyncFunc {
+			if promiseType, ok := expectedType.(*types.Promise); ok {
+				expectedType = promiseType.Value
+			}
+		}
+		if !expectedType.Equals(types.VoidType) {
 			b.error(stmt.Token.Line, stmt.Token.Column,
-				"missing return value, expected %s", b.currentFunc.ReturnType.String())
+				"missing return value, expected %s", expectedType.String())
 		}
 	}
 
@@ -1288,7 +1314,9 @@ func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
 	}
 
 	savedFunc := b.currentFunc
+	savedInAsync := b.inAsyncFunc
 	b.currentFunc = funcType
+	b.inAsyncFunc = decl.IsAsync
 
 	b.pushScope()
 	for _, p := range params {
@@ -1299,6 +1327,7 @@ func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
 
 	b.popScope()
 	b.currentFunc = savedFunc
+	b.inAsyncFunc = savedInAsync
 	b.typeParamScope = savedTypeParamScope
 
 	return &FuncDecl{
@@ -1307,6 +1336,7 @@ func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
 		Params:     params,
 		ReturnType: returnType,
 		Body:       body,
+		IsAsync:    decl.IsAsync,
 	}
 }
 
@@ -1576,6 +1606,9 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 
 	case *ast.UpdateExpr:
 		return b.buildUpdateExpr(e)
+
+	case *ast.AwaitExpr:
+		return b.buildAwaitExpr(e)
 	}
 
 	return &NullLit{ExprType: types.AnyType}
@@ -2201,7 +2234,9 @@ func (b *Builder) buildFuncExpr(expr *ast.FunctionExpr) Expr {
 	}
 
 	savedFunc := b.currentFunc
+	savedInAsync := b.inAsyncFunc
 	b.currentFunc = funcType
+	b.inAsyncFunc = expr.IsAsync
 
 	b.pushScope()
 	for _, p := range params {
@@ -2212,11 +2247,13 @@ func (b *Builder) buildFuncExpr(expr *ast.FunctionExpr) Expr {
 
 	b.popScope()
 	b.currentFunc = savedFunc
+	b.inAsyncFunc = savedInAsync
 
 	return &FuncExpr{
 		Params:   params,
 		Body:     body,
 		ExprType: funcType,
+		IsAsync:  expr.IsAsync,
 	}
 }
 
@@ -2237,7 +2274,9 @@ func (b *Builder) buildArrowFuncExpr(expr *ast.ArrowFunctionExpr) Expr {
 	}
 
 	savedFunc := b.currentFunc
+	savedInAsync := b.inAsyncFunc
 	b.currentFunc = funcType
+	b.inAsyncFunc = expr.IsAsync
 
 	b.pushScope()
 	for _, p := range params {
@@ -2259,12 +2298,14 @@ func (b *Builder) buildArrowFuncExpr(expr *ast.ArrowFunctionExpr) Expr {
 
 	b.popScope()
 	b.currentFunc = savedFunc
+	b.inAsyncFunc = savedInAsync
 
 	return &FuncExpr{
 		Params:   params,
 		Body:     body,
 		BodyExpr: bodyExpr,
 		ExprType: funcType,
+		IsAsync:  expr.IsAsync,
 	}
 }
 
@@ -2517,6 +2558,32 @@ func (b *Builder) buildUpdateExpr(expr *ast.UpdateExpr) Expr {
 		Operand:  operand,
 		Prefix:   expr.Prefix,
 		ExprType: operand.Type(), // Preserve type
+	}
+}
+
+// buildAwaitExpr handles await expressions.
+func (b *Builder) buildAwaitExpr(expr *ast.AwaitExpr) Expr {
+	// Verify we're in an async context
+	if !b.inAsyncFunc {
+		b.error(expr.Token.Line, expr.Token.Column,
+			"'await' is only valid inside async functions")
+	}
+
+	arg := b.buildExpr(expr.Argument)
+	argType := types.Unwrap(arg.Type())
+
+	// Check if argument is a Promise
+	if promiseType, ok := argType.(*types.Promise); ok {
+		return &AwaitExpr{
+			Argument: arg,
+			ExprType: promiseType.Value, // Unwrap Promise<T> to T
+		}
+	}
+
+	// If not a Promise, the await expression returns the value as-is (TypeScript behavior)
+	return &AwaitExpr{
+		Argument: arg,
+		ExprType: argType,
 	}
 }
 

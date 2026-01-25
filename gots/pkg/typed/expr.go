@@ -158,6 +158,7 @@ type FuncExpr struct {
 	BodyExpr Expr        // non-nil for expression-body arrow functions
 	Captures []*Capture  // Variables captured from enclosing scopes
 	ExprType types.Type  // *types.Function
+	IsAsync  bool        // true if declared with 'async' keyword
 }
 
 type Param struct {
@@ -280,6 +281,15 @@ type EnumMemberExpr struct {
 
 func (e *EnumMemberExpr) exprNode()        {}
 func (e *EnumMemberExpr) Type() types.Type { return e.ExprType }
+
+// AwaitExpr represents an await expression.
+type AwaitExpr struct {
+	Argument Expr       // The promise being awaited
+	ExprType types.Type // The unwrapped promise value type
+}
+
+func (a *AwaitExpr) exprNode()        {}
+func (a *AwaitExpr) Type() types.Type { return a.ExprType }
 
 // tokenOpToString converts token.Type to operator string.
 func TokenOpToString(op ast.Node) string {

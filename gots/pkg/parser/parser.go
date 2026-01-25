@@ -103,6 +103,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.TEMPLATE_LITERAL, p.parseTemplateLiteral)
 	p.registerPrefix(token.TEMPLATE_HEAD, p.parseTemplateLiteral)
 	p.registerPrefix(token.ELLIPSIS, p.parseSpreadExpression)
+	p.registerPrefix(token.AWAIT, p.parseAwaitExpression)
+	p.registerPrefix(token.ASYNC, p.parseAsyncExpression)
 
 	p.registerInfix(token.PLUS, p.parseBinaryExpression)
 	p.registerInfix(token.MINUS, p.parseBinaryExpression)
@@ -255,6 +257,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseThrowStatement()
 	case token.ENUM:
 		return p.parseEnumDeclaration()
+	case token.ASYNC:
+		return p.parseAsyncFunctionDeclaration()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -781,6 +785,91 @@ func (p *Parser) parseFunctionDeclaration() *ast.FuncDecl {
 	decl.Body = p.parseBlockStatement()
 
 	return decl
+}
+
+// parseAsyncFunctionDeclaration parses: async function name(...): Promise<T> { ... }
+func (p *Parser) parseAsyncFunctionDeclaration() *ast.FuncDecl {
+	asyncToken := p.curToken // Save 'async' token
+
+	if !p.expectPeek(token.FUNCTION) {
+		return nil
+	}
+
+	decl := p.parseFunctionDeclaration()
+	if decl != nil {
+		decl.IsAsync = true
+		decl.Token = asyncToken // Use async token for error reporting
+	}
+	return decl
+}
+
+// parseAsyncExpression handles async arrow functions as expressions: async () => ...
+func (p *Parser) parseAsyncExpression() ast.Expression {
+	asyncToken := p.curToken
+
+	// Could be: async function() {} or async () => {}
+	if p.peekTokenIs(token.FUNCTION) {
+		p.nextToken()
+		fn := p.parseFunctionExpression()
+		if fnExpr, ok := fn.(*ast.FunctionExpr); ok {
+			fnExpr.IsAsync = true
+			fnExpr.Token = asyncToken
+			return fnExpr
+		}
+		return fn
+	}
+
+	// Async arrow function: async () => {} or async (x) => {}
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken()
+		arrow := p.parseGroupedOrArrowFunction()
+		if arrowFn, ok := arrow.(*ast.ArrowFunctionExpr); ok {
+			arrowFn.IsAsync = true
+			arrowFn.Token = asyncToken
+			return arrowFn
+		}
+		return arrow
+	}
+
+	// Single param async arrow: async x => ...
+	if p.peekTokenIs(token.IDENT) {
+		p.nextToken()
+		paramName := p.curToken.Literal
+
+		if !p.expectPeek(token.ARROW) {
+			return nil
+		}
+
+		arrowToken := p.curToken
+		p.nextToken()
+
+		arrow := &ast.ArrowFunctionExpr{
+			Token:   arrowToken,
+			Params:  []*ast.Parameter{{Name: paramName}},
+			IsAsync: true,
+		}
+
+		if p.curTokenIs(token.LBRACE) {
+			arrow.Body = p.parseBlockStatement()
+		} else {
+			arrow.Expression = p.parseExpression(LOWEST)
+		}
+
+		return arrow
+	}
+
+	p.errors = append(p.errors, fmt.Sprintf("line %d: unexpected token after async: %s", p.peekToken.Line, p.peekToken.Type))
+	return nil
+}
+
+// parseAwaitExpression parses: await <expression>
+func (p *Parser) parseAwaitExpression() ast.Expression {
+	expr := &ast.AwaitExpr{Token: p.curToken}
+
+	p.nextToken()
+	expr.Argument = p.parseExpression(PREFIX)
+
+	return expr
 }
 
 func (p *Parser) parseParameterList() []*ast.Parameter {
