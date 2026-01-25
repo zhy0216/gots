@@ -208,6 +208,8 @@ func (l *Lexer) NextToken() token.Token {
 		return tok
 	case '`':
 		return l.readTemplateLiteral()
+	case '@':
+		tok = l.newToken(token.AT, l.ch)
 	case 0:
 		tok.Type = token.EOF
 		tok.Literal = ""

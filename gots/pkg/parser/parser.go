@@ -218,6 +218,11 @@ func (p *Parser) ParseProgram() *ast.Program {
 }
 
 func (p *Parser) parseStatement() ast.Statement {
+	// Check for decorators before function/class declarations
+	if p.curTokenIs(token.AT) {
+		return p.parseDecoratedDeclaration()
+	}
+
 	switch p.curToken.Type {
 	case token.LET:
 		return p.parseVarDeclaration(false)
@@ -2477,4 +2482,52 @@ func (p *Parser) parseTypeArguments() []ast.Type {
 	}
 
 	return args
+}
+
+// parseDecorator parses a single decorator: @name
+func (p *Parser) parseDecorator() *ast.Decorator {
+	decorator := &ast.Decorator{Token: p.curToken}
+
+	// Expect identifier after @
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	decorator.Name = p.curToken.Literal
+
+	return decorator
+}
+
+// parseDecoratedDeclaration parses decorators followed by a function declaration.
+// @decorator1
+// @decorator2
+// function name() { ... }
+func (p *Parser) parseDecoratedDeclaration() ast.Statement {
+	// Collect all decorators
+	decorators := []*ast.Decorator{}
+	for p.curTokenIs(token.AT) {
+		decorator := p.parseDecorator()
+		if decorator != nil {
+			decorators = append(decorators, decorator)
+		}
+		p.nextToken() // Move to next token (could be another @ or function/async)
+	}
+
+	// Now parse the declaration that follows
+	var decl ast.Statement
+	if p.curTokenIs(token.FUNCTION) {
+		decl = p.parseFunctionDeclaration()
+	} else if p.curTokenIs(token.ASYNC) {
+		decl = p.parseAsyncFunctionDeclaration()
+	} else {
+		p.errors = append(p.errors, fmt.Sprintf("line %d: decorator can only be applied to function declarations, got %s", p.curToken.Line, p.curToken.Type))
+		return nil
+	}
+
+	// Attach decorators to the function declaration
+	if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl != nil {
+		funcDecl.Decorators = decorators
+	}
+
+	return decl
 }

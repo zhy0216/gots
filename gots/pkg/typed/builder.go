@@ -1293,7 +1293,10 @@ func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
 	returnType := b.resolveType(decl.ReturnType)
 
 	// Register function type
-	if len(typeParams) > 0 {
+	// If the function has decorators, register as any type since decorator can return anything
+	if len(decl.Decorators) > 0 {
+		b.scope.define(decl.Name, types.AnyType)
+	} else if len(typeParams) > 0 {
 		// Generic function
 		b.scope.define(decl.Name, &types.GenericFunction{
 			TypeParams: typeParams,
@@ -1337,7 +1340,30 @@ func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
 		ReturnType: returnType,
 		Body:       body,
 		IsAsync:    decl.IsAsync,
+		Decorators: b.buildDecorators(decl.Decorators),
 	}
+}
+
+// buildDecorators builds typed decorators from AST decorators.
+func (b *Builder) buildDecorators(decorators []*ast.Decorator) []*Decorator {
+	if len(decorators) == 0 {
+		return nil
+	}
+
+	result := make([]*Decorator, len(decorators))
+	for i, d := range decorators {
+		// Look up the decorator function in scope
+		typ, ok := b.scope.lookup(d.Name)
+		if !ok {
+			b.error(d.Token.Line, d.Token.Column, "undefined decorator: %s", d.Name)
+			typ = types.AnyType
+		}
+		result[i] = &Decorator{
+			Name: d.Name,
+			Type: typ,
+		}
+	}
+	return result
 }
 
 func (b *Builder) buildClassDecl(decl *ast.ClassDecl) *ClassDecl {

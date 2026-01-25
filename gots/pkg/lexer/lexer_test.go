@@ -551,13 +551,37 @@ func TestNextToken_ClassDeclaration(t *testing.T) {
 }
 
 func TestNextToken_IllegalCharacter(t *testing.T) {
-	input := `@`
+	input := `#`
 
 	l := New(input)
 	tok := l.NextToken()
 
 	if tok.Type != token.ILLEGAL {
 		t.Errorf("expected ILLEGAL token, got %q", tok.Type)
+	}
+}
+
+func TestNextToken_Decorator(t *testing.T) {
+	input := `@decorator`
+
+	l := New(input)
+
+	// First token should be @
+	tok := l.NextToken()
+	if tok.Type != token.AT {
+		t.Errorf("expected AT token, got %q", tok.Type)
+	}
+	if tok.Literal != "@" {
+		t.Errorf("expected literal '@', got %q", tok.Literal)
+	}
+
+	// Next token should be the identifier
+	tok = l.NextToken()
+	if tok.Type != token.IDENT {
+		t.Errorf("expected IDENT token, got %q", tok.Type)
+	}
+	if tok.Literal != "decorator" {
+		t.Errorf("expected literal 'decorator', got %q", tok.Literal)
 	}
 }
 

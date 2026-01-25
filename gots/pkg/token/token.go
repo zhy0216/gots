@@ -130,6 +130,9 @@ const (
 	DECLARE   // declare
 	MODULE    // module
 	AS        // as
+
+	// Decorator
+	AT // @
 )
 
 // Token represents a lexical token with its metadata.
@@ -272,6 +275,9 @@ var typeStrings = map[Type]string{
 	DECLARE:   "declare",
 	MODULE:    "module",
 	AS:        "as",
+
+	// Decorator
+	AT: "@",
 }
 
 // keywords maps keyword strings to their token types.

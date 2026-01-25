@@ -1036,6 +1036,12 @@ func (g *Generator) genClass(class *typed.ClassDecl) {
 }
 
 func (g *Generator) genFuncDecl(fn *typed.FuncDecl) {
+	// Handle decorated functions specially
+	if len(fn.Decorators) > 0 {
+		g.genDecoratedFuncDecl(fn)
+		return
+	}
+
 	params := make([]string, len(fn.Params))
 	for i, p := range fn.Params {
 		params[i] = fmt.Sprintf("%s %s", goName(p.Name), g.goType(p.Type))
@@ -1102,6 +1108,57 @@ func (g *Generator) genFuncDecl(fn *typed.FuncDecl) {
 		g.indent--
 		g.writeln("}")
 	}
+
+	g.currentRetType = savedRetType
+}
+
+// genDecoratedFuncDecl generates a decorated function.
+// @decorator
+// function a(): int { return 1 }
+// becomes:
+// func _a() int { return 1 }
+// var A = decorator(_a)
+func (g *Generator) genDecoratedFuncDecl(fn *typed.FuncDecl) {
+	params := make([]string, len(fn.Params))
+	for i, p := range fn.Params {
+		params[i] = fmt.Sprintf("%s %s", goName(p.Name), g.goType(p.Type))
+	}
+
+	returnType := g.goType(fn.ReturnType)
+
+	// Track current return type for type assertions
+	savedRetType := g.currentRetType
+	g.currentRetType = fn.ReturnType
+
+	// Internal function name (with underscore prefix)
+	internalName := "_" + fn.Name
+
+	// Generate the original function with internal name
+	if returnType == "" {
+		g.writeln("func %s(%s) {", internalName, strings.Join(params, ", "))
+	} else {
+		g.writeln("func %s(%s) %s {", internalName, strings.Join(params, ", "), returnType)
+	}
+	g.indent++
+
+	for _, stmt := range fn.Body.Stmts {
+		g.genStmt(stmt)
+	}
+
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Generate the decorated variable
+	// Chain decorators: @d1 @d2 function a() {} => d1(d2(_a))
+	// Decorators are applied from bottom to top (closest to function first)
+	decoratedExpr := internalName
+	for i := len(fn.Decorators) - 1; i >= 0; i-- {
+		decoratedExpr = fmt.Sprintf("%s(%s)", goName(fn.Decorators[i].Name), decoratedExpr)
+	}
+
+	g.writeln("var %s = %s", goName(fn.Name), decoratedExpr)
+	g.writeln("")
 
 	g.currentRetType = savedRetType
 }
@@ -1308,10 +1365,28 @@ func (g *Generator) genExprWithContext(expr typed.Expr, targetType types.Type) s
 		return "nil"
 	}
 
+	// Handle assigning any type to a primitive type (e.g., from gts_call result)
+	exprType := types.Unwrap(expr.Type())
+	targetTypeUnwrapped := types.Unwrap(targetType)
+	if exprPrim, ok := exprType.(*types.Primitive); ok && exprPrim.Kind == types.KindAny {
+		if targetPrim, ok := targetTypeUnwrapped.(*types.Primitive); ok {
+			value := g.genExpr(expr)
+			switch targetPrim.Kind {
+			case types.KindInt:
+				return fmt.Sprintf("gts_toint(%s)", value)
+			case types.KindFloat:
+				return fmt.Sprintf("gts_tofloat(%s)", value)
+			case types.KindString:
+				return fmt.Sprintf("gts_tostring(%s)", value)
+			case types.KindBoolean:
+				return fmt.Sprintf("gts_tobool(%s)", value)
+			}
+		}
+	}
+
 	// Handle assigning a non-pointer value to a nullable (pointer) type
 	// e.g., `var name: string | null = "Alice"` needs to become `func() *string { v := "Alice"; return &v }()`
-	if nullable, ok := types.Unwrap(targetType).(*types.Nullable); ok {
-		exprType := types.Unwrap(expr.Type())
+	if nullable, ok := targetTypeUnwrapped.(*types.Nullable); ok {
 		// Check if expr type is not already nullable (i.e., not a pointer)
 		if _, exprIsNullable := exprType.(*types.Nullable); !exprIsNullable {
 			// For class types, we don't need pointer wrapping since classes are already pointers

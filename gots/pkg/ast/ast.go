@@ -703,6 +703,15 @@ type Parameter struct {
 	ParamType Type
 }
 
+// Decorator represents a function decorator (e.g., @memoize).
+type Decorator struct {
+	Token token.Token // The '@' token
+	Name  string      // Decorator name
+}
+
+func (d *Decorator) TokenLiteral() string { return d.Token.Literal }
+func (d *Decorator) String() string       { return "@" + d.Name }
+
 // FuncDecl represents a function declaration.
 type FuncDecl struct {
 	Token      token.Token // The 'function' token
@@ -711,7 +720,8 @@ type FuncDecl struct {
 	Params     []*Parameter
 	ReturnType Type
 	Body       *Block
-	IsAsync    bool // true if declared with 'async' keyword
+	IsAsync    bool         // true if declared with 'async' keyword
+	Decorators []*Decorator // Function decorators (e.g., @memoize)
 }
 
 func (f *FuncDecl) statementNode()       {}

@@ -161,6 +161,12 @@ type ThrowStmt struct {
 
 func (t *ThrowStmt) stmtNode() {}
 
+// Decorator represents a typed function decorator.
+type Decorator struct {
+	Name string      // Decorator name
+	Type types.Type  // Type of the decorator function
+}
+
 // FuncDecl represents a top-level function declaration.
 type FuncDecl struct {
 	Name       string
@@ -170,6 +176,7 @@ type FuncDecl struct {
 	Body       *BlockStmt
 	Captures   []*Capture // For closures
 	IsAsync    bool       // true if declared with 'async' keyword
+	Decorators []*Decorator // Function decorators
 }
 
 func (f *FuncDecl) stmtNode() {}
