@@ -282,6 +282,15 @@ type MethodCallExpr struct {
 func (m *MethodCallExpr) exprNode()        {}
 func (m *MethodCallExpr) Type() types.Type { return m.ExprType }
 
+// ConsoleCall represents a call to console methods (e.g., console.log()).
+type ConsoleCall struct {
+	Method string
+	Args   []Expr
+}
+
+func (c *ConsoleCall) exprNode()        {}
+func (c *ConsoleCall) Type() types.Type { return types.VoidType }
+
 // EnumMemberExpr represents access to an enum member (e.g., Color.Red).
 type EnumMemberExpr struct {
 	EnumName   string     // Name of the enum (e.g., "Color")

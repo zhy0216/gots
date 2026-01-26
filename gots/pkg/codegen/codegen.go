@@ -1691,6 +1691,9 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 	case *typed.MethodCallExpr:
 		return g.genMethodCallExpr(e)
 
+	case *typed.ConsoleCall:
+		return g.genConsoleCall(e)
+
 	case *typed.AwaitExpr:
 		return g.genAwaitExpr(e)
 	}
@@ -1879,6 +1882,8 @@ func (g *Generator) genBuiltinCall(expr *typed.BuiltinCall) string {
 	case "tostring":
 		return fmt.Sprintf("gts_tostring(%s)", args[0])
 	case "toint":
+		return fmt.Sprintf("gts_toint(%s)", args[0])
+	case "parseInt":
 		return fmt.Sprintf("gts_toint(%s)", args[0])
 	case "tofloat":
 		return fmt.Sprintf("gts_tofloat(%s)", args[0])
@@ -2542,6 +2547,15 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 		}
 	}
 
+	// Handle Number method calls
+	if prim, ok := objType.(*types.Primitive); ok && (prim.Kind == types.KindInt || prim.Kind == types.KindFloat || prim.Kind == types.KindNumber) {
+		switch expr.Method {
+		case "toString":
+			// num.toString() => gts_tostring(num)
+			return fmt.Sprintf("gts_tostring(%s)", obj)
+		}
+	}
+
 	// Handle String method calls
 	if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
 		g.imports["strings"] = true
@@ -2611,6 +2625,22 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 
 	// Fallback for other method calls (class methods, etc.)
 	return fmt.Sprintf("%s.%s(%s)", obj, exportName(expr.Method), strings.Join(args, ", "))
+}
+
+func (g *Generator) genConsoleCall(expr *typed.ConsoleCall) string {
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+
+	switch expr.Method {
+	case "log":
+		// console.log(...) => fmt.Println(...)
+		return fmt.Sprintf("fmt.Println(%s)", strings.Join(args, ", "))
+	default:
+		// Default to Println for unknown methods
+		return fmt.Sprintf("fmt.Println(%s)", strings.Join(args, ", "))
+	}
 }
 
 // ----------------------------------------------------------------------------

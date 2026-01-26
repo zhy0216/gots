@@ -99,6 +99,23 @@ func (r *RegExp) Equals(other Type) bool {
 	return ok
 }
 
+// ----------------------------------------------------------------------------
+// Console Type
+// ----------------------------------------------------------------------------
+
+// Console represents the global console object.
+type Console struct{}
+
+func (c *Console) typeNode() {}
+func (c *Console) String() string {
+	return "Console"
+}
+
+func (c *Console) Equals(other Type) bool {
+	_, ok := other.(*Console)
+	return ok
+}
+
 // RegExpType is the singleton RegExp type.
 var RegExpType = &RegExp{}
 

@@ -313,7 +313,7 @@ class BST {
         if (node.hasLeft) {
             this.collectInorder(node.left(), result)
         }
-        push(result, node.value)
+        result.push(node.value)
         if (node.hasRight) {
             this.collectInorder(node.right(), result)
         }
@@ -329,7 +329,7 @@ class BST {
     }
 
     collectPreorder(node: TreeNode, result: int[]): void {
-        push(result, node.value)
+        result.push(node.value)
         if (node.hasLeft) {
             this.collectPreorder(node.left(), result)
         }
@@ -354,7 +354,7 @@ class BST {
         if (node.hasRight) {
             this.collectPostorder(node.right(), result)
         }
-        push(result, node.value)
+        result.push(node.value)
     }
 
     // Find LCA (Lowest Common Ancestor)
@@ -410,7 +410,7 @@ class BST {
 
     collectLevel(node: TreeNode, target: int, current: int, result: int[]): void {
         if (current == target) {
-            push(result, node.value)
+            result.push(node.value)
         } else {
             if (node.hasLeft) {
                 this.collectLevel(node.left(), target, current + 1, result)
@@ -428,7 +428,7 @@ class BST {
         let i: int = 0
         while (i < h) {
             let level: int[] = this.getLevel(i)
-            push(widths, len(level))
+            widths.push(level.length)
             i = i + 1
         }
         return widths
@@ -558,46 +558,46 @@ function boolStr(val: boolean): string {
 
 // Main benchmark function
 function benchmark(n: int): void {
-    println("=== Binary Tree Benchmark (" + tostring(n) + " elements) ===")
-    println("")
+    console.log("=== Binary Tree Benchmark (" + (n.toString()) + " elements) ===")
+    console.log("")
 
     let tree: BST = new BST()
     let rng: RNG = new RNG(42)
 
     // 1. Insert elements
-    println("1. Inserting elements...")
+    console.log("1. Inserting elements...")
     let i: int = 0
     while (i < n) {
         let v: int = rng.nextInRange(100000)
         tree.insert(v)
         i = i + 1
     }
-    println("   Tree size: " + tostring(tree.countNodes()))
+    console.log("   Tree size: " + (tree.countNodes()).toString())
 
     // 2. Tree properties
-    println("")
-    println("2. Tree Properties:")
-    println("   Height: " + tostring(tree.height()))
-    println("   Leaves: " + tostring(tree.countLeaves()))
-    println("   Balanced: " + boolStr(tree.isBalanced()))
-    println("   Valid BST: " + boolStr(tree.isValidBST()))
-    println("   Sum: " + tostring(tree.sum()))
-    println("   Min: " + tostring(tree.findMin()))
-    println("   Max: " + tostring(tree.findMax()))
+    console.log("")
+    console.log("2. Tree Properties:")
+    console.log("   Height: " + (tree.height()).toString())
+    console.log("   Leaves: " + (tree.countLeaves()).toString())
+    console.log("   Balanced: " + boolStr(tree.isBalanced()))
+    console.log("   Valid BST: " + boolStr(tree.isValidBST()))
+    console.log("   Sum: " + (tree.sum()).toString())
+    console.log("   Min: " + (tree.findMin()).toString())
+    console.log("   Max: " + (tree.findMax()).toString())
 
     // 3. Level widths
-    println("")
-    println("3. Level widths (first 10):")
+    console.log("")
+    console.log("3. Level widths (first 10):")
     let widths: int[] = tree.levelWidths()
     let j: int = 0
-    while (j < 10 && j < len(widths)) {
-        println("   Level " + tostring(j) + ": " + tostring(widths[j]))
+    while (j < 10 && j < widths.length) {
+        console.log("   Level " + (j.toString()) + ": " + (widths[j].toString()))
         j = j + 1
     }
 
     // 4. Search operations
-    println("")
-    println("4. Searching 100 random values...")
+    console.log("")
+    console.log("4. Searching 100 random values...")
     let found: int = 0
     let searchRng: RNG = new RNG(12345)
     let k: int = 0
@@ -608,76 +608,76 @@ function benchmark(n: int): void {
         }
         k = k + 1
     }
-    println("   Found: " + tostring(found) + "/100")
+    console.log("   Found: " + (found.toString()) + "/100")
 
     // 5. LCA
-    println("")
-    println("5. LCA of min and max:")
+    console.log("")
+    console.log("5. LCA of min and max:")
     let minV: int = tree.findMin()
     let maxV: int = tree.findMax()
     let lcaV: int = tree.lca(minV, maxV)
-    println("   LCA(" + tostring(minV) + "," + tostring(maxV) + ") = " + tostring(lcaV))
+    console.log("   LCA(" + (minV.toString()) + "," + (maxV.toString()) + ") = " + (lcaV.toString()))
 
     // 6. Path sum
-    println("")
-    println("6. Path sum check:")
+    console.log("")
+    console.log("6. Path sum check:")
     let nc: int = tree.countNodes()
     let avgH: int = tree.height()
-    let testS: int = toint(tree.sum() / nc) * avgH
-    println("   Has path sum " + tostring(testS) + ": " + boolStr(tree.hasPathSum(testS)))
+    let testS: int = parseInt(tree.sum() / nc) * avgH
+    console.log("   Has path sum " + (testS.toString()) + ": " + boolStr(tree.hasPathSum(testS)))
 
     // 7. Traversals
-    println("")
-    println("7. Traversals (first 5 elements):")
+    console.log("")
+    console.log("7. Traversals (first 5 elements):")
     let inord: int[] = tree.inorderTraversal()
     let preord: int[] = tree.preorderTraversal()
     let postord: int[] = tree.postorderTraversal()
 
-    print("   Inorder:   ")
+    console.log("   Inorder:   ")
     let m: int = 0
-    while (m < 5 && m < len(inord)) {
-        print(tostring(inord[m]) + " ")
+    while (m < 5 && m < inord.length) {
+        console.log((inord[m].toString()) + " ")
         m = m + 1
     }
-    println("")
+    console.log("")
 
-    print("   Preorder:  ")
+    console.log("   Preorder:  ")
     m = 0
-    while (m < 5 && m < len(preord)) {
-        print(tostring(preord[m]) + " ")
+    while (m < 5 && m < preord.length) {
+        console.log((preord[m].toString()) + " ")
         m = m + 1
     }
-    println("")
+    console.log("")
 
-    print("   Postorder: ")
-    let plen: int = len(postord)
+    console.log("   Postorder: ")
+    let plen: int = postord.length
     let si: int = plen - 5
     if (si < 0) {
         si = 0
     }
     m = si
     while (m < plen) {
-        print(tostring(postord[m]) + " ")
+        console.log((postord[m].toString()) + " ")
         m = m + 1
     }
-    println("")
+    console.log("")
 
     // 8. Verify sorted
-    println("")
-    println("8. Verify BST property:")
+    console.log("")
+    console.log("8. Verify BST property:")
     let sorted: boolean = true
     let s: int = 1
-    while (s < len(inord)) {
+    while (s < inord.length) {
         if (inord[s] < inord[s - 1]) {
             sorted = false
         }
         s = s + 1
     }
-    println("   Inorder sorted: " + boolStr(sorted))
+    console.log("   Inorder sorted: " + boolStr(sorted))
 
     // 9. Delete operations
-    println("")
-    println("9. Deleting 50 random elements...")
+    console.log("")
+    console.log("9. Deleting 50 random elements...")
     let deleted: int = 0
     let delRng: RNG = new RNG(99999)
     let d: int = 0
@@ -688,30 +688,26 @@ function benchmark(n: int): void {
         }
         d = d + 1
     }
-    println("   Deleted: " + tostring(deleted))
-    println("   New size: " + tostring(tree.countNodes()))
-    println("   Still valid: " + boolStr(tree.isValidBST()))
+    console.log("   Deleted: " + (deleted.toString()))
+    console.log("   New size: " + (tree.countNodes().toString()))
+    console.log("   Still valid: " + boolStr(tree.isValidBST()))
 
     // 10. Additional metrics
-    println("")
-    println("10. Post-deletion metrics:")
-    println("   Height: " + tostring(tree.height()))
-    println("   Leaves: " + tostring(tree.countLeaves()))
+    console.log("")
+    console.log("10. Post-deletion metrics:")
+    console.log("   Height: " + (tree.height().toString()))
+    console.log("   Leaves: " + (tree.countLeaves().toString()))
 
     let level5: int[] = tree.getLevel(5)
-    println("   Nodes at level 5: " + tostring(len(level5)))
+    console.log("   Nodes at level 5: " + (level5.length.toString()))
 
-    println("")
-    println("=== Benchmark Complete ===")
+    console.log("")
+    console.log("=== Benchmark Complete ===")
 }
 
 // Run benchmarks
-println("Binary Tree Operations Benchmark")
-println("================================")
-println("")
+console.log("Binary Tree Operations Benchmark")
+console.log("================================")
+console.log("")
 
-benchmark(1000)
-println("")
-benchmark(5000)
-println("")
-benchmark(10000)
+benchmark(1000000)

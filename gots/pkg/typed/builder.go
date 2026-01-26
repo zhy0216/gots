@@ -1765,6 +1765,11 @@ func (b *Builder) buildIdent(ident *ast.Identifier) Expr {
 		return &Ident{Name: ident.Name, ExprType: typ}
 	}
 
+	// Special handling for global objects
+	if ident.Name == "console" {
+		return &Ident{Name: "console", ExprType: &types.Console{}}
+	}
+
 	b.error(ident.Token.Line, ident.Token.Column, "undefined variable: %s", ident.Name)
 	return &Ident{Name: ident.Name, ExprType: types.AnyType}
 }
@@ -1911,6 +1916,7 @@ var builtins = map[string]types.Type{
 	"tostring":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
 	"toint":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
 	"tofloat":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.FloatType},
+	"parseInt":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
 	"sqrt":       &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
 	"floor":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
 	"ceil":       &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
@@ -2018,8 +2024,14 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
 			return b.buildStringMethodCall(objExpr, propExpr.Property, expr)
 		}
+		if prim, ok := objType.(*types.Primitive); ok && (prim.Kind == types.KindInt || prim.Kind == types.KindFloat || prim.Kind == types.KindNumber) {
+			return b.buildNumberMethodCall(objExpr, propExpr.Property, expr)
+		}
 		if _, ok := objType.(*types.RegExp); ok {
 			return b.buildRegExpMethodCall(objExpr, propExpr.Property, expr)
+		}
+		if _, ok := objType.(*types.Console); ok {
+			return b.buildConsoleMethodCall(propExpr.Property, expr)
 		}
 	}
 
@@ -3254,6 +3266,63 @@ func (b *Builder) buildArrayMethodCall(obj Expr, arrType *types.Array, method st
 		Method:   method,
 		Args:     args,
 		ExprType: resultType,
+	}
+}
+
+// buildNumberMethodCall handles method calls on number/int/float types
+func (b *Builder) buildNumberMethodCall(obj Expr, method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	var resultType types.Type
+
+	switch method {
+	case "toString":
+		// toString(): string
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Number.toString expects 0 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown Number method: %s", method)
+		resultType = types.AnyType
+	}
+
+	return &MethodCallExpr{
+		Object:   obj,
+		Method:   method,
+		Args:     args,
+		ExprType: resultType,
+	}
+}
+
+// buildConsoleMethodCall handles method calls on the console object
+func (b *Builder) buildConsoleMethodCall(method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	switch method {
+	case "log":
+		// console.log(...args): void
+		// Accept any number of arguments of any type
+		return &ConsoleCall{
+			Method: "log",
+			Args:   args,
+		}
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown console method: %s", method)
+		return &ConsoleCall{
+			Method: method,
+			Args:   args,
+		}
 	}
 }
 
