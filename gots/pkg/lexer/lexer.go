@@ -19,8 +19,44 @@ type Lexer struct {
 	hasPeek bool
 
 	// Template literal state
-	inTemplate      bool  // true when inside a template literal
-	templateBraces  int   // counts nested {} inside template expressions
+	inTemplate     bool // true when inside a template literal
+	templateBraces int  // counts nested {} inside template expressions
+}
+
+// LexerState holds the lexer's internal state for save/restore.
+type LexerState struct {
+	position     int
+	readPosition int
+	ch           byte
+	line         int
+	column       int
+	lineStart    int
+	hasPeek      bool
+}
+
+// SaveState saves the current lexer state.
+func (l *Lexer) SaveState() LexerState {
+	return LexerState{
+		position:     l.position,
+		readPosition: l.readPosition,
+		ch:           l.ch,
+		line:         l.line,
+		column:       l.column,
+		lineStart:    l.lineStart,
+		hasPeek:      l.hasPeek,
+	}
+}
+
+// RestoreState restores the lexer to a previously saved state.
+func (l *Lexer) RestoreState(state LexerState) {
+	l.position = state.position
+	l.readPosition = state.readPosition
+	l.ch = state.ch
+	l.line = state.line
+	l.column = state.column
+	l.lineStart = state.lineStart
+	l.peeked = nil
+	l.hasPeek = false
 }
 
 // New creates a new Lexer for the given input.
@@ -250,13 +286,35 @@ func (l *Lexer) PeekToken() token.Token {
 	return tok
 }
 
+// SeekTo seeks the lexer to a specific position in the input.
+// Used by the parser to re-read regex literals.
+func (l *Lexer) SeekTo(position int) {
+	l.position = position
+	l.readPosition = position + 1
+	if position < len(l.input) {
+		l.ch = l.input[position]
+	} else {
+		l.ch = 0
+	}
+	l.peeked = nil
+	l.hasPeek = false
+}
+
+// ClearPeek clears any peeked token. Used when the parser needs to
+// re-interpret the input (e.g., for regex literals).
+func (l *Lexer) ClearPeek() {
+	l.peeked = nil
+	l.hasPeek = false
+}
+
 // newToken creates a new token from the current character.
 func (l *Lexer) newToken(tokenType token.Type, ch byte) token.Token {
 	return token.Token{
-		Type:    tokenType,
-		Literal: string(ch),
-		Line:    l.line,
-		Column:  l.column,
+		Type:     tokenType,
+		Literal:  string(ch),
+		Line:     l.line,
+		Column:   l.column,
+		Position: l.position,
 	}
 }
 
@@ -264,28 +322,32 @@ func (l *Lexer) newToken(tokenType token.Type, ch byte) token.Token {
 func (l *Lexer) makeTwoCharToken(tokenType token.Type) token.Token {
 	ch := l.ch
 	col := l.column
+	pos := l.position
 	l.readChar()
 	return token.Token{
-		Type:    tokenType,
-		Literal: string(ch) + string(l.ch),
-		Line:    l.line,
-		Column:  col,
+		Type:     tokenType,
+		Literal:  string(ch) + string(l.ch),
+		Line:     l.line,
+		Column:   col,
+		Position: pos,
 	}
 }
 
 // makeThreeCharToken creates a token from three consecutive characters.
 func (l *Lexer) makeThreeCharToken(tokenType token.Type) token.Token {
 	col := l.column
+	pos := l.position
 	literal := string(l.ch)
 	l.readChar()
 	literal += string(l.ch)
 	l.readChar()
 	literal += string(l.ch)
 	return token.Token{
-		Type:    tokenType,
-		Literal: literal,
-		Line:    l.line,
-		Column:  col,
+		Type:     tokenType,
+		Literal:  literal,
+		Line:     l.line,
+		Column:   col,
+		Position: pos,
 	}
 }
 
@@ -418,6 +480,72 @@ func isLetter(ch byte) bool {
 // isDigit returns true if the character is a digit.
 func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
+}
+
+// isRegexFlag returns true if the character is a valid regex flag.
+func isRegexFlag(ch byte) bool {
+	return ch == 'g' || ch == 'i' || ch == 'm' || ch == 's' || ch == 'u' || ch == 'y'
+}
+
+// ReadRegexLiteral reads a regex literal after the opening '/' has been consumed.
+// Called by the parser when it determines '/' should be a regex.
+// The lexer should be positioned at the first character after '/' when this is called.
+// Returns the pattern and flags in the Literal field as "pattern\x00flags".
+func (l *Lexer) ReadRegexLiteral() token.Token {
+	tok := token.Token{
+		Line:   l.line,
+		Column: l.column - 1, // -1 because we're past the /
+		Type:   token.REGEX,
+	}
+
+	// Note: We're already past the opening / because NextToken already called readChar()
+
+	var pattern []byte
+	inCharClass := false
+
+	for {
+		if l.ch == 0 || l.ch == '\n' {
+			// Unterminated regex literal
+			tok.Type = token.ILLEGAL
+			tok.Literal = string(pattern)
+			return tok
+		}
+
+		if l.ch == '[' && !inCharClass {
+			inCharClass = true
+		} else if l.ch == ']' && inCharClass {
+			inCharClass = false
+		}
+
+		if l.ch == '/' && !inCharClass {
+			l.readChar() // skip closing /
+			break
+		}
+
+		if l.ch == '\\' {
+			pattern = append(pattern, l.ch)
+			l.readChar()
+			if l.ch != 0 && l.ch != '\n' {
+				pattern = append(pattern, l.ch)
+				l.readChar()
+			}
+			continue
+		}
+
+		pattern = append(pattern, l.ch)
+		l.readChar()
+	}
+
+	// Read flags (g, i, m, s, u, y)
+	var flags []byte
+	for isRegexFlag(l.ch) {
+		flags = append(flags, l.ch)
+		l.readChar()
+	}
+
+	// Store as "pattern\x00flags" for easy parsing later
+	tok.Literal = string(pattern) + "\x00" + string(flags)
+	return tok
 }
 
 // readTemplateLiteral reads a template literal starting from the opening backtick.

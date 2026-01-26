@@ -66,6 +66,7 @@ gots repl                         # Interactive REPL
 - Functions: `(a: int) => string`, `Function` (dynamic)
 - Nullable: `string | null`
 - Type aliases: `type Point = {x: int, y: int}`
+- Regular expressions: `RegExp`
 
 ### Type Mapping to Go
 
@@ -81,6 +82,7 @@ gots repl                         # Interactive REPL
 | `T[]` | `[]T` |
 | `T \| null` | `*T` |
 | `class C` | `*C` (struct pointer) |
+| `RegExp` | `*regexp.Regexp` |
 
 ### Numeric Type Rules
 - Integer literals (e.g., `42`) have type `int`
@@ -140,6 +142,37 @@ let last: int = pop(arr)
 
 ### Built-in Functions
 `println`, `print`, `len`, `push`, `pop`, `typeof`, `tostring`, `toint`, `tofloat`, `sqrt`, `floor`, `ceil`, `abs`
+
+### Regular Expressions
+
+Regex literals use TypeScript-style syntax: `/pattern/flags`
+
+```typescript
+// Regex literals
+let re: RegExp = /hello/i
+let email: RegExp = /^[a-z]+@[a-z]+\.[a-z]+$/i
+
+// RegExp methods
+re.test("Hello World")     // boolean - tests if pattern matches
+re.exec("Hello World")     // string[] | null - returns match array
+
+// Example
+let digitRegex: RegExp = /\d+/
+if (digitRegex.test("abc123")) {
+    let result: string[] | null = digitRegex.exec("abc123def")
+    if (result != null) {
+        println(result[0])  // "123"
+    }
+}
+```
+
+**Supported flags:**
+- `i` - Case-insensitive matching
+- `m` - Multiline mode
+- `s` - Dotall mode (. matches newlines)
+- `g` - Global (not used in pattern, affects method behavior)
+
+**Note:** Compiles to Go's `regexp` package. Some advanced regex features may not be supported due to Go's RE2 limitations.
 
 ## Key Implementation Details
 

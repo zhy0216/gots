@@ -225,6 +225,8 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		}
 	case *typed.SetLit:
 		// Empty set literal - nothing to collect
+	case *typed.RegexLit:
+		g.imports["regexp"] = true
 	case *typed.MethodCallExpr:
 		g.collectImportsFromExpr(e.Object)
 		for _, arg := range e.Args {
@@ -1600,6 +1602,9 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 	case *typed.NullLit:
 		return "nil"
 
+	case *typed.RegexLit:
+		return g.genRegexLit(e)
+
 	case *typed.Ident:
 		// Check if this is an imported Go package function
 		if pkg, ok := g.goImportedNames[e.Name]; ok {
@@ -2571,6 +2576,20 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 		}
 	}
 
+	// Handle RegExp method calls
+	if _, ok := objType.(*types.RegExp); ok {
+		g.imports["regexp"] = true
+		switch expr.Method {
+		case "test":
+			// re.test(str) => re.MatchString(str)
+			return fmt.Sprintf("%s.MatchString(%s)", obj, args[0])
+
+		case "exec":
+			// re.exec(str) => re.FindStringSubmatch(str) (returns nil if no match)
+			return fmt.Sprintf("%s.FindStringSubmatch(%s)", obj, args[0])
+		}
+	}
+
 	// Fallback for other method calls (class methods, etc.)
 	return fmt.Sprintf("%s.%s(%s)", obj, exportName(expr.Method), strings.Join(args, ", "))
 }
@@ -2651,6 +2670,10 @@ func (g *Generator) goType(t types.Type) string {
 	case *types.Enum:
 		return exportName(typ.Name)
 
+	case *types.RegExp:
+		g.imports["regexp"] = true
+		return "*regexp.Regexp"
+
 	case *types.Object:
 		// Anonymous struct
 		var fields []string
@@ -2677,9 +2700,17 @@ func (g *Generator) goType(t types.Type) string {
 		return fmt.Sprintf("func(%s) %s", strings.Join(params, ", "), retType)
 
 	case *types.Nullable:
-		// Use pointer for nullable, but class types are already pointers
+		// Use pointer for nullable, but class types and arrays are already nullable in Go
 		if _, isClass := typ.Inner.(*types.Class); isClass {
 			// Class types are already *ClassName, so nullable class is just *ClassName (can be nil)
+			return g.goType(typ.Inner)
+		}
+		if _, isArray := typ.Inner.(*types.Array); isArray {
+			// Slices in Go can already be nil, no need for pointer
+			return g.goType(typ.Inner)
+		}
+		if _, isMap := typ.Inner.(*types.Map); isMap {
+			// Maps in Go can already be nil, no need for pointer
 			return g.goType(typ.Inner)
 		}
 		inner := g.goType(typ.Inner)
@@ -2774,6 +2805,35 @@ func (g *Generator) genTemplateLit(e *typed.TemplateLit) string {
 	g.imports["fmt"] = true
 
 	return fmt.Sprintf("fmt.Sprintf(%q, %s)", formatStr, strings.Join(args, ", "))
+}
+
+func (g *Generator) genRegexLit(e *typed.RegexLit) string {
+	g.imports["regexp"] = true
+
+	// Convert TypeScript flags to Go embedded flags
+	// i -> (?i), m -> (?m), s -> (?s)
+	pattern := e.Pattern
+	goFlags := ""
+
+	for _, f := range e.Flags {
+		switch f {
+		case 'i':
+			goFlags += "i"
+		case 'm':
+			goFlags += "m"
+		case 's':
+			goFlags += "s"
+		// 'g' (global) is handled at match time in Go, not in pattern
+		// 'u' (unicode) is default in Go RE2
+		// 'y' (sticky) has no direct equivalent
+		}
+	}
+
+	if goFlags != "" {
+		pattern = "(?" + goFlags + ")" + pattern
+	}
+
+	return fmt.Sprintf("regexp.MustCompile(%q)", pattern)
 }
 
 // goName converts a GTS name to a valid Go identifier.

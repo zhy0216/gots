@@ -14,6 +14,7 @@ const (
 	IDENT  // identifier
 	NUMBER // numeric literal
 	STRING // string literal
+	REGEX  // regex literal /pattern/flags
 
 	// Template literals
 	TEMPLATE_LITERAL // `simple template` (no interpolations)
@@ -137,10 +138,11 @@ const (
 
 // Token represents a lexical token with its metadata.
 type Token struct {
-	Type    Type
-	Literal string
-	Line    int
-	Column  int
+	Type     Type
+	Literal  string
+	Line     int
+	Column   int
+	Position int // byte position in input (used for regex re-lexing)
 }
 
 // String returns the string representation of a token type.
@@ -161,6 +163,7 @@ var typeStrings = map[Type]string{
 	IDENT:  "IDENT",
 	NUMBER: "NUMBER",
 	STRING: "STRING",
+	REGEX:  "REGEX",
 
 	// Template literals
 	TEMPLATE_LITERAL: "TEMPLATE_LITERAL",
@@ -364,7 +367,7 @@ func IsOperator(t Type) bool {
 // IsLiteral returns true if the token type is a literal.
 func IsLiteral(t Type) bool {
 	switch t {
-	case NUMBER, STRING, TRUE, FALSE, NULL:
+	case NUMBER, STRING, REGEX, TRUE, FALSE, NULL:
 		return true
 	}
 	return false

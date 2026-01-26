@@ -753,6 +753,9 @@ func (b *Builder) resolveType(astType ast.Type) types.Type {
 			Value: b.resolveType(t.ResultType),
 		}
 
+	case *ast.RegExpType:
+		return types.RegExpType
+
 	case *ast.NamedType:
 		// First check if it's a type parameter in scope
 		if tp, ok := b.typeParamScope[t.Name]; ok {
@@ -1582,6 +1585,9 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 	case *ast.NullLiteral:
 		return &NullLit{ExprType: types.NullType}
 
+	case *ast.RegexLiteral:
+		return b.buildRegexLiteral(e)
+
 	case *ast.Identifier:
 		return b.buildIdent(e)
 
@@ -1897,6 +1903,9 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
 			return b.buildStringMethodCall(objExpr, propExpr.Property, expr)
 		}
+		if _, ok := objType.(*types.RegExp); ok {
+			return b.buildRegExpMethodCall(objExpr, propExpr.Property, expr)
+		}
 	}
 
 	callee := b.buildExpr(expr.Function)
@@ -2181,6 +2190,22 @@ func (b *Builder) buildTemplateLiteral(expr *ast.TemplateLiteral) Expr {
 		Parts:       expr.Parts,
 		Expressions: expressions,
 		ExprType:    types.StringType,
+	}
+}
+
+func (b *Builder) buildRegexLiteral(expr *ast.RegexLiteral) Expr {
+	// Validate flags
+	validFlags := map[rune]bool{'g': true, 'i': true, 'm': true, 's': true, 'u': true, 'y': true}
+	for _, f := range expr.Flags {
+		if !validFlags[f] {
+			b.error(expr.Token.Line, expr.Token.Column, "invalid regex flag: %c", f)
+		}
+	}
+
+	return &RegexLit{
+		Pattern:  expr.Pattern,
+		Flags:    expr.Flags,
+		ExprType: types.RegExpType,
 	}
 }
 
@@ -3145,6 +3170,52 @@ func (b *Builder) buildStringMethodCall(obj Expr, method string, expr *ast.CallE
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown String method: %s", method)
+		resultType = types.AnyType
+	}
+
+	return &MethodCallExpr{
+		Object:   obj,
+		Method:   method,
+		Args:     args,
+		ExprType: resultType,
+	}
+}
+
+// buildRegExpMethodCall handles method calls on RegExp types
+func (b *Builder) buildRegExpMethodCall(obj Expr, method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	var resultType types.Type
+
+	switch method {
+	case "test":
+		// test(str: string): boolean
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"RegExp.test expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), types.StringType) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"RegExp.test argument must be string, got %s", args[0].Type().String())
+		}
+		resultType = types.BooleanType
+
+	case "exec":
+		// exec(str: string): string[] | null
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"RegExp.exec expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), types.StringType) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"RegExp.exec argument must be string, got %s", args[0].Type().String())
+		}
+		resultType = &types.Nullable{Inner: &types.Array{Element: types.StringType}}
+
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown RegExp method: %s", method)
 		resultType = types.AnyType
 	}
 

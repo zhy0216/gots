@@ -105,6 +105,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.ELLIPSIS, p.parseSpreadExpression)
 	p.registerPrefix(token.AWAIT, p.parseAwaitExpression)
 	p.registerPrefix(token.ASYNC, p.parseAsyncExpression)
+	p.registerPrefix(token.SLASH, p.parseRegexLiteral)
 
 	p.registerInfix(token.PLUS, p.parseBinaryExpression)
 	p.registerInfix(token.MINUS, p.parseBinaryExpression)
@@ -378,6 +379,40 @@ func (p *Parser) parseBooleanLiteral() ast.Expression {
 
 func (p *Parser) parseNullLiteral() ast.Expression {
 	return &ast.NullLiteral{Token: p.curToken}
+}
+
+func (p *Parser) parseRegexLiteral() ast.Expression {
+	// The current token is SLASH. We need to seek the lexer back to just after
+	// the slash and re-read the input as a regex literal.
+	slashPos := p.curToken.Position
+
+	// Seek lexer to just after the slash
+	p.l.SeekTo(slashPos + 1)
+
+	// Read the regex literal
+	regexTok := p.l.ReadRegexLiteral()
+
+	if regexTok.Type == token.ILLEGAL {
+		p.errors = append(p.errors, fmt.Sprintf("line %d: unterminated regex literal", regexTok.Line))
+		return nil
+	}
+
+	// Parse "pattern\x00flags" format
+	parts := strings.SplitN(regexTok.Literal, "\x00", 2)
+	pattern := parts[0]
+	flags := ""
+	if len(parts) > 1 {
+		flags = parts[1]
+	}
+
+	// Update parser's peek token since we re-read from the lexer
+	p.peekToken = p.l.NextToken()
+
+	return &ast.RegexLiteral{
+		Token:   regexTok,
+		Pattern: pattern,
+		Flags:   flags,
+	}
 }
 
 func (p *Parser) parseUnaryExpression() ast.Expression {
@@ -1462,11 +1497,16 @@ func (p *Parser) parseSingleType() ast.Type {
 	case token.SET:
 		typ = p.parseSetType()
 	case token.IDENT:
-		namedType := &ast.NamedType{Name: p.curToken.Literal}
-		if p.peekTokenIs(token.LT) {
-			namedType.TypeArgs = p.parseTypeArguments()
+		name := p.curToken.Literal
+		if name == "RegExp" {
+			typ = &ast.RegExpType{}
+		} else {
+			namedType := &ast.NamedType{Name: name}
+			if p.peekTokenIs(token.LT) {
+				namedType.TypeArgs = p.parseTypeArguments()
+			}
+			typ = namedType
 		}
-		typ = namedType
 	case token.LBRACE:
 		typ = p.parseObjectType()
 	case token.LPAREN:

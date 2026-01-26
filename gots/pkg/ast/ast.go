@@ -124,6 +124,19 @@ func (n *NullLiteral) expressionNode()      {}
 func (n *NullLiteral) TokenLiteral() string { return "null" }
 func (n *NullLiteral) String() string       { return "null" }
 
+// RegexLiteral represents a regular expression literal (e.g., /pattern/flags).
+type RegexLiteral struct {
+	Token   token.Token
+	Pattern string // The regex pattern without delimiters
+	Flags   string // The flags (e.g., "gi")
+}
+
+func (r *RegexLiteral) expressionNode()      {}
+func (r *RegexLiteral) TokenLiteral() string { return r.Token.Literal }
+func (r *RegexLiteral) String() string {
+	return fmt.Sprintf("/%s/%s", r.Pattern, r.Flags)
+}
+
 // Identifier represents an identifier.
 type Identifier struct {
 	Token token.Token
@@ -1078,6 +1091,13 @@ type InterfaceType struct {
 func (i *InterfaceType) typeNode()            {}
 func (i *InterfaceType) TokenLiteral() string { return i.Name }
 func (i *InterfaceType) String() string       { return i.Name }
+
+// RegExpType represents the RegExp built-in type.
+type RegExpType struct{}
+
+func (r *RegExpType) typeNode()            {}
+func (r *RegExpType) TokenLiteral() string { return "RegExp" }
+func (r *RegExpType) String() string       { return "RegExp" }
 
 // ----------------------------------------------------------------------------
 // Interface Declaration

@@ -79,6 +79,26 @@ var (
 )
 
 // ----------------------------------------------------------------------------
+// RegExp Type
+// ----------------------------------------------------------------------------
+
+// RegExp represents the RegExp built-in type.
+type RegExp struct{}
+
+func (r *RegExp) typeNode() {}
+func (r *RegExp) String() string {
+	return "RegExp"
+}
+
+func (r *RegExp) Equals(other Type) bool {
+	_, ok := other.(*RegExp)
+	return ok
+}
+
+// RegExpType is the singleton RegExp type.
+var RegExpType = &RegExp{}
+
+// ----------------------------------------------------------------------------
 // Literal Type
 // ----------------------------------------------------------------------------
 

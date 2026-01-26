@@ -56,6 +56,16 @@ type NullLit struct {
 func (n *NullLit) exprNode()        {}
 func (n *NullLit) Type() types.Type { return n.ExprType }
 
+// RegexLit represents a regular expression literal.
+type RegexLit struct {
+	Pattern  string     // The regex pattern
+	Flags    string     // The flags (e.g., "gi")
+	ExprType types.Type // Always types.RegExpType
+}
+
+func (r *RegexLit) exprNode()        {}
+func (r *RegexLit) Type() types.Type { return r.ExprType }
+
 // Ident represents an identifier reference.
 type Ident struct {
 	Name     string
