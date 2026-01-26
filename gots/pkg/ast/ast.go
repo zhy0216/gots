@@ -865,6 +865,7 @@ type PrimitiveKind int
 const (
 	TypeInt PrimitiveKind = iota
 	TypeFloat
+	TypeNumber
 	TypeString
 	TypeBoolean
 	TypeVoid
@@ -884,6 +885,8 @@ func (p *PrimitiveType) String() string {
 		return "int"
 	case TypeFloat:
 		return "float"
+	case TypeNumber:
+		return "number"
 	case TypeString:
 		return "string"
 	case TypeBoolean:

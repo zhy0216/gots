@@ -8,40 +8,108 @@ import (
 	"github.com/zhy0216/quickts/gots/pkg/token"
 )
 
-// isNumericType checks if a type is int or float.
+// isNumericType checks if a type is int, float, or number.
 func isNumericType(t Type) bool {
 	if p, ok := t.(*Primitive); ok {
-		return p.Kind == KindInt || p.Kind == KindFloat
+		return p.Kind == KindInt || p.Kind == KindFloat || p.Kind == KindNumber
+	}
+	if l, ok := t.(*Literal); ok {
+		return l.Kind == KindInt || l.Kind == KindFloat || l.Kind == KindNumber
 	}
 	return false
 }
 
-// isNumericOrAny checks if a type is int, float, or any.
+// isNumericOrAny checks if a type is int, float, number, or any.
 // This allows arithmetic operations on dynamic types.
 func isNumericOrAny(t Type) bool {
 	if p, ok := t.(*Primitive); ok {
-		return p.Kind == KindInt || p.Kind == KindFloat || p.Kind == KindAny
+		return p.Kind == KindInt || p.Kind == KindFloat || p.Kind == KindNumber || p.Kind == KindAny
+	}
+	if l, ok := t.(*Literal); ok {
+		return l.Kind == KindInt || l.Kind == KindFloat || l.Kind == KindNumber
 	}
 	return false
 }
 
 // numericResultType returns the result type for numeric operations.
 // If either operand is any, result is any.
+// If both are literals, result is a number literal (assignable to any numeric type).
+// If one is a specific type (int/float) and the other is a literal, use the specific type.
+// If either is number, result is number.
 // If either operand is float, result is float. Otherwise int.
 func numericResultType(left, right Type) Type {
-	leftP, leftOk := left.(*Primitive)
-	rightP, rightOk := right.(*Primitive)
+	// Check if both operands are literals
+	_, leftIsLit := left.(*Literal)
+	_, rightIsLit := right.(*Literal)
+	if leftIsLit && rightIsLit {
+		// Both are literals - result is a number literal
+		// This allows constant expressions like 1 + 2 to be assigned to any numeric type
+		return &Literal{Kind: KindNumber, Value: ""}
+	}
+
+	// Helper to get the primitive kind from a type
+	getKind := func(t Type) (PrimitiveKind, bool) {
+		if p, ok := t.(*Primitive); ok {
+			return p.Kind, true
+		}
+		if l, ok := t.(*Literal); ok {
+			return l.Kind, true
+		}
+		return 0, false
+	}
+
+	leftKind, leftOk := getKind(left)
+	rightKind, rightOk := getKind(right)
 	if leftOk && rightOk {
 		// If either is any, result is any
-		if leftP.Kind == KindAny || rightP.Kind == KindAny {
+		if leftKind == KindAny || rightKind == KindAny {
 			return AnyType
 		}
-		if leftP.Kind == KindFloat || rightP.Kind == KindFloat {
+
+		// If one is a specific type (int/float) and the other is a literal,
+		// the result inherits the specific type
+		if leftIsLit && !rightIsLit {
+			// Right is specific, left is literal - use right's type
+			if rightKind == KindInt {
+				return IntType
+			}
+			if rightKind == KindFloat {
+				return FloatType
+			}
+		}
+		if rightIsLit && !leftIsLit {
+			// Left is specific, right is literal - use left's type
+			if leftKind == KindInt {
+				return IntType
+			}
+			if leftKind == KindFloat {
+				return FloatType
+			}
+		}
+
+		// If either is number, result is number
+		if leftKind == KindNumber || rightKind == KindNumber {
+			return NumberType
+		}
+		if leftKind == KindFloat || rightKind == KindFloat {
 			return FloatType
 		}
 		return IntType
 	}
 	return FloatType // default to float for safety
+}
+
+// isValidArrayIndex checks if a type is valid for array indexing.
+// Accepts int, or numeric literals (which can be used as int indices).
+func isValidArrayIndex(t Type) bool {
+	if t.Equals(IntType) {
+		return true
+	}
+	// Numeric literals can be used as array indices
+	if lit, ok := t.(*Literal); ok {
+		return lit.Kind == KindInt || lit.Kind == KindFloat || lit.Kind == KindNumber
+	}
+	return false
 }
 
 // Error represents a type checking error.
@@ -220,6 +288,8 @@ func (c *Checker) resolveType(astType ast.Type) Type {
 			return IntType
 		case ast.TypeFloat:
 			return FloatType
+		case ast.TypeNumber:
+			return NumberType
 		case ast.TypeString:
 			return StringType
 		case ast.TypeBoolean:
@@ -677,11 +747,8 @@ func (c *Checker) checkExpr(expr ast.Expression) Type {
 
 	switch e := expr.(type) {
 	case *ast.NumberLiteral:
-		// Infer int for integers, float for decimals
-		if e.Value == float64(int64(e.Value)) {
-			return IntType
-		}
-		return FloatType
+		// Numeric literals have a literal type that can be assigned to any numeric type
+		return &Literal{Kind: KindNumber, Value: e.Token.Literal}
 
 	case *ast.StringLiteral:
 		return StringType
@@ -893,7 +960,7 @@ func (c *Checker) checkIndexExpr(expr *ast.IndexExpr) Type {
 	objectType = Unwrap(objectType)
 
 	if arr, ok := objectType.(*Array); ok {
-		if !indexType.Equals(IntType) {
+		if !isValidArrayIndex(indexType) {
 			c.error(expr.Token.Line, expr.Token.Column,
 				"array index must be int, got %s", indexType.String())
 		}
@@ -902,7 +969,7 @@ func (c *Checker) checkIndexExpr(expr *ast.IndexExpr) Type {
 
 	// String indexing
 	if objectType.Equals(StringType) {
-		if !indexType.Equals(IntType) {
+		if !isValidArrayIndex(indexType) {
 			c.error(expr.Token.Line, expr.Token.Column,
 				"string index must be int, got %s", indexType.String())
 		}
@@ -1119,7 +1186,7 @@ func (c *Checker) checkAssignExpr(expr *ast.AssignExpr) Type {
 
 		if arr, ok := objectType.(*Array); ok {
 			indexType := c.checkExpr(target.Index)
-			if !indexType.Equals(IntType) {
+			if !isValidArrayIndex(indexType) {
 				c.error(expr.Token.Line, expr.Token.Column,
 					"array index must be int, got %s", indexType.String())
 			}

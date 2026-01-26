@@ -1484,6 +1484,8 @@ func (p *Parser) parseSingleType() ast.Type {
 		typ = &ast.PrimitiveType{Kind: ast.TypeInt}
 	case token.FLOAT_TYPE:
 		typ = &ast.PrimitiveType{Kind: ast.TypeFloat}
+	case token.NUMBER_TYPE:
+		typ = &ast.PrimitiveType{Kind: ast.TypeNumber}
 	case token.STRING_TYPE:
 		typ = &ast.PrimitiveType{Kind: ast.TypeString}
 	case token.BOOLEAN_TYPE:

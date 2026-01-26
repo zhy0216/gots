@@ -1376,12 +1376,28 @@ func (g *Generator) genExprWithContext(expr typed.Expr, targetType types.Type) s
 			switch targetPrim.Kind {
 			case types.KindInt:
 				return fmt.Sprintf("gts_toint(%s)", value)
-			case types.KindFloat:
+			case types.KindFloat, types.KindNumber:
 				return fmt.Sprintf("gts_tofloat(%s)", value)
 			case types.KindString:
 				return fmt.Sprintf("gts_tostring(%s)", value)
 			case types.KindBoolean:
 				return fmt.Sprintf("gts_tobool(%s)", value)
+			}
+		}
+	}
+
+	// Handle numeric type conversions: int <-> float64 (number)
+	if exprPrim, ok := exprType.(*types.Primitive); ok {
+		if targetPrim, ok := targetTypeUnwrapped.(*types.Primitive); ok {
+			// int to number/float: needs float64() conversion
+			if exprPrim.Kind == types.KindInt && (targetPrim.Kind == types.KindNumber || targetPrim.Kind == types.KindFloat) {
+				value := g.genExpr(expr)
+				return fmt.Sprintf("float64(%s)", value)
+			}
+			// number/float to int: needs int() conversion (should have been caught by type checker, but handle gracefully)
+			if (exprPrim.Kind == types.KindNumber || exprPrim.Kind == types.KindFloat) && targetPrim.Kind == types.KindInt {
+				value := g.genExpr(expr)
+				return fmt.Sprintf("int(%s)", value)
 			}
 		}
 	}
@@ -2447,9 +2463,12 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 			return fmt.Sprintf("func() []%s { result := make([]%s, 0); %s %s { if %s { result = append(result, v) } }; return result }()", elemType, elemType, forClause, obj, callbackCall)
 
 		case "reduce":
-			// Check how many parameters the callback expects
+			// Determine the accumulator type from the callback's return type (preferred)
+			// or fall back to the initial value's type
 			accType := "interface{}"
-			if len(args) > 1 {
+			if callbackType, ok := expr.Args[0].Type().(*types.Function); ok && callbackType.ReturnType != nil {
+				accType = g.goType(callbackType.ReturnType)
+			} else if len(args) > 1 {
 				accType = g.goType(expr.Args[1].Type())
 			}
 			var callbackCall, forClause string
@@ -2612,6 +2631,8 @@ func (g *Generator) goType(t types.Type) string {
 			return "int"
 		case types.KindFloat:
 			return "float64"
+		case types.KindNumber:
+			return "float64"
 		case types.KindString:
 			return "string"
 		case types.KindBoolean:
@@ -2632,6 +2653,8 @@ func (g *Generator) goType(t types.Type) string {
 		case types.KindInt:
 			return "int"
 		case types.KindFloat:
+			return "float64"
+		case types.KindNumber:
 			return "float64"
 		case types.KindString:
 			return "string"

@@ -23,6 +23,7 @@ type PrimitiveKind int
 const (
 	KindInt PrimitiveKind = iota
 	KindFloat
+	KindNumber
 	KindString
 	KindBoolean
 	KindVoid
@@ -43,6 +44,8 @@ func (p *Primitive) String() string {
 		return "int"
 	case KindFloat:
 		return "float"
+	case KindNumber:
+		return "number"
 	case KindString:
 		return "string"
 	case KindBoolean:
@@ -70,6 +73,7 @@ func (p *Primitive) Equals(other Type) bool {
 var (
 	IntType     = &Primitive{Kind: KindInt}
 	FloatType   = &Primitive{Kind: KindFloat}
+	NumberType  = &Primitive{Kind: KindNumber}
 	StringType  = &Primitive{Kind: KindString}
 	BooleanType = &Primitive{Kind: KindBoolean}
 	VoidType    = &Primitive{Kind: KindVoid}
@@ -817,7 +821,47 @@ func IsAssignableTo(from, to Type) bool {
 	// Literal types are assignable to their base primitive type
 	if fromLit, ok := from.(*Literal); ok {
 		if toPrim, ok := to.(*Primitive); ok {
-			return fromLit.Kind == toPrim.Kind
+			if fromLit.Kind == toPrim.Kind {
+				return true
+			}
+			// Numeric literal types can be assigned to any numeric type (int, float, number)
+			fromIsNumeric := fromLit.Kind == KindInt || fromLit.Kind == KindFloat || fromLit.Kind == KindNumber
+			toIsNumeric := toPrim.Kind == KindInt || toPrim.Kind == KindFloat || toPrim.Kind == KindNumber
+			if fromIsNumeric && toIsNumeric {
+				return true
+			}
+		}
+		// Literal to literal - same kind is compatible (for comparisons)
+		if toLit, ok := to.(*Literal); ok {
+			if fromLit.Kind == toLit.Kind {
+				return true
+			}
+			// Numeric literals are compatible with each other
+			fromIsNumeric := fromLit.Kind == KindInt || fromLit.Kind == KindFloat || fromLit.Kind == KindNumber
+			toIsNumeric := toLit.Kind == KindInt || toLit.Kind == KindFloat || toLit.Kind == KindNumber
+			if fromIsNumeric && toIsNumeric {
+				return true
+			}
+		}
+	}
+
+	// Numeric type compatibility:
+	// int -> number: allowed (widening)
+	// float -> number: allowed (equivalent)
+	// number -> float: allowed (equivalent)
+	// number -> int: NOT allowed (use toint())
+	if fromPrim, ok := from.(*Primitive); ok {
+		if toPrim, ok := to.(*Primitive); ok {
+			// int or float can be assigned to number
+			if toPrim.Kind == KindNumber {
+				if fromPrim.Kind == KindInt || fromPrim.Kind == KindFloat {
+					return true
+				}
+			}
+			// number can be assigned to float (they're equivalent at runtime)
+			if fromPrim.Kind == KindNumber && toPrim.Kind == KindFloat {
+				return true
+			}
 		}
 	}
 
@@ -1064,27 +1108,77 @@ func LeastUpperBound(a, b Type) Type {
 	return AnyType
 }
 
-// IsNumeric checks if a type is int, float, or any (for dynamic typing support).
+// IsNumeric checks if a type is int, float, number, or any (for dynamic typing support).
 func IsNumeric(t Type) bool {
 	t = Unwrap(t)
 	if p, ok := t.(*Primitive); ok {
-		return p.Kind == KindInt || p.Kind == KindFloat || p.Kind == KindAny
+		return p.Kind == KindInt || p.Kind == KindFloat || p.Kind == KindNumber || p.Kind == KindAny
+	}
+	if l, ok := t.(*Literal); ok {
+		return l.Kind == KindInt || l.Kind == KindFloat || l.Kind == KindNumber
 	}
 	return false
 }
 
 // NumericResultType returns the result type for numeric operations.
-// Returns any if either operand is any, int if both are int, else float.
+// Returns any if either operand is any, number if either is number,
+// If both are literals, result is a number literal.
+// If one is a specific type (int/float) and the other is a literal, use the specific type.
+// int if both are int, else float.
 func NumericResultType(left, right Type) Type {
 	left = Unwrap(left)
 	right = Unwrap(right)
-	lp, lok := left.(*Primitive)
-	rp, rok := right.(*Primitive)
+
+	// Check if both operands are literals
+	_, leftIsLit := left.(*Literal)
+	_, rightIsLit := right.(*Literal)
+	if leftIsLit && rightIsLit {
+		// Both are literals - result is a number literal
+		return &Literal{Kind: KindNumber, Value: ""}
+	}
+
+	// Helper to get the primitive kind from a type
+	getKind := func(t Type) (PrimitiveKind, bool) {
+		if p, ok := t.(*Primitive); ok {
+			return p.Kind, true
+		}
+		if l, ok := t.(*Literal); ok {
+			return l.Kind, true
+		}
+		return 0, false
+	}
+
+	leftKind, lok := getKind(left)
+	rightKind, rok := getKind(right)
 	if lok && rok {
-		if lp.Kind == KindAny || rp.Kind == KindAny {
+		if leftKind == KindAny || rightKind == KindAny {
 			return AnyType
 		}
-		if lp.Kind == KindInt && rp.Kind == KindInt {
+
+		// If one is a specific type (int/float) and the other is a literal,
+		// the result inherits the specific type
+		if leftIsLit && !rightIsLit {
+			if rightKind == KindInt {
+				return IntType
+			}
+			if rightKind == KindFloat {
+				return FloatType
+			}
+		}
+		if rightIsLit && !leftIsLit {
+			if leftKind == KindInt {
+				return IntType
+			}
+			if leftKind == KindFloat {
+				return FloatType
+			}
+		}
+
+		// If either is number, result is number
+		if leftKind == KindNumber || rightKind == KindNumber {
+			return NumberType
+		}
+		if leftKind == KindInt && rightKind == KindInt {
 			return IntType
 		}
 	}
@@ -1377,6 +1471,9 @@ func typeNameForInstantiation(t Type) string {
 	switch typ := t.(type) {
 	case *Primitive:
 		return typ.String()
+	case *Literal:
+		// Widen literal to its base type name
+		return typ.BaseType().String()
 	case *Class:
 		return typ.Name
 	case *Array:
@@ -1390,4 +1487,13 @@ func typeNameForInstantiation(t Type) string {
 	default:
 		return "unknown"
 	}
+}
+
+// WidenLiteral converts literal types to their base primitive types.
+// Non-literal types are returned unchanged.
+func WidenLiteral(t Type) Type {
+	if lit, ok := t.(*Literal); ok {
+		return lit.BaseType()
+	}
+	return t
 }

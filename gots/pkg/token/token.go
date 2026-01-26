@@ -116,6 +116,7 @@ const (
 	// Type keywords
 	INT_TYPE     // int
 	FLOAT_TYPE   // float
+	NUMBER_TYPE  // number
 	STRING_TYPE  // string
 	BOOLEAN_TYPE // boolean
 	VOID_TYPE    // void
@@ -263,6 +264,7 @@ var typeStrings = map[Type]string{
 	// Type keywords
 	INT_TYPE:     "int",
 	FLOAT_TYPE:   "float",
+	NUMBER_TYPE:  "number",
 	STRING_TYPE:  "string",
 	BOOLEAN_TYPE: "boolean",
 	VOID_TYPE:    "void",
@@ -317,6 +319,7 @@ var keywords = map[string]Type{
 	"null":        NULL,
 	"int":         INT_TYPE,
 	"float":       FLOAT_TYPE,
+	"number":      NUMBER_TYPE,
 	"string":      STRING_TYPE,
 	"boolean":     BOOLEAN_TYPE,
 	"void":        VOID_TYPE,
@@ -346,7 +349,7 @@ func IsKeyword(t Type) bool {
 		BREAK, CONTINUE, CLASS, EXTENDS, NEW, THIS, SUPER,
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL, SWITCH, CASE, DEFAULT, OF,
 		TRY, CATCH, THROW, ENUM, ASYNC, AWAIT,
-		INT_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
+		INT_TYPE, FLOAT_TYPE, NUMBER_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
 		MAP, SET, INTERFACE, IMPORT, FROM, EXPORT, DECLARE, MODULE, AS:
 		return true
 	}

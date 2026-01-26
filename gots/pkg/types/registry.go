@@ -163,6 +163,8 @@ func convertAstTypeToType(t ast.Type) Type {
 			return IntType
 		case ast.TypeFloat:
 			return FloatType
+		case ast.TypeNumber:
+			return NumberType
 		case ast.TypeString:
 			return StringType
 		case ast.TypeBoolean:

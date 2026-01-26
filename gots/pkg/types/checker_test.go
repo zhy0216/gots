@@ -68,7 +68,7 @@ func searchSubstring(s, substr string) bool {
 func TestNumberLiteral(t *testing.T) {
 	expectNoErrors(t, `let x: int = 42;`)
 	expectNoErrors(t, `let x: float = 3.14;`)
-	expectError(t, `let x: string = 42;`, "cannot assign int to string")
+	expectError(t, `let x: string = 42;`, "cannot assign")
 }
 
 func TestStringLiteral(t *testing.T) {

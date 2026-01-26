@@ -60,8 +60,8 @@ gots repl                         # Interactive REPL
 ## Language Features
 
 ### Types
-- Primitives: `int`, `float`, `string`, `boolean`, `void`, `null`
-- Arrays: `int[]`, `float[]`, `string[]`
+- Primitives: `number`, `int`, `float`, `string`, `boolean`, `void`, `null`
+- Arrays: `int[]`, `float[]`, `string[]`, `number[]`
 - Objects: `{x: int, y: string}`
 - Functions: `(a: int) => string`, `Function` (dynamic)
 - Nullable: `string | null`
@@ -72,6 +72,7 @@ gots repl                         # Interactive REPL
 
 | GTS Type | Go Type |
 |----------|---------|
+| `number` | `float64` |
 | `int` | `int` |
 | `float` | `float64` |
 | `string` | `string` |
@@ -85,20 +86,32 @@ gots repl                         # Interactive REPL
 | `RegExp` | `*regexp.Regexp` |
 
 ### Numeric Type Rules
-- Integer literals (e.g., `42`) have type `int`
-- Decimal literals (e.g., `3.14`) have type `float`
-- `int + int = int`, `int + float = float`, `float + float = float`
+- Numeric literals (e.g., `42`, `3.14`) default to `number` type
+- `int` and `float` are opt-in explicit annotations for Go interop
+- Numeric literals can be assigned to any numeric type (`int`, `float`, `number`)
+- Type compatibility:
+  - `int` → `number`: allowed (widening)
+  - `float` → `number`: allowed (equivalent)
+  - `number` → `float`: allowed (equivalent)
+  - `number` → `int`: NOT allowed (use `toint()`)
+- Arithmetic with `number` produces `number`
+- Arithmetic with `int` and literal produces `int`
 - Division (`/`) always returns `float`
 - Modulo (`%`) requires `int` operands
-- Array indexing requires `int`
+- Array indexing accepts `int` or numeric literals
 - `len()` returns `int`
 
 ### Syntax Examples
 
 ```typescript
-// Variables
-let x: int = 42
-let pi: float = 3.14159
+// Variables - numeric literals default to number type
+let x = 42              // x: number
+let y = 3.14            // y: number
+
+// Explicit type annotations for Go interop
+let i: int = 42         // i: int (for Go int operations)
+let f: float = 3.14159  // f: float (explicit float64)
+let n: number = 100     // n: number (TypeScript-style)
 const name: string = "goTS"
 
 // Functions

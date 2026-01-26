@@ -2,7 +2,6 @@ package typed
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/zhy0216/quickts/gots/pkg/ast"
 	"github.com/zhy0216/quickts/gots/pkg/token"
@@ -648,6 +647,8 @@ func (b *Builder) resolveType(astType ast.Type) types.Type {
 			return types.IntType
 		case ast.TypeFloat:
 			return types.FloatType
+		case ast.TypeNumber:
+			return types.NumberType
 		case ast.TypeString:
 			return types.StringType
 		case ast.TypeBoolean:
@@ -875,6 +876,19 @@ func (b *Builder) buildVarDecl(decl *ast.VarDecl) *VarDecl {
 				init = &MapLit{
 					Entries:  []*MapEntry{},
 					ExprType: mapType,
+				}
+			} else {
+				init = b.buildExpr(decl.Value)
+			}
+		} else if newExpr, ok := decl.Value.(*ast.NewExpr); ok {
+			// Special handling for generic class instantiation with contextual typing
+			if varType != nil {
+				if classType, ok := varType.(*types.Class); ok && classType.GenericBaseName != "" {
+					// If the declared type is a generic class instantiation,
+					// use its type arguments for the new expression
+					init = b.buildNewExprWithTypeArgs(newExpr, classType.TypeArgs)
+				} else {
+					init = b.buildExpr(decl.Value)
 				}
 			} else {
 				init = b.buildExpr(decl.Value)
@@ -1566,12 +1580,13 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 
 	switch e := expr.(type) {
 	case *ast.NumberLiteral:
-		// Check if the original literal contains a decimal point to determine type
-		// 5.0 should be float, 5 should be int
-		if strings.Contains(e.Token.Literal, ".") {
-			return &NumberLit{Value: e.Value, ExprType: types.FloatType}
+		// Numeric literals have a literal type that can be assigned to any numeric type
+		// This allows: let i: int = 42, let f: float = 3.14, let n: number = 42
+		literalType := &types.Literal{
+			Kind:  types.KindNumber,
+			Value: e.Token.Literal,
 		}
-		return &NumberLit{Value: e.Value, ExprType: types.IntType}
+		return &NumberLit{Value: e.Value, ExprType: literalType}
 
 	case *ast.StringLiteral:
 		return &StringLit{Value: e.Value, ExprType: types.StringType}
@@ -1870,9 +1885,15 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 					}
 				}
 
-				// Special case: reduce returns the type of initial value
-				if ident.Name == "reduce" && len(args) > 1 {
-					returnType = args[1].Type()
+				// Special case: reduce returns the type of the callback's return type
+				// or falls back to the initial value's type
+				if ident.Name == "reduce" && len(args) >= 3 {
+					// Prefer callback's return type (args[2] is the callback)
+					if callbackType, ok := args[2].Type().(*types.Function); ok && callbackType.ReturnType != nil {
+						returnType = callbackType.ReturnType
+					} else if len(args) > 1 {
+						returnType = args[1].Type()
+					}
 				}
 
 				return &BuiltinCall{
@@ -2008,6 +2029,19 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 	}
 }
 
+// isValidArrayIndex checks if a type is valid for array/string indexing.
+// Accepts int, or numeric literals (which can be used as int indices).
+func isValidArrayIndex(t types.Type) bool {
+	if t.Equals(types.IntType) {
+		return true
+	}
+	// Numeric literals can be used as array indices
+	if lit, ok := t.(*types.Literal); ok {
+		return lit.Kind == types.KindInt || lit.Kind == types.KindFloat || lit.Kind == types.KindNumber
+	}
+	return false
+}
+
 func (b *Builder) buildIndexExpr(expr *ast.IndexExpr) Expr {
 	object := b.buildExpr(expr.Object)
 	index := b.buildExpr(expr.Index)
@@ -2016,13 +2050,13 @@ func (b *Builder) buildIndexExpr(expr *ast.IndexExpr) Expr {
 	var resultType types.Type
 
 	if arr, ok := objectType.(*types.Array); ok {
-		if !index.Type().Equals(types.IntType) {
+		if !isValidArrayIndex(index.Type()) {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"array index must be int, got %s", index.Type().String())
 		}
 		resultType = arr.Element
 	} else if objectType.Equals(types.StringType) {
-		if !index.Type().Equals(types.IntType) {
+		if !isValidArrayIndex(index.Type()) {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"string index must be int, got %s", index.Type().String())
 		}
@@ -2395,7 +2429,8 @@ func (b *Builder) buildNewExpr(expr *ast.NewExpr) Expr {
 				for j, param := range genericClass.Constructor.Params {
 					if typeParam, ok := param.Type.(*types.TypeParameter); ok && typeParam.Name == tp.Name {
 						if j < len(args) {
-							typeArgs[i] = args[j].Type()
+							// Widen literal types to their base primitive types
+							typeArgs[i] = types.WidenLiteral(args[j].Type())
 							break
 						}
 					}
@@ -2470,6 +2505,65 @@ func (b *Builder) buildNewExpr(expr *ast.NewExpr) Expr {
 
 	return &NewExpr{
 		ClassName: expr.ClassName,
+		Args:      args,
+		ExprType:  class,
+	}
+}
+
+// buildNewExprWithTypeArgs builds a new expression using explicit type arguments
+// instead of inferring from constructor arguments. Used for contextual typing.
+func (b *Builder) buildNewExprWithTypeArgs(expr *ast.NewExpr, typeArgs []types.Type) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	// Check for generic class
+	genericClass, ok := b.genericClasses[expr.ClassName]
+	if !ok {
+		// Not a generic class, fall back to regular handling
+		return b.buildNewExpr(expr)
+	}
+
+	if len(typeArgs) != len(genericClass.TypeParams) {
+		b.error(expr.Token.Line, expr.Token.Column,
+			"expected %d type arguments, got %d", len(genericClass.TypeParams), len(typeArgs))
+		return b.buildNewExpr(expr)
+	}
+
+	class, err := genericClass.Instantiate(typeArgs)
+	if err != nil {
+		b.error(expr.Token.Line, expr.Token.Column,
+			"cannot instantiate generic class: %s", err.Error())
+		return &NewExpr{
+			ClassName: expr.ClassName,
+			Args:      args,
+			ExprType:  types.AnyType,
+		}
+	}
+
+	// Register the instantiated class
+	b.classes[class.Name] = class
+
+	if class.Constructor != nil {
+		if len(args) != len(class.Constructor.Params) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"expected %d constructor arguments, got %d",
+				len(class.Constructor.Params), len(args))
+		} else {
+			for i, arg := range args {
+				if !types.IsAssignableTo(arg.Type(), class.Constructor.Params[i].Type) {
+					b.error(expr.Token.Line, expr.Token.Column,
+						"constructor argument %d: cannot pass %s as %s",
+						i+1, arg.Type().String(), class.Constructor.Params[i].Type.String())
+				}
+			}
+		}
+	}
+
+	return &NewExpr{
+		ClassName: expr.ClassName,
+		TypeArgs:  typeArgs,
 		Args:      args,
 		ExprType:  class,
 	}
