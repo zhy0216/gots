@@ -138,6 +138,98 @@ func (b *Builder) popScope() {
 	b.scopeDepth--
 }
 
+// propertyExprKey generates a string key for a property expression to use in narrowing.
+// Returns an empty string if the expression can't be keyed (e.g., computed properties).
+func (b *Builder) propertyExprKey(expr *ast.PropertyExpr) string {
+	// Build key from the expression string representation
+	return expr.String()
+}
+
+// lookupPropertyType gets the type of a property expression without building it.
+// This is used during narrowing detection to avoid circular dependencies.
+func (b *Builder) lookupPropertyType(expr *ast.PropertyExpr) types.Type {
+	// Get the object type
+	var objectType types.Type
+
+	switch obj := expr.Object.(type) {
+	case *ast.Identifier:
+		// Regular identifier (e.g., obj.field)
+		if typ, found := b.scope.lookup(obj.Name); found {
+			objectType = typ
+		}
+	case *ast.ThisExpr:
+		// this.field
+		if typ, found := b.scope.lookup("this"); found {
+			objectType = typ
+		}
+	default:
+		// Nested property access - recursively look up
+		if nestedProp, ok := obj.(*ast.PropertyExpr); ok {
+			objectType = b.lookupPropertyType(nestedProp)
+		}
+	}
+
+	if objectType == nil {
+		return nil
+	}
+
+	// Unwrap nullable and alias types
+	objectType = types.Unwrap(objectType)
+	if nullable, ok := objectType.(*types.Nullable); ok {
+		objectType = nullable.Inner
+	}
+	objectType = types.Unwrap(objectType)
+
+	// Look up the property on the object type
+	switch obj := objectType.(type) {
+	case *types.Class:
+		if field := obj.GetField(expr.Property); field != nil {
+			return field.Type
+		}
+	case *types.Object:
+		if prop := obj.GetProperty(expr.Property); prop != nil {
+			return prop.Type
+		}
+	}
+
+	return nil
+}
+
+// extractNarrowingFromCondition extracts type narrowing from a condition expression.
+// Handles patterns like: x != null, obj.field != null
+func (b *Builder) extractNarrowingFromCondition(cond ast.Expression) {
+	binary, ok := cond.(*ast.BinaryExpr)
+	if !ok {
+		return
+	}
+
+	if binary.Op == token.NEQ {
+		if _, ok := binary.Right.(*ast.NullLiteral); ok {
+			// Handle identifier narrowing: x != null
+			if ident, ok := binary.Left.(*ast.Identifier); ok {
+				if varType, found := b.scope.lookup(ident.Name); found {
+					if nullable, ok := varType.(*types.Nullable); ok {
+						b.narrowing[ident.Name] = nullable.Inner
+					}
+				}
+			}
+			// Handle property access narrowing: this.field != null or obj.field != null
+			if propExpr, ok := binary.Left.(*ast.PropertyExpr); ok {
+				key := b.propertyExprKey(propExpr)
+				if key != "" {
+					// Get the property type without building (to avoid circular dependency)
+					propType := b.lookupPropertyType(propExpr)
+					if propType != nil {
+						if nullable, ok := propType.(*types.Nullable); ok {
+							b.narrowing[key] = nullable.Inner
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // Build transforms an AST program into a typed program.
 func (b *Builder) Build(program *ast.Program) *Program {
 	// Initialize imports and exports
@@ -1034,19 +1126,21 @@ func (b *Builder) buildIfStmt(stmt *ast.IfStmt) *IfStmt {
 	// Handle type narrowing for null checks
 	savedNarrowing := b.narrowing
 	b.narrowing = make(map[string]types.Type)
+	for k, v := range savedNarrowing {
+		b.narrowing[k] = v
+	}
 
 	if binary, ok := stmt.Condition.(*ast.BinaryExpr); ok {
-		if binary.Op == token.NEQ {
-			if ident, ok := binary.Left.(*ast.Identifier); ok {
-				if _, ok := binary.Right.(*ast.NullLiteral); ok {
-					if varType, found := b.scope.lookup(ident.Name); found {
-						if nullable, ok := varType.(*types.Nullable); ok {
-							b.narrowing[ident.Name] = nullable.Inner
-						}
-					}
-				}
-			}
+		// Handle compound conditions with &&
+		// For A && B, we check both sides for null checks
+		if binary.Op == token.AND {
+			b.extractNarrowingFromCondition(binary.Left)
+			b.extractNarrowingFromCondition(binary.Right)
+		} else {
+			b.extractNarrowingFromCondition(stmt.Condition)
 		}
+	} else {
+		b.extractNarrowingFromCondition(stmt.Condition)
 	}
 
 	then := b.buildBlock(stmt.Consequence)
@@ -2094,6 +2188,18 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 				MemberName: expr.Property,
 				ExprType:   enumType,
 			}
+		}
+	}
+
+	// Check for type narrowing first
+	key := b.propertyExprKey(expr)
+	if narrowedType, ok := b.narrowing[key]; ok {
+		object := b.buildExpr(expr.Object)
+		return &PropertyExpr{
+			Object:   object,
+			Property: expr.Property,
+			Optional: expr.Optional,
+			ExprType: narrowedType,
 		}
 	}
 
