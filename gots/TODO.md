@@ -392,7 +392,7 @@ error.cause
 
 - [x] Math object (20+ methods) - DONE
 - [x] Number static/prototype methods (10+ methods) - DONE
-- [ ] String additional methods (15+ methods)
+- [x] String additional methods (15+ methods) - DONE (charCodeAt, at, slice, repeat, padStart, padEnd, trimStart, trimEnd, replaceAll)
 - [ ] Array additional methods (10+ methods)
 - [x] Object static methods (15+ methods) - DONE (keys, values, assign, hasOwn)
 - [x] JSON parse/stringify - DONE

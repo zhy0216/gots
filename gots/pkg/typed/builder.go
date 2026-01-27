@@ -3546,6 +3546,78 @@ func (b *Builder) buildStringMethodCall(obj Expr, method string, expr *ast.CallE
 		}
 		resultType = types.IntType
 
+	case "charCodeAt":
+		// charCodeAt(index: int): int
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.charCodeAt expects 1 argument, got %d", len(args))
+		}
+		resultType = types.IntType
+
+	case "at":
+		// at(index: int): string (supports negative indices)
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.at expects 1 argument, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "slice":
+		// slice(start: int, end?: int): string
+		if len(args) < 1 || len(args) > 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.slice expects 1-2 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "repeat":
+		// repeat(count: int): string
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.repeat expects 1 argument, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "padStart":
+		// padStart(targetLength: int, padString: string): string
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.padStart expects 2 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "padEnd":
+		// padEnd(targetLength: int, padString: string): string
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.padEnd expects 2 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "trimStart":
+		// trimStart(): string
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.trimStart expects 0 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "trimEnd":
+		// trimEnd(): string
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.trimEnd expects 0 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
+	case "replaceAll":
+		// replaceAll(searchValue: string, replaceValue: string): string
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.replaceAll expects 2 arguments, got %d", len(args))
+		}
+		resultType = types.StringType
+
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown String method: %s", method)

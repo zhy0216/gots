@@ -240,6 +240,177 @@ println(idx)  // 6
 **Go Mapping:** `strings.Index()`
 
 ---
+
+### charCodeAt
+
+Returns the Unicode code point of the character at the specified index.
+
+**Signature:**
+```typescript
+str.charCodeAt(index: int): int
+```
+
+**Examples:**
+```typescript
+"Hello".charCodeAt(0)  // 72 (H)
+"Hello".charCodeAt(1)  // 101 (e)
+```
+
+**Go Mapping:** `int(str[index])`
+
+---
+
+### at
+
+Returns the character at the specified index, supporting negative indices.
+
+**Signature:**
+```typescript
+str.at(index: int): string
+```
+
+**Examples:**
+```typescript
+"Hello".at(0)   // "H"
+"Hello".at(-1)  // "o" (last char)
+"Hello".at(-2)  // "l"
+```
+
+**Go Mapping:** Index with negative support
+
+---
+
+### slice
+
+Extracts a section of a string, supporting negative indices.
+
+**Signature:**
+```typescript
+str.slice(start: int, end?: int): string
+```
+
+**Examples:**
+```typescript
+"Hello".slice(0, 2)   // "He"
+"Hello".slice(1, 4)   // "ell"
+"Hello".slice(-2)     // "lo"
+```
+
+**Go Mapping:** Slice with negative index handling
+
+---
+
+### repeat
+
+Returns a string consisting of the string repeated the specified number of times.
+
+**Signature:**
+```typescript
+str.repeat(count: int): string
+```
+
+**Examples:**
+```typescript
+"ab".repeat(3)  // "ababab"
+"ab".repeat(1)  // "ab"
+"ab".repeat(0)  // ""
+```
+
+**Go Mapping:** `strings.Repeat()`
+
+---
+
+### padStart
+
+Pads the current string with another string until the resulting string reaches the given length.
+
+**Signature:**
+```typescript
+str.padStart(targetLength: int, padString: string): string
+```
+
+**Examples:**
+```typescript
+"5".padStart(3, "0")   // "005"
+"5".padStart(5, "0")   // "00005"
+```
+
+**Go Mapping:** Loop prepending pad string
+
+---
+
+### padEnd
+
+Pads the current string with another string at the end until the resulting string reaches the given length.
+
+**Signature:**
+```typescript
+str.padEnd(targetLength: int, padString: string): string
+```
+
+**Examples:**
+```typescript
+"5".padEnd(3, "0")   // "500"
+"5".padEnd(5, "0")   // "50000"
+```
+
+**Go Mapping:** Loop appending pad string
+
+---
+
+### trimStart
+
+Removes leading whitespace from a string.
+
+**Signature:**
+```typescript
+str.trimStart(): string
+```
+
+**Examples:**
+```typescript
+"  hello  ".trimStart()  // "hello  "
+```
+
+**Go Mapping:** `strings.TrimLeft()`
+
+---
+
+### trimEnd
+
+Removes trailing whitespace from a string.
+
+**Signature:**
+```typescript
+str.trimEnd(): string
+```
+
+**Examples:**
+```typescript
+"  hello  ".trimEnd()  // "  hello"
+```
+
+**Go Mapping:** `strings.TrimRight()`
+
+---
+
+### replaceAll
+
+Returns a new string with all matches of a pattern replaced by a replacement.
+
+**Signature:**
+```typescript
+str.replaceAll(searchValue: string, replaceValue: string): string
+```
+
+**Examples:**
+```typescript
+"foo bar foo".replaceAll("foo", "x")  // "x bar x"
+```
+
+**Go Mapping:** `strings.ReplaceAll()`
+
+---
 ## Array Methods
 
 Array values in goTS have built-in methods for functional programming operations.

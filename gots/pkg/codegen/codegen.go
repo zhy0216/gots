@@ -2638,6 +2638,45 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 		case "indexOf":
 			// str.indexOf(substring) => strings.Index(str, substring)
 			return fmt.Sprintf("strings.Index(%s, %s)", obj, args[0])
+
+		case "charCodeAt":
+			// str.charCodeAt(index) => int(str[index])
+			return fmt.Sprintf("int(%s[%s])", obj, args[0])
+
+		case "at":
+			// str.at(index) => supports negative indices
+			return fmt.Sprintf("func() string { s := %s; i := %s; if i < 0 { i = len(s) + i }; return string(s[i]) }()", obj, args[0])
+
+		case "slice":
+			// str.slice(start, end?) => with negative index support
+			if len(args) == 1 {
+				return fmt.Sprintf("func() string { s := %s; start := %s; if start < 0 { start = len(s) + start }; return s[start:] }()", obj, args[0])
+			}
+			return fmt.Sprintf("func() string { s := %s; start, end := %s, %s; if start < 0 { start = len(s) + start }; if end < 0 { end = len(s) + end }; return s[start:end] }()", obj, args[0], args[1])
+
+		case "repeat":
+			// str.repeat(count) => strings.Repeat(str, count)
+			return fmt.Sprintf("strings.Repeat(%s, %s)", obj, args[0])
+
+		case "padStart":
+			// str.padStart(targetLength, padString)
+			return fmt.Sprintf("func() string { s := %s; n := %s; pad := %s; for len(s) < n { s = pad + s }; return s[len(s)-n:] }()", obj, args[0], args[1])
+
+		case "padEnd":
+			// str.padEnd(targetLength, padString)
+			return fmt.Sprintf("func() string { s := %s; n := %s; pad := %s; for len(s) < n { s = s + pad }; return s[:n] }()", obj, args[0], args[1])
+
+		case "trimStart":
+			// str.trimStart() => strings.TrimLeft(str, " \t\n\r")
+			return fmt.Sprintf("strings.TrimLeft(%s, \" \\t\\n\\r\")", obj)
+
+		case "trimEnd":
+			// str.trimEnd() => strings.TrimRight(str, " \t\n\r")
+			return fmt.Sprintf("strings.TrimRight(%s, \" \\t\\n\\r\")", obj)
+
+		case "replaceAll":
+			// str.replaceAll(old, new) => strings.ReplaceAll(str, old, new)
+			return fmt.Sprintf("strings.ReplaceAll(%s, %s, %s)", obj, args[0], args[1])
 		}
 	}
 
