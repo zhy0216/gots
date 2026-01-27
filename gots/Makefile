@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration clean run emit-go install help
+.PHONY: build test test-unit test-integration test-test262 clean run emit-go install help
 
 # Binary name
 BINARY := gots
@@ -22,6 +22,26 @@ test-integration:
 # Run a specific integration test (usage: make test-file FILE=example)
 test-file:
 	go test -v -run "TestIntegration/$(FILE)"
+
+# Run test262 conformance tests
+test-test262:
+	@echo "Running test262 conformance tests..."
+	@passed=0; failed=0; \
+	for f in $$(find test/test262 -name "*.gts" | sort); do \
+		name=$$(basename $$f .gts); \
+		output=$$(go run ./cmd/gots run $$f 2>&1); \
+		if echo "$$output" | grep -q "FAIL"; then \
+			echo "FAIL: $$f"; \
+			echo "$$output" | grep "FAIL"; \
+			failed=$$((failed + 1)); \
+		else \
+			echo "PASS: $$name"; \
+			passed=$$((passed + 1)); \
+		fi; \
+	done; \
+	echo ""; \
+	echo "test262 results: $$passed passed, $$failed failed"; \
+	if [ $$failed -gt 0 ]; then exit 1; fi
 
 # Run tests with coverage
 test-cover:
@@ -74,6 +94,7 @@ help:
 	@echo "  make test-unit       Run unit tests only"
 	@echo "  make test-integration Run integration tests only"
 	@echo "  make test-file FILE=example  Run specific integration test"
+	@echo "  make test-test262    Run test262 conformance tests"
 	@echo "  make test-cover      Run tests with coverage summary"
 	@echo "  make test-cover-html Generate HTML coverage report"
 	@echo "  make clean           Remove build artifacts"
