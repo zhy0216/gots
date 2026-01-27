@@ -63,12 +63,15 @@ null
 
 | Type | Description | Go Equivalent |
 |------|-------------|---------------|
+| `number` | Default numeric type (like TypeScript) | `float64` |
 | `int` | Integer number | `int` |
 | `float` | Floating-point number | `float64` |
 | `string` | String of characters | `string` |
 | `boolean` | Boolean value | `bool` |
 | `void` | No value (function returns) | (no return) |
 | `null` | Null value | `nil` |
+
+**Note:** Numeric literals default to `number` type. Use `int` or `float` for explicit Go type mapping.
 
 ### 3.2 Type Annotations
 
@@ -443,7 +446,38 @@ for (let x of arr) {
 }
 ```
 
-### 6.4 Break and Continue
+### 6.4 Switch Statements
+
+```typescript
+let x: int = 2
+switch (x) {
+    case 1:
+        println("one")
+        break
+    case 2:
+        println("two")
+        break
+    default:
+        println("other")
+}
+
+// Switch with string
+let s: string = "hello"
+switch (s) {
+    case "hello":
+        println("greeting")
+        break
+    case "bye":
+        println("farewell")
+        break
+    default:
+        println("unknown")
+}
+```
+
+**Note:** Unlike JavaScript, goTS follows Go semantics where each case block is independent. Fallthrough is not automatic. Always use `break` or the case will fall through to the next.
+
+### 6.5 Break and Continue
 
 ```typescript
 while (true) {
@@ -845,3 +879,34 @@ When compiling to Go, these identifiers get a `_` suffix:
 - Exported names (public) are capitalized in generated Go code
 - Constructor functions become `NewClassName`
 - Method receivers use `this` pointer
+
+## 17. Unsupported Features
+
+The following JavaScript/TypeScript features are **not supported** in goTS:
+
+| Feature | Reason |
+|---------|--------|
+| `do-while` loops | Not implemented |
+| `async/await` | No async support |
+| Generators | No generator functions |
+| Promises | No Promise API |
+| Symbols | No Symbol type |
+| Proxy/Reflect | No metaprogramming |
+| WeakMap/WeakSet | No weak references |
+| `eval()` | No runtime eval |
+| `with` statement | Not supported |
+| Destructuring | Not yet implemented |
+| Spread operator | Not yet implemented |
+| Optional chaining (`?.`) | Not yet implemented |
+| Nullish coalescing (`??`) | Not yet implemented |
+| BigInt | Not supported |
+
+### 17.1 Differences from JavaScript
+
+1. **Switch fallthrough**: Unlike JavaScript, switch cases don't automatically fall through. Use explicit `break` statements.
+
+2. **typeof for numbers**: `typeof` returns `"number"` for both `int` and `float` types (consistent with TypeScript semantics).
+
+3. **Strict typing**: goTS enforces static types at compile time. Dynamic typing patterns common in JavaScript may not work.
+
+4. **No hoisting**: Variables must be declared before use. Function hoisting is not supported.
