@@ -937,6 +937,41 @@ let randomInt: int = toint(Math.random() * 100)  // 0-99
 
 **Note:** `Math.round()` uses Go's rounding semantics (round half away from zero), which differs from JavaScript's (round half toward positive infinity) for negative half values.
 
+### 17.2 Number Object
+
+The `Number` object provides constants and methods for working with numbers.
+
+**Constants:**
+- `Number.MAX_SAFE_INTEGER` - Maximum safe integer (9007199254740991)
+- `Number.MIN_SAFE_INTEGER` - Minimum safe integer (-9007199254740991)
+- `Number.MAX_VALUE` - Largest positive number
+- `Number.MIN_VALUE` - Smallest positive number (closest to zero)
+- `Number.POSITIVE_INFINITY` - Positive infinity
+- `Number.NEGATIVE_INFINITY` - Negative infinity
+- `Number.NaN` - Not-a-Number value
+
+**Static Methods:**
+- `Number.isFinite(x)` - Check if finite number
+- `Number.isNaN(x)` - Check if NaN
+- `Number.isInteger(x)` - Check if integer
+- `Number.isSafeInteger(x)` - Check if safe integer
+- `Number.parseFloat(s)` - Parse float from string
+- `Number.parseInt(s, radix?)` - Parse int from string with optional radix
+
+**Global Functions:**
+- `isNaN(x)` - Global NaN check
+- `isFinite(x)` - Global finite check
+- `parseFloat(s)` - Global float parser
+
+```typescript
+// Example usage
+println(Number.isInteger(42))      // true
+println(Number.isInteger(3.14))    // false
+println(Number.parseFloat("3.14")) // 3.14
+println(Number.parseInt("ff", 16)) // 255
+println(isFinite(42))              // true
+```
+
 ## 18. Unsupported Features
 
 The following JavaScript/TypeScript features are **not supported** in goTS:

@@ -159,10 +159,12 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 	switch e := expr.(type) {
 	case *typed.BuiltinCall:
 		switch e.Name {
-		case "sqrt", "floor", "ceil", "abs":
+		case "sqrt", "floor", "ceil", "abs", "isNaN", "isFinite":
 			g.imports["math"] = true
 		case "split", "join", "replace", "trim", "startsWith", "endsWith", "includes":
 			g.imports["strings"] = true
+		case "parseFloat":
+			g.imports["strconv"] = true
 		}
 		for _, arg := range e.Args {
 			g.collectImportsFromExpr(arg)
@@ -1952,6 +1954,13 @@ func (g *Generator) genBuiltinCall(expr *typed.BuiltinCall) string {
 		return fmt.Sprintf("gts_some(%s, %s)", args[0], args[1])
 	case "every":
 		return fmt.Sprintf("gts_every(%s, %s)", args[0], args[1])
+	// Global number functions
+	case "isNaN":
+		return fmt.Sprintf("math.IsNaN(%s)", args[0])
+	case "isFinite":
+		return fmt.Sprintf("(!math.IsInf(%s, 0) && !math.IsNaN(%s))", args[0], args[0])
+	case "parseFloat":
+		return fmt.Sprintf("func() float64 { v, _ := strconv.ParseFloat(%s, 64); return v }()", args[0])
 	default:
 		return fmt.Sprintf("%s(%s)", expr.Name, strings.Join(args, ", "))
 	}

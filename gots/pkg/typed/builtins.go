@@ -368,6 +368,71 @@ func GetAllBuiltinNames() []string {
 	return names
 }
 
+// ----------------------------------------------------------------------------
+// Number Built-in Object
+// ----------------------------------------------------------------------------
+
+func init() {
+	RegisterBuiltin(&BuiltinObject{
+		Name:    "Number",
+		Imports: []string{"math", "strconv"},
+		Constants: map[string]*BuiltinConstant{
+			"MAX_SAFE_INTEGER": {Type: types.NumberType, GoCode: "float64(9007199254740991)"},
+			"MIN_SAFE_INTEGER": {Type: types.NumberType, GoCode: "float64(-9007199254740991)"},
+			"MAX_VALUE":        {Type: types.NumberType, GoCode: "math.MaxFloat64"},
+			"MIN_VALUE":        {Type: types.NumberType, GoCode: "math.SmallestNonzeroFloat64"},
+			"POSITIVE_INFINITY": {Type: types.NumberType, GoCode: "math.Inf(1)"},
+			"NEGATIVE_INFINITY": {Type: types.NumberType, GoCode: "math.Inf(-1)"},
+			"NaN":              {Type: types.NumberType, GoCode: "math.NaN()"},
+		},
+		Methods: map[string]*BuiltinMethod{
+			// Static methods
+			"isFinite": {
+				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
+				ReturnType: types.BooleanType,
+				GoCodeGen:  func(args []string) string { return fmt.Sprintf("(!math.IsInf(%s, 0) && !math.IsNaN(%s))", args[0], args[0]) },
+			},
+			"isNaN": {
+				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
+				ReturnType: types.BooleanType,
+				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.IsNaN(%s)", args[0]) },
+			},
+			"isInteger": {
+				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
+				ReturnType: types.BooleanType,
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("(math.Trunc(%s) == %s && !math.IsInf(%s, 0))", args[0], args[0], args[0])
+				},
+			},
+			"isSafeInteger": {
+				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
+				ReturnType: types.BooleanType,
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("(math.Trunc(%s) == %s && math.Abs(%s) <= 9007199254740991)", args[0], args[0], args[0])
+				},
+			},
+			"parseFloat": {
+				Params:     []*types.Param{{Name: "s", Type: types.StringType}},
+				ReturnType: types.NumberType,
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("func() float64 { v, _ := strconv.ParseFloat(%s, 64); return v }()", args[0])
+				},
+			},
+			"parseInt": {
+				Params:     []*types.Param{{Name: "s", Type: types.StringType}, {Name: "radix", Type: types.IntType}},
+				ReturnType: types.IntType,
+				Variadic:   true, // radix is optional
+				GoCodeGen: func(args []string) string {
+					if len(args) == 1 {
+						return fmt.Sprintf("func() int { v, _ := strconv.ParseInt(%s, 10, 64); return int(v) }()", args[0])
+					}
+					return fmt.Sprintf("func() int { v, _ := strconv.ParseInt(%s, %s, 64); return int(v) }()", args[0], args[1])
+				},
+			},
+		},
+	})
+}
+
 // DescribeBuiltin returns a description of a built-in object for documentation.
 func DescribeBuiltin(objName string) string {
 	obj, ok := GetBuiltin(objName)

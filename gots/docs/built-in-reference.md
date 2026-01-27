@@ -874,3 +874,257 @@ let n: int = toint(Math.random() * 10)
 **Go Mapping:** `rand.Float64()`
 
 ---
+
+## Number Object
+
+The `Number` object provides methods for working with numbers, similar to JavaScript's Number object.
+
+### Constants
+
+#### Number.MAX_SAFE_INTEGER
+
+The maximum safe integer in JavaScript (2^53 - 1).
+
+```typescript
+let max: number = Number.MAX_SAFE_INTEGER  // 9007199254740991
+```
+
+**Go Mapping:** `float64(9007199254740991)`
+
+---
+
+#### Number.MIN_SAFE_INTEGER
+
+The minimum safe integer in JavaScript (-(2^53 - 1)).
+
+```typescript
+let min: number = Number.MIN_SAFE_INTEGER  // -9007199254740991
+```
+
+**Go Mapping:** `float64(-9007199254740991)`
+
+---
+
+#### Number.MAX_VALUE
+
+The largest positive representable number.
+
+```typescript
+let maxVal: number = Number.MAX_VALUE
+```
+
+**Go Mapping:** `math.MaxFloat64`
+
+---
+
+#### Number.MIN_VALUE
+
+The smallest positive representable number (closest to zero).
+
+```typescript
+let minVal: number = Number.MIN_VALUE
+```
+
+**Go Mapping:** `math.SmallestNonzeroFloat64`
+
+---
+
+#### Number.POSITIVE_INFINITY
+
+Positive infinity.
+
+```typescript
+let inf: number = Number.POSITIVE_INFINITY
+```
+
+**Go Mapping:** `math.Inf(1)`
+
+---
+
+#### Number.NEGATIVE_INFINITY
+
+Negative infinity.
+
+```typescript
+let negInf: number = Number.NEGATIVE_INFINITY
+```
+
+**Go Mapping:** `math.Inf(-1)`
+
+---
+
+#### Number.NaN
+
+Not-a-Number value.
+
+```typescript
+let nan: number = Number.NaN
+```
+
+**Go Mapping:** `math.NaN()`
+
+---
+
+### Static Methods
+
+#### Number.isFinite
+
+Determines whether the passed value is a finite number.
+
+**Signature:**
+```typescript
+Number.isFinite(x: number): boolean
+```
+
+**Examples:**
+```typescript
+Number.isFinite(42)        // true
+Number.isFinite(3.14)      // true
+Number.isFinite(Infinity)  // false
+```
+
+**Go Mapping:** `!math.IsInf(x, 0) && !math.IsNaN(x)`
+
+---
+
+#### Number.isNaN
+
+Determines whether the passed value is NaN.
+
+**Signature:**
+```typescript
+Number.isNaN(x: number): boolean
+```
+
+**Examples:**
+```typescript
+Number.isNaN(NaN)   // true
+Number.isNaN(42)    // false
+```
+
+**Go Mapping:** `math.IsNaN()`
+
+---
+
+#### Number.isInteger
+
+Determines whether the passed value is an integer.
+
+**Signature:**
+```typescript
+Number.isInteger(x: number): boolean
+```
+
+**Examples:**
+```typescript
+Number.isInteger(42)     // true
+Number.isInteger(42.0)   // true
+Number.isInteger(3.14)   // false
+```
+
+**Go Mapping:** `math.Trunc(x) == x && !math.IsInf(x, 0)`
+
+---
+
+#### Number.isSafeInteger
+
+Determines whether the passed value is a safe integer.
+
+**Signature:**
+```typescript
+Number.isSafeInteger(x: number): boolean
+```
+
+**Examples:**
+```typescript
+Number.isSafeInteger(42)                     // true
+Number.isSafeInteger(9007199254740992)       // false (too large)
+```
+
+**Go Mapping:** `math.Trunc(x) == x && math.Abs(x) <= 9007199254740991`
+
+---
+
+#### Number.parseFloat
+
+Parses a string argument and returns a floating point number.
+
+**Signature:**
+```typescript
+Number.parseFloat(s: string): number
+```
+
+**Examples:**
+```typescript
+Number.parseFloat("3.14")   // 3.14
+Number.parseFloat("-5.5")   // -5.5
+```
+
+**Go Mapping:** `strconv.ParseFloat(s, 64)`
+
+---
+
+#### Number.parseInt
+
+Parses a string argument and returns an integer of the specified radix.
+
+**Signature:**
+```typescript
+Number.parseInt(s: string, radix?: int): int
+```
+
+**Parameters:**
+- `s` - The string to parse
+- `radix` - (Optional) The base for conversion, defaults to 10
+
+**Examples:**
+```typescript
+Number.parseInt("42")         // 42
+Number.parseInt("ff", 16)     // 255
+Number.parseInt("1010", 2)    // 10
+```
+
+**Go Mapping:** `strconv.ParseInt(s, radix, 64)`
+
+---
+
+## Global Number Functions
+
+### isNaN
+
+Global function to check if a value is NaN.
+
+**Signature:**
+```typescript
+isNaN(x: number): boolean
+```
+
+**Go Mapping:** `math.IsNaN()`
+
+---
+
+### isFinite
+
+Global function to check if a value is finite.
+
+**Signature:**
+```typescript
+isFinite(x: number): boolean
+```
+
+**Go Mapping:** `!math.IsInf(x, 0) && !math.IsNaN(x)`
+
+---
+
+### parseFloat
+
+Global function to parse a string as a floating-point number.
+
+**Signature:**
+```typescript
+parseFloat(s: string): number
+```
+
+**Go Mapping:** `strconv.ParseFloat(s, 64)`
+
+---

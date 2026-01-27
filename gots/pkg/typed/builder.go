@@ -1941,6 +1941,10 @@ var builtins = map[string]types.Type{
 	"findIndex": &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.IntType},
 	"some":      &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.BooleanType},
 	"every":     &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "fn", Type: types.AnyType}}, ReturnType: types.BooleanType},
+	// Global number functions
+	"isNaN":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.NumberType}}, ReturnType: types.BooleanType},
+	"isFinite":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.NumberType}}, ReturnType: types.BooleanType},
+	"parseFloat": &types.Function{Params: []*types.Param{{Name: "s", Type: types.StringType}}, ReturnType: types.NumberType},
 }
 
 func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {

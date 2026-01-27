@@ -391,7 +391,7 @@ error.cause
 ## Progress Tracking
 
 - [x] Math object (20+ methods) - DONE
-- [ ] Number static/prototype methods (10+ methods)
+- [x] Number static/prototype methods (10+ methods) - DONE
 - [ ] String additional methods (15+ methods)
 - [ ] Array additional methods (10+ methods)
 - [ ] Object static methods (15+ methods)
