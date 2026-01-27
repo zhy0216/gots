@@ -394,7 +394,7 @@ error.cause
 - [x] Number static/prototype methods (10+ methods) - DONE
 - [ ] String additional methods (15+ methods)
 - [ ] Array additional methods (10+ methods)
-- [ ] Object static methods (15+ methods)
+- [x] Object static methods (15+ methods) - DONE (keys, values, assign, hasOwn)
 - [x] JSON parse/stringify - DONE
 - [ ] Date object
 - [ ] Promise enhancements

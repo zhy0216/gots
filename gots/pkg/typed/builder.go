@@ -3366,6 +3366,11 @@ func (b *Builder) buildBuiltinMethodCall(objName, method string, expr *ast.CallE
 		args[i] = b.buildExpr(arg)
 	}
 
+	// Special handling for Object methods that need type inference
+	if objName == "Object" {
+		return b.buildObjectMethodCall(method, args, expr)
+	}
+
 	result, err := BuildBuiltinMethodCall(objName, method, args, expr.Token.Line, expr.Token.Column)
 	if err != nil {
 		b.error(expr.Token.Line, expr.Token.Column, "%s", err.Error())
@@ -3377,6 +3382,58 @@ func (b *Builder) buildBuiltinMethodCall(objName, method string, expr *ast.CallE
 		}
 	}
 	return result
+}
+
+// buildObjectMethodCall handles Object.keys, Object.values, etc. with type inference
+func (b *Builder) buildObjectMethodCall(method string, args []Expr, expr *ast.CallExpr) Expr {
+	var resultType types.Type
+
+	switch method {
+	case "keys":
+		// Object.keys(map) returns string[]
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column, "Object.keys expects 1 argument, got %d", len(args))
+		}
+		resultType = &types.Array{Element: types.StringType}
+
+	case "values":
+		// Object.values(map) returns array of map value type
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column, "Object.values expects 1 argument, got %d", len(args))
+		}
+		// Infer value type from Map
+		argType := types.Unwrap(args[0].Type())
+		if mapType, ok := argType.(*types.Map); ok {
+			resultType = &types.Array{Element: mapType.Value}
+		} else {
+			resultType = types.AnyType
+		}
+
+	case "assign":
+		// Object.assign(target, source) returns target type
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column, "Object.assign expects 2 arguments, got %d", len(args))
+		}
+		resultType = args[0].Type()
+
+	case "hasOwn":
+		// Object.hasOwn(obj, prop) returns boolean
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column, "Object.hasOwn expects 2 arguments, got %d", len(args))
+		}
+		resultType = types.BooleanType
+
+	default:
+		b.error(expr.Token.Line, expr.Token.Column, "unknown Object method: %s", method)
+		resultType = types.AnyType
+	}
+
+	return &BuiltinObjectCall{
+		Object:   "Object",
+		Method:   method,
+		Args:     args,
+		ExprType: resultType,
+	}
 }
 
 // buildStringMethodCall handles method calls on string types

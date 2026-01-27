@@ -993,6 +993,28 @@ let arr: number[] = JSON.parse("[1,2,3]")
 
 **Note:** `JSON.parse` returns `any` type. Provide type annotations for proper type checking.
 
+### 17.4 Object Static Methods
+
+The `Object` object provides static methods for working with maps and objects.
+
+**Methods:**
+- `Object.keys(obj)` - Get array of keys (string[])
+- `Object.values(obj)` - Get array of values
+- `Object.assign(target, source)` - Copy properties from source to target
+- `Object.hasOwn(obj, prop)` - Check if property exists
+
+```typescript
+let map: Map<string, int> = new Map<string, int>()
+map.set("a", 1)
+map.set("b", 2)
+
+let keys: string[] = Object.keys(map)     // ["a", "b"]
+let values: int[] = Object.values(map)    // [1, 2]
+println(Object.hasOwn(map, "a"))          // true
+```
+
+**Note:** Object methods work with Map types in goTS.
+
 ## 18. Unsupported Features
 
 The following JavaScript/TypeScript features are **not supported** in goTS:

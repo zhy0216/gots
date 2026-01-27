@@ -2686,12 +2686,42 @@ func (g *Generator) genBuiltinObjectCall(expr *typed.BuiltinObjectCall) string {
 		g.imports[imp] = true
 	}
 
+	// Special handling for Object methods that need typed code generation
+	if expr.Object == "Object" {
+		return g.genObjectMethodCall(expr.Method, args, expr)
+	}
+
 	code, err := typed.GenerateBuiltinCall(expr.Object, expr.Method, args)
 	if err != nil {
 		// Fallback - shouldn't happen if type checking passed
 		return fmt.Sprintf("/* %v */ nil", err)
 	}
 	return code
+}
+
+func (g *Generator) genObjectMethodCall(method string, args []string, expr *typed.BuiltinObjectCall) string {
+	switch method {
+	case "keys":
+		// Object.keys returns []string with keys from map
+		return fmt.Sprintf("func() []string { keys := make([]string, 0, len(%s)); for k := range %s { keys = append(keys, k) }; return keys }()", args[0], args[0])
+	case "values":
+		// Object.values returns slice of value type
+		resultType := g.goType(expr.ExprType)
+		// Get the element type for the slice
+		if _, ok := expr.ExprType.(*types.Array); ok {
+			return fmt.Sprintf("func() %s { vals := make(%s, 0, len(%s)); for _, v := range %s { vals = append(vals, v) }; return vals }()", resultType, resultType, args[0], args[0])
+		}
+		return fmt.Sprintf("func() %s { var vals %s; for _, v := range %s { vals = append(vals, v) }; return vals }()", resultType, resultType, args[0])
+	case "assign":
+		// Object.assign merges source into target and returns target
+		resultType := g.goType(expr.ExprType)
+		return fmt.Sprintf("func() %s { for k, v := range %s { %s[k] = v }; return %s }()", resultType, args[1], args[0], args[0])
+	case "hasOwn":
+		// Object.hasOwn checks if key exists
+		return fmt.Sprintf("func() bool { _, ok := %s[%s]; return ok }()", args[0], args[1])
+	default:
+		return fmt.Sprintf("/* unknown Object.%s */ nil", method)
+	}
 }
 
 func (g *Generator) genBuiltinObjectConstant(expr *typed.BuiltinObjectConstant) string {

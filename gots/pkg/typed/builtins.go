@@ -461,6 +461,48 @@ func init() {
 	})
 }
 
+// ----------------------------------------------------------------------------
+// Object Built-in Object
+// ----------------------------------------------------------------------------
+
+func init() {
+	RegisterBuiltin(&BuiltinObject{
+		Name:      "Object",
+		Imports:   []string{},
+		Constants: map[string]*BuiltinConstant{},
+		Methods: map[string]*BuiltinMethod{
+			"keys": {
+				Params:     []*types.Param{{Name: "obj", Type: types.AnyType}},
+				ReturnType: &types.Array{Element: types.StringType},
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("func() []string { keys := make([]string, 0); for k := range %s { keys = append(keys, k) }; return keys }()", args[0])
+				},
+			},
+			"values": {
+				Params:     []*types.Param{{Name: "obj", Type: types.AnyType}},
+				ReturnType: types.AnyType, // Return type depends on map value type
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("func() interface{} { var vals []interface{}; for _, v := range %s { vals = append(vals, v) }; return vals }()", args[0])
+				},
+			},
+			"assign": {
+				Params:     []*types.Param{{Name: "target", Type: types.AnyType}, {Name: "source", Type: types.AnyType}},
+				ReturnType: types.AnyType,
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("func() interface{} { for k, v := range %s { %s[k] = v }; return %s }()", args[1], args[0], args[0])
+				},
+			},
+			"hasOwn": {
+				Params:     []*types.Param{{Name: "obj", Type: types.AnyType}, {Name: "prop", Type: types.StringType}},
+				ReturnType: types.BooleanType,
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("func() bool { _, ok := %s[%s]; return ok }()", args[0], args[1])
+				},
+			},
+		},
+	})
+}
+
 // DescribeBuiltin returns a description of a built-in object for documentation.
 func DescribeBuiltin(objName string) string {
 	obj, ok := GetBuiltin(objName)

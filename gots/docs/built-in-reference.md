@@ -1186,3 +1186,93 @@ let nothing: null = JSON.parse("null")  // null
 **Note:** When using `JSON.parse`, you should provide a type annotation to ensure proper type checking.
 
 ---
+
+## Object Static Methods
+
+The `Object` object provides static methods for working with objects and maps.
+
+### Object.keys
+
+Returns an array of a given object's own enumerable property names.
+
+**Signature:**
+```typescript
+Object.keys(obj: Map<string, T>): string[]
+```
+
+**Examples:**
+```typescript
+let map: Map<string, int> = new Map<string, int>()
+map.set("a", 1)
+map.set("b", 2)
+let keys: string[] = Object.keys(map)  // ["a", "b"]
+```
+
+**Go Mapping:** Range over map keys
+
+---
+
+### Object.values
+
+Returns an array of a given object's own enumerable property values.
+
+**Signature:**
+```typescript
+Object.values(obj: Map<string, T>): T[]
+```
+
+**Examples:**
+```typescript
+let map: Map<string, int> = new Map<string, int>()
+map.set("a", 1)
+map.set("b", 2)
+let values: int[] = Object.values(map)  // [1, 2]
+```
+
+**Go Mapping:** Range over map values
+
+---
+
+### Object.assign
+
+Copies all enumerable own properties from source to target.
+
+**Signature:**
+```typescript
+Object.assign(target: Map<K, V>, source: Map<K, V>): Map<K, V>
+```
+
+**Examples:**
+```typescript
+let target: Map<string, int> = new Map<string, int>()
+target.set("x", 10)
+let source: Map<string, int> = new Map<string, int>()
+source.set("y", 20)
+let result: Map<string, int> = Object.assign(target, source)
+// result has both "x" and "y"
+```
+
+**Go Mapping:** Range over source and assign to target
+
+---
+
+### Object.hasOwn
+
+Returns a boolean indicating whether the object has the specified property.
+
+**Signature:**
+```typescript
+Object.hasOwn(obj: Map<string, T>, prop: string): boolean
+```
+
+**Examples:**
+```typescript
+let map: Map<string, string> = new Map<string, string>()
+map.set("name", "Alice")
+Object.hasOwn(map, "name")  // true
+Object.hasOwn(map, "age")   // false
+```
+
+**Go Mapping:** Map key existence check
+
+---
