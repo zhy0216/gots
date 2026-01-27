@@ -395,7 +395,7 @@ error.cause
 - [ ] String additional methods (15+ methods)
 - [ ] Array additional methods (10+ methods)
 - [ ] Object static methods (15+ methods)
-- [ ] JSON parse/stringify
+- [x] JSON parse/stringify - DONE
 - [ ] Date object
 - [ ] Promise enhancements
 - [ ] WeakMap/WeakSet

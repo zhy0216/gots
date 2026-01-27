@@ -1128,3 +1128,61 @@ parseFloat(s: string): number
 **Go Mapping:** `strconv.ParseFloat(s, 64)`
 
 ---
+
+## JSON Object
+
+The `JSON` object provides methods for parsing and stringifying JSON data.
+
+### JSON.stringify
+
+Converts a JavaScript value to a JSON string.
+
+**Signature:**
+```typescript
+JSON.stringify(value: any): string
+```
+
+**Parameters:**
+- `value` - The value to convert to JSON
+
+**Returns:** string - The JSON string representation
+
+**Examples:**
+```typescript
+JSON.stringify(42)           // "42"
+JSON.stringify(true)         // "true"
+JSON.stringify("hello")      // "\"hello\""
+JSON.stringify([1, 2, 3])    // "[1,2,3]"
+```
+
+**Go Mapping:** `json.Marshal()`
+
+---
+
+### JSON.parse
+
+Parses a JSON string and returns the corresponding value.
+
+**Signature:**
+```typescript
+JSON.parse(text: string): any
+```
+
+**Parameters:**
+- `text` - The JSON string to parse
+
+**Returns:** The parsed value (type depends on JSON content)
+
+**Examples:**
+```typescript
+let num: number = JSON.parse("42")      // 42
+let bool: boolean = JSON.parse("true")  // true
+let str: string = JSON.parse("\"hi\"")  // "hi"
+let nothing: null = JSON.parse("null")  // null
+```
+
+**Go Mapping:** `json.Unmarshal()`
+
+**Note:** When using `JSON.parse`, you should provide a type annotation to ensure proper type checking.
+
+---

@@ -972,6 +972,27 @@ println(Number.parseInt("ff", 16)) // 255
 println(isFinite(42))              // true
 ```
 
+### 17.3 JSON Object
+
+The `JSON` object provides methods for parsing and serializing JSON data.
+
+**Methods:**
+- `JSON.stringify(value)` - Convert value to JSON string
+- `JSON.parse(text)` - Parse JSON string to value
+
+```typescript
+// Stringify
+let json: string = JSON.stringify([1, 2, 3])  // "[1,2,3]"
+println(JSON.stringify(42))                    // "42"
+println(JSON.stringify(true))                  // "true"
+
+// Parse (provide type annotation)
+let num: number = JSON.parse("42")
+let arr: number[] = JSON.parse("[1,2,3]")
+```
+
+**Note:** `JSON.parse` returns `any` type. Provide type annotations for proper type checking.
+
 ## 18. Unsupported Features
 
 The following JavaScript/TypeScript features are **not supported** in goTS:

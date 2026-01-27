@@ -433,6 +433,34 @@ func init() {
 	})
 }
 
+// ----------------------------------------------------------------------------
+// JSON Built-in Object
+// ----------------------------------------------------------------------------
+
+func init() {
+	RegisterBuiltin(&BuiltinObject{
+		Name:      "JSON",
+		Imports:   []string{"encoding/json"},
+		Constants: map[string]*BuiltinConstant{},
+		Methods: map[string]*BuiltinMethod{
+			"stringify": {
+				Params:     []*types.Param{{Name: "value", Type: types.AnyType}},
+				ReturnType: types.StringType,
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("func() string { b, _ := json.Marshal(%s); return string(b) }()", args[0])
+				},
+			},
+			"parse": {
+				Params:     []*types.Param{{Name: "text", Type: types.StringType}},
+				ReturnType: types.AnyType, // Returns any, caller casts to expected type
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("func() interface{} { var v interface{}; json.Unmarshal([]byte(%s), &v); return v }()", args[0])
+				},
+			},
+		},
+	})
+}
+
 // DescribeBuiltin returns a description of a built-in object for documentation.
 func DescribeBuiltin(objName string) string {
 	obj, ok := GetBuiltin(objName)
