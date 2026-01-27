@@ -397,12 +397,12 @@ error.cause
 - [x] Object static methods (15+ methods) - DONE (keys, values, assign, hasOwn)
 - [x] JSON parse/stringify - DONE
 - [x] Date object - DONE (constructor, static methods, getters, setters, string methods)
-- [ ] Promise enhancements
-- [ ] WeakMap/WeakSet
-- [ ] TypedArrays
-- [ ] Symbol basics
-- [ ] Reflect/Proxy
-- [ ] Error types
+- [ ] Promise enhancements - SKIPPED (requires async runtime)
+- [ ] WeakMap/WeakSet - SKIPPED (Go GC limitations)
+- [ ] TypedArrays - SKIPPED (low priority)
+- [ ] Symbol basics - SKIPPED (Go lacks symbols)
+- [ ] Reflect/Proxy - SKIPPED (Go lacks metaprogramming)
+- [ ] Error types - SKIPPED (Go uses panic/recover)
 
 ---
 
