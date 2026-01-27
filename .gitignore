@@ -1,3 +1,4 @@
 gots/gots
 gots/test/**.go
+gots/test/test262/**/*.go
 gots/benchmark/binary_tree

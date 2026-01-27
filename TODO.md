@@ -33,8 +33,8 @@ Port relevant test262 tests to goTS. Since goTS compiles to Go, many JavaScript-
   - Tests: `gots/test/test262/variables/const_declarations.gts`
 
 ### 1.3 Identifiers
-- [ ] **Valid identifiers** - TODO
-- [ ] **Reserved words** - TODO
+- [x] **Valid identifiers** ✓
+  - Tests: `gots/test/test262/identifiers/identifier_tests.gts`
 
 ---
 
@@ -67,13 +67,14 @@ Port relevant test262 tests to goTS. Since goTS compiles to Go, many JavaScript-
 ### 3.1 Control Flow
 - [x] **if statement** ✓
   - Tests: `gots/test/test262/statements/if/if_statement.gts`
-- [ ] **switch statement** - TODO
-- [ ] **block statement** - TODO
+- [x] **switch statement** ✓
+  - Tests: `gots/test/test262/statements/switch/switch_statement.gts`
+- [x] **block statement** ✓
+  - Tests: `gots/test/test262/statements/block/block_statement.gts`
 
 ### 3.2 Loops
 - [x] **while statement** ✓
   - Tests: `gots/test/test262/statements/while/while_statement.gts`
-- [ ] **do-while statement** - TODO
 - [x] **for statement** ✓
   - Tests: `gots/test/test262/statements/for/for_statement.gts`
 - [x] **for-of statement** ✓
@@ -82,6 +83,8 @@ Port relevant test262 tests to goTS. Since goTS compiles to Go, many JavaScript-
   - Tests: `gots/test/test262/statements/break/break_statement.gts`
 - [x] **continue statement** ✓
   - Tests: `gots/test/test262/statements/continue/continue_statement.gts`
+
+**Note:** do-while is not supported in goTS.
 
 ### 3.3 Functions
 - [x] **Function declarations** ✓
@@ -158,9 +161,9 @@ The following JavaScript features are NOT supported in goTS and their tests shou
 |-------|----------|---------------|---------------|--------|
 | 1.1 | Literals | 6 | 6 | ✓ Complete |
 | 1.2 | Variables | 2 | 2 | ✓ Complete |
-| 1.3 | Identifiers | 0 | 0 | TODO |
+| 1.3 | Identifiers | 1 | 1 | ✓ Complete |
 | 2 | Operators | 4 | 4 | ✓ Complete |
-| 3.1 | Control Flow | 1 | 1 | Partial |
+| 3.1 | Control Flow | 3 | 3 | ✓ Complete |
 | 3.2 | Loops | 5 | 5 | ✓ Complete |
 | 3.3 | Functions | 1 | 1 | ✓ Complete |
 | 4 | Closures | 1 | 1 | ✓ Complete |
@@ -169,7 +172,7 @@ The following JavaScript features are NOT supported in goTS and their tests shou
 | 7 | RegExp | 1 | 1 | ✓ Complete |
 | 8 | Classes | 1 | 1 | ✓ Complete |
 
-**Total: 26 test files, 26 passing**
+**Total: 29 test files, 29 passing**
 
 ---
 
@@ -183,15 +186,13 @@ During test development, the following goTS compiler issue was fixed:
 
 ## Remaining TODO
 
-- [ ] Identifiers test (valid/invalid names, reserved words)
-- [ ] switch statement test
-- [ ] block statement test
-- [ ] do-while statement test
+All major language features are now tested! Minor items remaining:
+- Reserved words test (testing that keywords can't be identifiers)
 
 ---
 
 ## Current Status
 
-**All major language features tested and passing!**
+**All major language features tested and passing! (29/29 tests)**
 
 Run all tests: `cd gots && find test/test262 -name "*.gts" -exec go run ./cmd/gots run {} \;`
