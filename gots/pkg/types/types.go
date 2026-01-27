@@ -116,6 +116,27 @@ func (c *Console) Equals(other Type) bool {
 	return ok
 }
 
+// ----------------------------------------------------------------------------
+// BuiltinObject Type (for Math, JSON, etc.)
+// ----------------------------------------------------------------------------
+
+// BuiltinObject represents a built-in global object type (Math, JSON, etc.).
+type BuiltinObject struct {
+	Name string
+}
+
+func (b *BuiltinObject) typeNode() {}
+func (b *BuiltinObject) String() string {
+	return b.Name
+}
+
+func (b *BuiltinObject) Equals(other Type) bool {
+	if o, ok := other.(*BuiltinObject); ok {
+		return b.Name == o.Name
+	}
+	return false
+}
+
 // RegExpType is the singleton RegExp type.
 var RegExpType = &RegExp{}
 

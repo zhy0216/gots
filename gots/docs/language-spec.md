@@ -880,7 +880,64 @@ When compiling to Go, these identifiers get a `_` suffix:
 - Constructor functions become `NewClassName`
 - Method receivers use `this` pointer
 
-## 17. Unsupported Features
+## 17. Built-in Objects
+
+### 17.1 Math Object
+
+The `Math` object provides mathematical constants and functions.
+
+**Constants:**
+- `Math.PI` - The ratio of a circle's circumference to its diameter (~3.14159)
+- `Math.E` - Euler's number, base of natural logarithms (~2.71828)
+
+**Rounding:**
+- `Math.round(x)` - Round to nearest integer (rounds half away from zero)
+- `Math.floor(x)` - Round down to integer
+- `Math.ceil(x)` - Round up to integer
+- `Math.trunc(x)` - Truncate to integer
+
+**Power and Roots:**
+- `Math.pow(x, y)` - x raised to the power y
+- `Math.sqrt(x)` - Square root
+- `Math.cbrt(x)` - Cube root
+- `Math.exp(x)` - e^x
+
+**Logarithms:**
+- `Math.log(x)` - Natural logarithm
+- `Math.log10(x)` - Base-10 logarithm
+- `Math.log2(x)` - Base-2 logarithm
+
+**Absolute Value and Sign:**
+- `Math.abs(x)` - Absolute value
+- `Math.sign(x)` - Sign of x (-1, 0, or 1)
+
+**Min/Max:**
+- `Math.min(...values)` - Minimum of values
+- `Math.max(...values)` - Maximum of values
+
+**Trigonometry:**
+- `Math.sin(x)`, `Math.cos(x)`, `Math.tan(x)` - Trig functions (radians)
+- `Math.asin(x)`, `Math.acos(x)`, `Math.atan(x)` - Inverse trig
+- `Math.atan2(y, x)` - Angle from x-axis to point (y, x)
+
+**Random:**
+- `Math.random()` - Random number between 0 (inclusive) and 1 (exclusive)
+
+```typescript
+// Example usage
+let radius: number = 5
+let area: number = Math.PI * Math.pow(radius, 2)
+println(area)  // ~78.54
+
+let angle: number = Math.PI / 4  // 45 degrees
+println(Math.sin(angle))  // ~0.707
+
+let randomInt: int = toint(Math.random() * 100)  // 0-99
+```
+
+**Note:** `Math.round()` uses Go's rounding semantics (round half away from zero), which differs from JavaScript's (round half toward positive infinity) for negative half values.
+
+## 18. Unsupported Features
 
 The following JavaScript/TypeScript features are **not supported** in goTS:
 
@@ -901,7 +958,7 @@ The following JavaScript/TypeScript features are **not supported** in goTS:
 | Nullish coalescing (`??`) | Not yet implemented |
 | BigInt | Not supported |
 
-### 17.1 Differences from JavaScript
+### 18.1 Differences from JavaScript
 
 1. **Switch fallthrough**: Unlike JavaScript, switch cases don't automatically fall through. Use explicit `break` statements.
 

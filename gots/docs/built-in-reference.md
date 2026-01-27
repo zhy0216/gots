@@ -471,3 +471,406 @@ println(words.join(" "))  // "Hello World"
 **Go Mapping:** `strings.Join()`
 
 ---
+
+## Math Object
+
+The `Math` object provides mathematical constants and functions, similar to JavaScript's Math object.
+
+### Constants
+
+#### Math.PI
+
+The ratio of a circle's circumference to its diameter (approximately 3.14159).
+
+```typescript
+let pi: number = Math.PI
+println(pi)  // 3.141592653589793
+```
+
+**Go Mapping:** `math.Pi`
+
+---
+
+#### Math.E
+
+Euler's number, the base of natural logarithms (approximately 2.71828).
+
+```typescript
+let e: number = Math.E
+println(e)  // 2.718281828459045
+```
+
+**Go Mapping:** `math.E`
+
+---
+
+### Rounding Methods
+
+#### Math.round
+
+Rounds a number to the nearest integer.
+
+**Signature:**
+```typescript
+Math.round(x: number): number
+```
+
+**Note:** For half values, Go rounds away from zero while JavaScript rounds toward positive infinity.
+- `Math.round(4.5)` returns `5`
+- `Math.round(-4.5)` returns `-5` (in goTS/Go) vs `-4` (in JavaScript)
+
+**Go Mapping:** `math.Round()`
+
+---
+
+#### Math.floor
+
+Returns the largest integer less than or equal to a number.
+
+**Signature:**
+```typescript
+Math.floor(x: number): number
+```
+
+**Examples:**
+```typescript
+Math.floor(4.7)   // 4
+Math.floor(-4.7)  // -5
+```
+
+**Go Mapping:** `math.Floor()`
+
+---
+
+#### Math.ceil
+
+Returns the smallest integer greater than or equal to a number.
+
+**Signature:**
+```typescript
+Math.ceil(x: number): number
+```
+
+**Examples:**
+```typescript
+Math.ceil(4.3)   // 5
+Math.ceil(-4.3)  // -4
+```
+
+**Go Mapping:** `math.Ceil()`
+
+---
+
+#### Math.trunc
+
+Returns the integer part of a number (truncates toward zero).
+
+**Signature:**
+```typescript
+Math.trunc(x: number): number
+```
+
+**Examples:**
+```typescript
+Math.trunc(4.7)   // 4
+Math.trunc(-4.7)  // -4
+```
+
+**Go Mapping:** `math.Trunc()`
+
+---
+
+### Power and Root Methods
+
+#### Math.pow
+
+Returns the base raised to the exponent power.
+
+**Signature:**
+```typescript
+Math.pow(base: number, exponent: number): number
+```
+
+**Examples:**
+```typescript
+Math.pow(2, 3)    // 8
+Math.pow(2, 0.5)  // 1.41421... (square root of 2)
+```
+
+**Go Mapping:** `math.Pow()`
+
+---
+
+#### Math.sqrt
+
+Returns the square root of a number.
+
+**Signature:**
+```typescript
+Math.sqrt(x: number): number
+```
+
+**Go Mapping:** `math.Sqrt()`
+
+---
+
+#### Math.cbrt
+
+Returns the cube root of a number.
+
+**Signature:**
+```typescript
+Math.cbrt(x: number): number
+```
+
+**Go Mapping:** `math.Cbrt()`
+
+---
+
+#### Math.exp
+
+Returns e raised to the power of x.
+
+**Signature:**
+```typescript
+Math.exp(x: number): number
+```
+
+**Go Mapping:** `math.Exp()`
+
+---
+
+### Logarithmic Methods
+
+#### Math.log
+
+Returns the natural logarithm (base e) of a number.
+
+**Signature:**
+```typescript
+Math.log(x: number): number
+```
+
+**Go Mapping:** `math.Log()`
+
+---
+
+#### Math.log10
+
+Returns the base-10 logarithm of a number.
+
+**Signature:**
+```typescript
+Math.log10(x: number): number
+```
+
+**Go Mapping:** `math.Log10()`
+
+---
+
+#### Math.log2
+
+Returns the base-2 logarithm of a number.
+
+**Signature:**
+```typescript
+Math.log2(x: number): number
+```
+
+**Go Mapping:** `math.Log2()`
+
+---
+
+### Absolute Value and Sign
+
+#### Math.abs
+
+Returns the absolute value of a number.
+
+**Signature:**
+```typescript
+Math.abs(x: number): number
+```
+
+**Go Mapping:** `math.Abs()`
+
+---
+
+#### Math.sign
+
+Returns the sign of a number (-1, 0, or 1).
+
+**Signature:**
+```typescript
+Math.sign(x: number): number
+```
+
+**Examples:**
+```typescript
+Math.sign(5)   // 1
+Math.sign(-5)  // -1
+Math.sign(0)   // 0
+```
+
+**Go Mapping:** Inline function (Go doesn't have `math.Sign`)
+
+---
+
+### Min/Max (Variadic)
+
+#### Math.min
+
+Returns the smallest of the given numbers.
+
+**Signature:**
+```typescript
+Math.min(...values: number[]): number
+```
+
+**Examples:**
+```typescript
+Math.min(1, 2)        // 1
+Math.min(5, 3, 8)     // 3
+Math.min(-1, -5)      // -5
+```
+
+**Go Mapping:** Chained `math.Min()` calls
+
+---
+
+#### Math.max
+
+Returns the largest of the given numbers.
+
+**Signature:**
+```typescript
+Math.max(...values: number[]): number
+```
+
+**Examples:**
+```typescript
+Math.max(1, 2)        // 2
+Math.max(5, 3, 8)     // 8
+Math.max(-1, -5)      // -1
+```
+
+**Go Mapping:** Chained `math.Max()` calls
+
+---
+
+### Trigonometric Methods
+
+#### Math.sin
+
+Returns the sine of an angle (in radians).
+
+**Signature:**
+```typescript
+Math.sin(x: number): number
+```
+
+**Go Mapping:** `math.Sin()`
+
+---
+
+#### Math.cos
+
+Returns the cosine of an angle (in radians).
+
+**Signature:**
+```typescript
+Math.cos(x: number): number
+```
+
+**Go Mapping:** `math.Cos()`
+
+---
+
+#### Math.tan
+
+Returns the tangent of an angle (in radians).
+
+**Signature:**
+```typescript
+Math.tan(x: number): number
+```
+
+**Go Mapping:** `math.Tan()`
+
+---
+
+#### Math.asin
+
+Returns the arcsine of a number (result in radians).
+
+**Signature:**
+```typescript
+Math.asin(x: number): number
+```
+
+**Go Mapping:** `math.Asin()`
+
+---
+
+#### Math.acos
+
+Returns the arccosine of a number (result in radians).
+
+**Signature:**
+```typescript
+Math.acos(x: number): number
+```
+
+**Go Mapping:** `math.Acos()`
+
+---
+
+#### Math.atan
+
+Returns the arctangent of a number (result in radians).
+
+**Signature:**
+```typescript
+Math.atan(x: number): number
+```
+
+**Go Mapping:** `math.Atan()`
+
+---
+
+#### Math.atan2
+
+Returns the arctangent of the quotient of its arguments.
+
+**Signature:**
+```typescript
+Math.atan2(y: number, x: number): number
+```
+
+**Go Mapping:** `math.Atan2()`
+
+---
+
+### Random
+
+#### Math.random
+
+Returns a pseudo-random number between 0 (inclusive) and 1 (exclusive).
+
+**Signature:**
+```typescript
+Math.random(): number
+```
+
+**Examples:**
+```typescript
+let r: number = Math.random()
+// r is between 0.0 and 0.999...
+
+// Generate random integer between 0 and 9
+let n: int = toint(Math.random() * 10)
+```
+
+**Go Mapping:** `rand.Float64()`
+
+---

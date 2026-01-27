@@ -167,6 +167,19 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		for _, arg := range e.Args {
 			g.collectImportsFromExpr(arg)
 		}
+	case *typed.BuiltinObjectCall:
+		// Add imports for built-in object method calls (e.g., Math.round)
+		for _, imp := range typed.GetBuiltinImports(e.Object) {
+			g.imports[imp] = true
+		}
+		for _, arg := range e.Args {
+			g.collectImportsFromExpr(arg)
+		}
+	case *typed.BuiltinObjectConstant:
+		// Add imports for built-in object constants (e.g., Math.PI)
+		for _, imp := range typed.GetBuiltinImports(e.Object) {
+			g.imports[imp] = true
+		}
 	case *typed.BinaryExpr:
 		// Modulo for float64 uses math.Mod
 		if e.Op == "%" {
@@ -1698,6 +1711,12 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 	case *typed.ConsoleCall:
 		return g.genConsoleCall(e)
 
+	case *typed.BuiltinObjectCall:
+		return g.genBuiltinObjectCall(e)
+
+	case *typed.BuiltinObjectConstant:
+		return g.genBuiltinObjectConstant(e)
+
 	case *typed.AwaitExpr:
 		return g.genAwaitExpr(e)
 	}
@@ -2645,6 +2664,39 @@ func (g *Generator) genConsoleCall(expr *typed.ConsoleCall) string {
 		// Default to Println for unknown methods
 		return fmt.Sprintf("fmt.Println(%s)", strings.Join(args, ", "))
 	}
+}
+
+func (g *Generator) genBuiltinObjectCall(expr *typed.BuiltinObjectCall) string {
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+
+	// Add required imports for this built-in object
+	for _, imp := range typed.GetBuiltinImports(expr.Object) {
+		g.imports[imp] = true
+	}
+
+	code, err := typed.GenerateBuiltinCall(expr.Object, expr.Method, args)
+	if err != nil {
+		// Fallback - shouldn't happen if type checking passed
+		return fmt.Sprintf("/* %v */ nil", err)
+	}
+	return code
+}
+
+func (g *Generator) genBuiltinObjectConstant(expr *typed.BuiltinObjectConstant) string {
+	// Add required imports for this built-in object
+	for _, imp := range typed.GetBuiltinImports(expr.Object) {
+		g.imports[imp] = true
+	}
+
+	code, err := typed.GenerateBuiltinConstant(expr.Object, expr.Name)
+	if err != nil {
+		// Fallback - shouldn't happen if type checking passed
+		return fmt.Sprintf("/* %v */ 0", err)
+	}
+	return code
 }
 
 // ----------------------------------------------------------------------------

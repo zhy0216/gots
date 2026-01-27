@@ -1769,6 +1769,10 @@ func (b *Builder) buildIdent(ident *ast.Identifier) Expr {
 	if ident.Name == "console" {
 		return &Ident{Name: "console", ExprType: &types.Console{}}
 	}
+	// Check if it's a registered built-in object (Math, JSON, etc.)
+	if IsBuiltinObject(ident.Name) {
+		return &Ident{Name: ident.Name, ExprType: &types.BuiltinObject{Name: ident.Name}}
+	}
 
 	b.error(ident.Token.Line, ident.Token.Column, "undefined variable: %s", ident.Name)
 	return &Ident{Name: ident.Name, ExprType: types.AnyType}
@@ -2032,6 +2036,10 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		}
 		if _, ok := objType.(*types.Console); ok {
 			return b.buildConsoleMethodCall(propExpr.Property, expr)
+		}
+		// Handle built-in object method calls (Math, JSON, etc.)
+		if builtinType, ok := objType.(*types.BuiltinObject); ok {
+			return b.buildBuiltinMethodCall(builtinType.Name, propExpr.Property, expr)
 		}
 	}
 
@@ -2310,6 +2318,27 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 		} else {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"property %s does not exist on Set type", expr.Property)
+			resultType = types.AnyType
+		}
+
+	case *types.BuiltinObject:
+		// Handle built-in object constants (e.g., Math.PI, Math.E)
+		if HasBuiltinConstant(obj.Name, expr.Property) {
+			constExpr, err := BuildBuiltinConstant(obj.Name, expr.Property)
+			if err != nil {
+				b.error(expr.Token.Line, expr.Token.Column, "%s", err.Error())
+				resultType = types.AnyType
+			} else {
+				return constExpr
+			}
+		} else if HasBuiltinMethod(obj.Name, expr.Property) {
+			// Methods are handled in buildCallExpr, if we reach here it's a method reference without call
+			b.error(expr.Token.Line, expr.Token.Column,
+				"%s.%s is a method, not a property", obj.Name, expr.Property)
+			resultType = types.AnyType
+		} else {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"property %s does not exist on %s", expr.Property, obj.Name)
 			resultType = types.AnyType
 		}
 
@@ -3324,6 +3353,26 @@ func (b *Builder) buildConsoleMethodCall(method string, expr *ast.CallExpr) Expr
 			Args:   args,
 		}
 	}
+}
+
+// buildBuiltinMethodCall handles method calls on built-in objects (Math, JSON, etc.)
+func (b *Builder) buildBuiltinMethodCall(objName, method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	result, err := BuildBuiltinMethodCall(objName, method, args, expr.Token.Line, expr.Token.Column)
+	if err != nil {
+		b.error(expr.Token.Line, expr.Token.Column, "%s", err.Error())
+		return &BuiltinObjectCall{
+			Object:   objName,
+			Method:   method,
+			Args:     args,
+			ExprType: types.AnyType,
+		}
+	}
+	return result
 }
 
 // buildStringMethodCall handles method calls on string types
