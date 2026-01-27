@@ -357,6 +357,10 @@ func (g *Generator) genRuntime() {
 	g.indent--
 	g.writeln("}")
 	g.writeln("switch v.(type) {")
+	g.writeln("case int:")
+	g.indent++
+	g.writeln("return \"number\"")
+	g.indent--
 	g.writeln("case float64:")
 	g.indent++
 	g.writeln("return \"number\"")
