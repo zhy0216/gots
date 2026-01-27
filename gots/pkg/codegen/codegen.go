@@ -2576,6 +2576,30 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 				forClause = "for _, v := range"
 			}
 			return fmt.Sprintf("func() bool { %s %s { if !%s { return false } }; return true }()", forClause, obj, callbackCall)
+
+		case "at":
+			// arr.at(index) => supports negative indices
+			return fmt.Sprintf("func() %s { arr := %s; i := %s; if i < 0 { i = len(arr) + i }; return arr[i] }()", elemType, obj, args[0])
+
+		case "lastIndexOf":
+			// arr.lastIndexOf(value) => search from end
+			return fmt.Sprintf("func() int { for i := len(%s) - 1; i >= 0; i-- { if %s[i] == %s { return i } }; return -1 }()", obj, obj, args[0])
+
+		case "fill":
+			// arr.fill(value, start?, end?) => fill with value
+			if len(args) == 1 {
+				return fmt.Sprintf("func() []%s { for i := range %s { %s[i] = %s }; return %s }()", elemType, obj, obj, args[0], obj)
+			} else if len(args) == 2 {
+				return fmt.Sprintf("func() []%s { for i := %s; i < len(%s); i++ { %s[i] = %s }; return %s }()", elemType, args[1], obj, obj, args[0], obj)
+			}
+			return fmt.Sprintf("func() []%s { for i := %s; i < %s; i++ { %s[i] = %s }; return %s }()", elemType, args[1], args[2], obj, args[0], obj)
+
+		case "copyWithin":
+			// arr.copyWithin(target, start, end?) => copy within array
+			if len(args) == 2 {
+				return fmt.Sprintf("func() []%s { copy(%s[%s:], %s[%s:]); return %s }()", elemType, obj, args[0], obj, args[1], obj)
+			}
+			return fmt.Sprintf("func() []%s { copy(%s[%s:], %s[%s:%s]); return %s }()", elemType, obj, args[0], obj, args[1], args[2], obj)
 		}
 	}
 

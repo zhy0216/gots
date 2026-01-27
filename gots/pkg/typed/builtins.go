@@ -503,6 +503,27 @@ func init() {
 	})
 }
 
+// ----------------------------------------------------------------------------
+// Array Built-in Object (static methods)
+// ----------------------------------------------------------------------------
+
+func init() {
+	RegisterBuiltin(&BuiltinObject{
+		Name:      "Array",
+		Imports:   []string{"reflect"},
+		Constants: map[string]*BuiltinConstant{},
+		Methods: map[string]*BuiltinMethod{
+			"isArray": {
+				Params:     []*types.Param{{Name: "value", Type: types.AnyType}},
+				ReturnType: types.BooleanType,
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("(reflect.TypeOf(%s).Kind() == reflect.Slice)", args[0])
+				},
+			},
+		},
+	})
+}
+
 // DescribeBuiltin returns a description of a built-in object for documentation.
 func DescribeBuiltin(objName string) string {
 	obj, ok := GetBuiltin(objName)

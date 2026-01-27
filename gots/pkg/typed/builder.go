@@ -3288,6 +3288,46 @@ func (b *Builder) buildArrayMethodCall(obj Expr, arrType *types.Array, method st
 		}
 		resultType = types.BooleanType
 
+	case "at":
+		// at(index: int): T (supports negative indices)
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.at expects 1 argument, got %d", len(args))
+		}
+		resultType = arrType.Element
+
+	case "lastIndexOf":
+		// lastIndexOf(value: T): int
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.lastIndexOf expects 1 argument, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), arrType.Element) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.lastIndexOf value type mismatch: expected %s, got %s",
+				arrType.Element.String(), args[0].Type().String())
+		}
+		resultType = types.IntType
+
+	case "fill":
+		// fill(value: T, start?: int, end?: int): T[]
+		if len(args) < 1 || len(args) > 3 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.fill expects 1-3 arguments, got %d", len(args))
+		} else if !types.IsAssignableTo(args[0].Type(), arrType.Element) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.fill value type mismatch: expected %s, got %s",
+				arrType.Element.String(), args[0].Type().String())
+		}
+		resultType = arrType
+
+	case "copyWithin":
+		// copyWithin(target: int, start: int, end?: int): T[]
+		if len(args) < 2 || len(args) > 3 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.copyWithin expects 2-3 arguments, got %d", len(args))
+		}
+		resultType = arrType
+
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown Array method: %s", method)

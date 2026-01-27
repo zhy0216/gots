@@ -643,6 +643,105 @@ println(words.join(" "))  // "Hello World"
 
 ---
 
+### at
+
+Returns the element at the specified index, supporting negative indices.
+
+**Signature:**
+```typescript
+arr.at(index: int): T
+```
+
+**Examples:**
+```typescript
+let arr: int[] = [10, 20, 30, 40, 50]
+arr.at(0)   // 10
+arr.at(-1)  // 50 (last element)
+arr.at(-2)  // 40
+```
+
+**Go Mapping:** Index with negative support
+
+---
+
+### lastIndexOf
+
+Returns the last index of a value in the array, or -1 if not found.
+
+**Signature:**
+```typescript
+arr.lastIndexOf(value: T): int
+```
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 2, 1]
+arr.lastIndexOf(2)  // 3
+arr.lastIndexOf(5)  // -1
+```
+
+**Go Mapping:** Reverse loop search
+
+---
+
+### fill
+
+Fills array elements with a value, optionally within a range.
+
+**Signature:**
+```typescript
+arr.fill(value: T, start?: int, end?: int): T[]
+```
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+arr.fill(0)         // [0, 0, 0, 0, 0]
+arr.fill(9, 1, 4)   // [1, 9, 9, 9, 5]
+```
+
+**Go Mapping:** Loop assignment
+
+---
+
+### copyWithin
+
+Copies part of the array to another location within the same array.
+
+**Signature:**
+```typescript
+arr.copyWithin(target: int, start: int, end?: int): T[]
+```
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+arr.copyWithin(0, 3)  // [4, 5, 3, 4, 5]
+```
+
+**Go Mapping:** Go's `copy()` function
+
+---
+
+### Array.isArray (Static)
+
+Determines whether the passed value is an array.
+
+**Signature:**
+```typescript
+Array.isArray(value: any): boolean
+```
+
+**Examples:**
+```typescript
+Array.isArray([1, 2, 3])  // true
+Array.isArray("hello")    // false
+```
+
+**Go Mapping:** `reflect.TypeOf().Kind() == reflect.Slice`
+
+---
+
 ## Math Object
 
 The `Math` object provides mathematical constants and functions, similar to JavaScript's Math object.
