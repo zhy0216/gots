@@ -524,6 +524,34 @@ func init() {
 	})
 }
 
+// ----------------------------------------------------------------------------
+// Date Built-in Object (static methods)
+// ----------------------------------------------------------------------------
+
+func init() {
+	RegisterBuiltin(&BuiltinObject{
+		Name:      "Date",
+		Imports:   []string{"time"},
+		Constants: map[string]*BuiltinConstant{},
+		Methods: map[string]*BuiltinMethod{
+			"now": {
+				Params:     []*types.Param{},
+				ReturnType: types.NumberType,
+				GoCodeGen: func(args []string) string {
+					return "float64(time.Now().UnixMilli())"
+				},
+			},
+			"parse": {
+				Params:     []*types.Param{{Name: "dateString", Type: types.StringType}},
+				ReturnType: types.NumberType,
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("func() float64 { t, err := time.Parse(time.RFC3339, %s); if err != nil { return 0 }; return float64(t.UnixMilli()) }()", args[0])
+				},
+			},
+		},
+	})
+}
+
 // DescribeBuiltin returns a description of a built-in object for documentation.
 func DescribeBuiltin(objName string) string {
 	obj, ok := GetBuiltin(objName)

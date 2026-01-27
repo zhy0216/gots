@@ -107,6 +107,9 @@ func NewBuilder() *Builder {
 		ReturnType: types.AnyType,
 	}
 
+	// Date is the built-in Date type
+	b.typeAliases["Date"] = types.DateType
+
 	return b
 }
 
@@ -2038,6 +2041,9 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		if _, ok := objType.(*types.RegExp); ok {
 			return b.buildRegExpMethodCall(objExpr, propExpr.Property, expr)
 		}
+		if _, ok := objType.(*types.Date); ok {
+			return b.buildDateMethodCall(objExpr, propExpr.Property, expr)
+		}
 		if _, ok := objType.(*types.Console); ok {
 			return b.buildConsoleMethodCall(propExpr.Property, expr)
 		}
@@ -2568,6 +2574,14 @@ func (b *Builder) buildNewExpr(expr *ast.NewExpr) Expr {
 		setType := &types.Set{Element: elemType}
 		return &SetLit{
 			ExprType: setType,
+		}
+	}
+
+	// Handle new Date() - creates a Date object
+	if expr.ClassName == "Date" {
+		return &DateNewExpr{
+			Args:     args,
+			ExprType: types.DateType,
 		}
 	}
 
@@ -3711,6 +3725,50 @@ func (b *Builder) buildRegExpMethodCall(obj Expr, method string, expr *ast.CallE
 	}
 
 	return &MethodCallExpr{
+		Object:   obj,
+		Method:   method,
+		Args:     args,
+		ExprType: resultType,
+	}
+}
+
+// buildDateMethodCall handles method calls on Date types
+func (b *Builder) buildDateMethodCall(obj Expr, method string, expr *ast.CallExpr) Expr {
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	var resultType types.Type
+
+	switch method {
+	// Getter methods
+	case "getTime":
+		resultType = types.NumberType
+	case "getFullYear", "getMonth", "getDate", "getDay", "getHours", "getMinutes", "getSeconds", "getMilliseconds":
+		resultType = types.IntType
+	case "getTimezoneOffset":
+		resultType = types.IntType
+	// UTC getter methods
+	case "getUTCFullYear", "getUTCMonth", "getUTCDate", "getUTCDay", "getUTCHours", "getUTCMinutes", "getUTCSeconds", "getUTCMilliseconds":
+		resultType = types.IntType
+	// Setter methods (return timestamp)
+	case "setTime", "setFullYear", "setMonth", "setDate", "setHours", "setMinutes", "setSeconds", "setMilliseconds":
+		resultType = types.NumberType
+	case "setUTCFullYear", "setUTCMonth", "setUTCDate", "setUTCHours", "setUTCMinutes", "setUTCSeconds", "setUTCMilliseconds":
+		resultType = types.NumberType
+	// String methods
+	case "toString", "toDateString", "toTimeString", "toISOString", "toJSON", "toLocaleString", "toLocaleDateString", "toLocaleTimeString":
+		resultType = types.StringType
+	case "valueOf":
+		resultType = types.NumberType
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown Date method: %s", method)
+		resultType = types.AnyType
+	}
+
+	return &DateMethodCall{
 		Object:   obj,
 		Method:   method,
 		Args:     args,

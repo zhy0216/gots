@@ -291,6 +291,26 @@ type ConsoleCall struct {
 func (c *ConsoleCall) exprNode()        {}
 func (c *ConsoleCall) Type() types.Type { return types.VoidType }
 
+// DateNewExpr represents a new Date() constructor call.
+type DateNewExpr struct {
+	Args     []Expr
+	ExprType types.Type
+}
+
+func (d *DateNewExpr) exprNode()        {}
+func (d *DateNewExpr) Type() types.Type { return d.ExprType }
+
+// DateMethodCall represents a method call on a Date object.
+type DateMethodCall struct {
+	Object   Expr
+	Method   string
+	Args     []Expr
+	ExprType types.Type
+}
+
+func (d *DateMethodCall) exprNode()        {}
+func (d *DateMethodCall) Type() types.Type { return d.ExprType }
+
 // EnumMemberExpr represents access to an enum member (e.g., Color.Red).
 type EnumMemberExpr struct {
 	EnumName   string     // Name of the enum (e.g., "Color")

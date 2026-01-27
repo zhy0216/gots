@@ -396,7 +396,7 @@ error.cause
 - [x] Array additional methods (10+ methods) - DONE (at, lastIndexOf, fill, copyWithin, Array.isArray)
 - [x] Object static methods (15+ methods) - DONE (keys, values, assign, hasOwn)
 - [x] JSON parse/stringify - DONE
-- [ ] Date object
+- [x] Date object - DONE (constructor, static methods, getters, setters, string methods)
 - [ ] Promise enhancements
 - [ ] WeakMap/WeakSet
 - [ ] TypedArrays

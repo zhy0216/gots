@@ -182,6 +182,17 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		for _, imp := range typed.GetBuiltinImports(e.Object) {
 			g.imports[imp] = true
 		}
+	case *typed.DateNewExpr:
+		g.imports["time"] = true
+		for _, arg := range e.Args {
+			g.collectImportsFromExpr(arg)
+		}
+	case *typed.DateMethodCall:
+		g.imports["time"] = true
+		g.collectImportsFromExpr(e.Object)
+		for _, arg := range e.Args {
+			g.collectImportsFromExpr(arg)
+		}
 	case *typed.BinaryExpr:
 		// Modulo for float64 uses math.Mod
 		if e.Op == "%" {
@@ -1713,6 +1724,12 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 	case *typed.ConsoleCall:
 		return g.genConsoleCall(e)
 
+	case *typed.DateNewExpr:
+		return g.genDateNewExpr(e)
+
+	case *typed.DateMethodCall:
+		return g.genDateMethodCall(e)
+
 	case *typed.BuiltinObjectCall:
 		return g.genBuiltinObjectCall(e)
 
@@ -2738,6 +2755,113 @@ func (g *Generator) genConsoleCall(expr *typed.ConsoleCall) string {
 	}
 }
 
+func (g *Generator) genDateNewExpr(expr *typed.DateNewExpr) string {
+	g.imports["time"] = true
+
+	if len(expr.Args) == 0 {
+		// new Date() => time.Now()
+		return "time.Now()"
+	} else if len(expr.Args) == 1 {
+		// new Date(timestamp) => time.UnixMilli(timestamp)
+		arg := g.genExpr(expr.Args[0])
+		return fmt.Sprintf("time.UnixMilli(int64(%s))", arg)
+	}
+
+	// For other argument combinations, use current time as fallback
+	return "time.Now()"
+}
+
+func (g *Generator) genDateMethodCall(expr *typed.DateMethodCall) string {
+	g.imports["time"] = true
+
+	obj := g.genExpr(expr.Object)
+	args := make([]string, len(expr.Args))
+	for i, arg := range expr.Args {
+		args[i] = g.genExpr(arg)
+	}
+
+	switch expr.Method {
+	// Getter methods
+	case "getTime":
+		return fmt.Sprintf("float64(%s.UnixMilli())", obj)
+	case "getFullYear":
+		return fmt.Sprintf("%s.Year()", obj)
+	case "getMonth":
+		return fmt.Sprintf("(int(%s.Month()) - 1)", obj) // JS months are 0-indexed
+	case "getDate":
+		return fmt.Sprintf("%s.Day()", obj)
+	case "getDay":
+		return fmt.Sprintf("int(%s.Weekday())", obj)
+	case "getHours":
+		return fmt.Sprintf("%s.Hour()", obj)
+	case "getMinutes":
+		return fmt.Sprintf("%s.Minute()", obj)
+	case "getSeconds":
+		return fmt.Sprintf("%s.Second()", obj)
+	case "getMilliseconds":
+		return fmt.Sprintf("(%s.Nanosecond() / 1000000)", obj)
+
+	// UTC getter methods
+	case "getUTCFullYear":
+		return fmt.Sprintf("%s.UTC().Year()", obj)
+	case "getUTCMonth":
+		return fmt.Sprintf("(int(%s.UTC().Month()) - 1)", obj)
+	case "getUTCDate":
+		return fmt.Sprintf("%s.UTC().Day()", obj)
+	case "getUTCDay":
+		return fmt.Sprintf("int(%s.UTC().Weekday())", obj)
+	case "getUTCHours":
+		return fmt.Sprintf("%s.UTC().Hour()", obj)
+	case "getUTCMinutes":
+		return fmt.Sprintf("%s.UTC().Minute()", obj)
+	case "getUTCSeconds":
+		return fmt.Sprintf("%s.UTC().Second()", obj)
+	case "getUTCMilliseconds":
+		return fmt.Sprintf("(%s.UTC().Nanosecond() / 1000000)", obj)
+
+	// Setter methods - these mutate the time and return timestamp
+	case "setTime":
+		return fmt.Sprintf("func() float64 { %s = time.UnixMilli(int64(%s)); return float64(%s.UnixMilli()) }()", obj, args[0], obj)
+	case "setFullYear":
+		return fmt.Sprintf("func() float64 { %s = time.Date(%s, %s.Month(), %s.Day(), %s.Hour(), %s.Minute(), %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, args[0], obj, obj, obj, obj, obj, obj, obj, obj)
+	case "setMonth":
+		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), time.Month(%s+1), %s.Day(), %s.Hour(), %s.Minute(), %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, args[0], obj, obj, obj, obj, obj, obj, obj)
+	case "setDate":
+		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s, %s.Hour(), %s.Minute(), %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, args[0], obj, obj, obj, obj, obj, obj)
+	case "setHours":
+		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s.Day(), %s, %s.Minute(), %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, obj, args[0], obj, obj, obj, obj, obj)
+	case "setMinutes":
+		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s.Day(), %s.Hour(), %s, %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, obj, obj, args[0], obj, obj, obj, obj)
+	case "setSeconds":
+		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s.Day(), %s.Hour(), %s.Minute(), %s, %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, obj, obj, obj, args[0], obj, obj, obj)
+	case "setMilliseconds":
+		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s.Day(), %s.Hour(), %s.Minute(), %s.Second(), %s*1000000, %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, obj, obj, obj, obj, args[0], obj, obj)
+
+	// String methods
+	case "toString":
+		return fmt.Sprintf("%s.String()", obj)
+	case "toDateString":
+		return fmt.Sprintf("%s.Format(\"Mon Jan 02 2006\")", obj)
+	case "toTimeString":
+		return fmt.Sprintf("%s.Format(\"15:04:05 MST\")", obj)
+	case "toISOString":
+		return fmt.Sprintf("%s.UTC().Format(time.RFC3339Nano)", obj)
+	case "toJSON":
+		return fmt.Sprintf("%s.UTC().Format(time.RFC3339Nano)", obj)
+	case "toLocaleString":
+		return fmt.Sprintf("%s.Format(\"1/2/2006, 3:04:05 PM\")", obj)
+	case "toLocaleDateString":
+		return fmt.Sprintf("%s.Format(\"1/2/2006\")", obj)
+	case "toLocaleTimeString":
+		return fmt.Sprintf("%s.Format(\"3:04:05 PM\")", obj)
+	case "valueOf":
+		return fmt.Sprintf("float64(%s.UnixMilli())", obj)
+
+	default:
+		return fmt.Sprintf("/* unknown Date method %s */ nil", expr.Method)
+	}
+}
+
 func (g *Generator) genBuiltinObjectCall(expr *typed.BuiltinObjectCall) string {
 	args := make([]string, len(expr.Args))
 	for i, arg := range expr.Args {
@@ -2884,6 +3008,10 @@ func (g *Generator) goType(t types.Type) string {
 	case *types.RegExp:
 		g.imports["regexp"] = true
 		return "*regexp.Regexp"
+
+	case *types.Date:
+		g.imports["time"] = true
+		return "time.Time"
 
 	case *types.Object:
 		// Anonymous struct

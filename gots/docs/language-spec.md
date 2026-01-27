@@ -1015,6 +1015,40 @@ println(Object.hasOwn(map, "a"))          // true
 
 **Note:** Object methods work with Map types in goTS.
 
+### 17.5 Date Object
+
+The `Date` object provides date/time functionality.
+
+**Constructor:**
+- `new Date()` - Current date/time
+- `new Date(timestamp)` - From milliseconds since epoch
+
+**Static Methods:**
+- `Date.now()` - Current timestamp in milliseconds
+
+**Getter Methods:**
+- `getTime()`, `getFullYear()`, `getMonth()`, `getDate()`, `getDay()`
+- `getHours()`, `getMinutes()`, `getSeconds()`, `getMilliseconds()`
+
+**Setter Methods:**
+- `setFullYear()`, `setMonth()`, `setDate()`, `setHours()`
+- `setMinutes()`, `setSeconds()`, `setMilliseconds()`
+
+**String Methods:**
+- `toISOString()`, `toDateString()`, `toTimeString()`, `toString()`
+
+```typescript
+let now: Date = new Date()
+println(now.getFullYear())      // Current year
+println(Date.now())             // Current timestamp
+
+let date: Date = new Date(1704067200000)
+date.setFullYear(2025)
+println(date.toISOString())     // ISO format string
+```
+
+**Note:** `getMonth()` returns 0-11 (JavaScript convention). Go's `time.Time` is used internally.
+
 ## 18. Unsupported Features
 
 The following JavaScript/TypeScript features are **not supported** in goTS:

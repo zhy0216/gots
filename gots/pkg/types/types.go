@@ -117,6 +117,26 @@ func (c *Console) Equals(other Type) bool {
 }
 
 // ----------------------------------------------------------------------------
+// Date Type
+// ----------------------------------------------------------------------------
+
+// Date represents the built-in Date type.
+type Date struct{}
+
+func (d *Date) typeNode() {}
+func (d *Date) String() string {
+	return "Date"
+}
+
+func (d *Date) Equals(other Type) bool {
+	_, ok := other.(*Date)
+	return ok
+}
+
+// DateType is the singleton Date type.
+var DateType = &Date{}
+
+// ----------------------------------------------------------------------------
 // BuiltinObject Type (for Math, JSON, etc.)
 // ----------------------------------------------------------------------------
 

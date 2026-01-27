@@ -742,6 +742,92 @@ Array.isArray("hello")    // false
 
 ---
 
+## Date Object
+
+The `Date` object provides methods for working with dates and times, similar to JavaScript's Date object.
+
+### Constructor
+
+```typescript
+new Date()              // Current date/time
+new Date(timestamp)     // From Unix timestamp (milliseconds)
+```
+
+**Go Mapping:** `time.Now()` or `time.UnixMilli()`
+
+---
+
+### Date.now (Static)
+
+Returns the current timestamp in milliseconds since Unix epoch.
+
+**Signature:**
+```typescript
+Date.now(): number
+```
+
+**Go Mapping:** `time.Now().UnixMilli()`
+
+---
+
+### Getter Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `getTime()` | number | Unix timestamp (ms) |
+| `getFullYear()` | int | 4-digit year |
+| `getMonth()` | int | Month (0-11) |
+| `getDate()` | int | Day of month (1-31) |
+| `getDay()` | int | Day of week (0-6) |
+| `getHours()` | int | Hours (0-23) |
+| `getMinutes()` | int | Minutes (0-59) |
+| `getSeconds()` | int | Seconds (0-59) |
+| `getMilliseconds()` | int | Milliseconds (0-999) |
+
+**Note:** `getMonth()` returns 0 for January (JavaScript convention).
+
+---
+
+### Setter Methods
+
+| Method | Description |
+|--------|-------------|
+| `setFullYear(year)` | Set the year |
+| `setMonth(month)` | Set the month (0-11) |
+| `setDate(day)` | Set the day of month |
+| `setHours(hours)` | Set the hours |
+| `setMinutes(minutes)` | Set the minutes |
+| `setSeconds(seconds)` | Set the seconds |
+| `setMilliseconds(ms)` | Set the milliseconds |
+
+**Note:** Setter methods return the new timestamp.
+
+---
+
+### String Methods
+
+| Method | Format |
+|--------|--------|
+| `toISOString()` | ISO 8601 format |
+| `toDateString()` | "Mon Jan 02 2006" |
+| `toTimeString()` | "15:04:05 MST" |
+| `toString()` | Full date/time string |
+| `toJSON()` | ISO 8601 (for JSON) |
+
+**Examples:**
+```typescript
+let now: Date = new Date()
+println(now.getFullYear())     // Current year
+println(now.toISOString())     // "2024-01-15T14:30:45.000Z"
+
+let date: Date = new Date(1704067200000)
+println(date.getFullYear())    // 2024
+date.setFullYear(2025)
+println(date.getFullYear())    // 2025
+```
+
+---
+
 ## Math Object
 
 The `Math` object provides mathematical constants and functions, similar to JavaScript's Math object.
