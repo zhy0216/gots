@@ -476,6 +476,34 @@ func init() {
 	})
 }
 
+// ----------------------------------------------------------------------------
+// Promise Built-in Object (static methods)
+// ----------------------------------------------------------------------------
+
+func init() {
+	RegisterBuiltin(&BuiltinObject{
+		Name:      "Promise",
+		Imports:   []string{},
+		Constants: map[string]*BuiltinConstant{},
+		Methods: map[string]*BuiltinMethod{
+			"resolve": {
+				Params:     []*types.Param{{Name: "value", Type: types.AnyType}},
+				ReturnType: &types.Promise{Value: types.AnyType},
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("GTS_Promise_Resolve[interface{}](%s)", args[0])
+				},
+			},
+			"reject": {
+				Params:     []*types.Param{{Name: "reason", Type: types.AnyType}},
+				ReturnType: &types.Promise{Value: types.AnyType},
+				GoCodeGen: func(args []string) string {
+					return fmt.Sprintf("GTS_Promise_Reject[interface{}](fmt.Errorf(\"%%v\", %s))", args[0])
+				},
+			},
+		},
+	})
+}
+
 // DescribeBuiltin returns a description of a built-in object for documentation.
 func DescribeBuiltin(objName string) string {
 	obj, ok := GetBuiltin(objName)

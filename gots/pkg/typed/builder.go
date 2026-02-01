@@ -1948,6 +1948,12 @@ var builtins = map[string]types.Type{
 	"isNaN":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.NumberType}}, ReturnType: types.BooleanType},
 	"isFinite":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.NumberType}}, ReturnType: types.BooleanType},
 	"parseFloat": &types.Function{Params: []*types.Param{{Name: "s", Type: types.StringType}}, ReturnType: types.NumberType},
+	// Timer functions (event loop)
+	"setTimeout":     &types.Function{Params: []*types.Param{{Name: "callback", Type: types.AnyType}, {Name: "delay", Type: types.IntType}}, ReturnType: types.IntType},
+	"setInterval":    &types.Function{Params: []*types.Param{{Name: "callback", Type: types.AnyType}, {Name: "delay", Type: types.IntType}}, ReturnType: types.IntType},
+	"clearTimeout":   &types.Function{Params: []*types.Param{{Name: "id", Type: types.IntType}}, ReturnType: types.VoidType},
+	"clearInterval":  &types.Function{Params: []*types.Param{{Name: "id", Type: types.IntType}}, ReturnType: types.VoidType},
+	"queueMicrotask": &types.Function{Params: []*types.Param{{Name: "callback", Type: types.AnyType}}, ReturnType: types.VoidType},
 }
 
 func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
@@ -2046,6 +2052,10 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		}
 		if _, ok := objType.(*types.Console); ok {
 			return b.buildConsoleMethodCall(propExpr.Property, expr)
+		}
+		// Handle Promise method calls (then, catch, finally)
+		if promiseType, ok := objType.(*types.Promise); ok {
+			return b.buildPromiseMethodCall(objExpr, promiseType, propExpr.Property, expr)
 		}
 		// Handle built-in object method calls (Math, JSON, etc.)
 		if builtinType, ok := objType.(*types.BuiltinObject); ok {
@@ -3772,6 +3782,63 @@ func (b *Builder) buildDateMethodCall(obj Expr, method string, expr *ast.CallExp
 		Object:   obj,
 		Method:   method,
 		Args:     args,
+		ExprType: resultType,
+	}
+}
+
+// buildPromiseMethodCall handles method calls on Promise types (then, catch, finally).
+func (b *Builder) buildPromiseMethodCall(obj Expr, promiseType *types.Promise, method string, expr *ast.CallExpr) Expr {
+	// Build arguments
+	args := make([]Expr, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = b.buildExpr(arg)
+	}
+
+	var resultType types.Type
+
+	switch method {
+	case "then":
+		// then(callback: (value: T) => R): Promise<R>
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Promise.then expects 1 argument, got %d", len(args))
+		}
+		// Result is Promise<interface{}> (since callback returns interface{})
+		resultType = &types.Promise{Value: types.AnyType}
+
+	case "catch":
+		// catch(callback: (error: Error) => R): Promise<R>
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Promise.catch expects 1 argument, got %d", len(args))
+		}
+		// Result is Promise<interface{}>
+		resultType = &types.Promise{Value: types.AnyType}
+
+	case "finally":
+		// finally(callback: () => void): Promise<T>
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Promise.finally expects 1 argument, got %d", len(args))
+		}
+		// Result is Promise<T> (same type as original)
+		resultType = promiseType
+
+	default:
+		b.error(expr.Token.Line, expr.Token.Column,
+			"unknown Promise method: %s", method)
+		resultType = types.AnyType
+	}
+
+	var callback Expr
+	if len(args) > 0 {
+		callback = args[0]
+	}
+
+	return &PromiseMethodCall{
+		Object:   obj,
+		Method:   method,
+		Callback: callback,
 		ExprType: resultType,
 	}
 }

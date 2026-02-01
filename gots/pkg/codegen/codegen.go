@@ -58,6 +58,10 @@ func (g *Generator) collectImports(prog *typed.Program) {
 	g.imports["fmt"] = true
 	// reflect is needed for dynamic function calls
 	g.imports["reflect"] = true
+	// sync is needed for event loop and Promise
+	g.imports["sync"] = true
+	// time is needed for event loop timers
+	g.imports["time"] = true
 
 	// Add Go package imports from the source
 	for _, imp := range prog.GoImports {
@@ -263,6 +267,11 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
 			g.imports["strings"] = true
 		}
+	case *typed.PromiseMethodCall:
+		g.collectImportsFromExpr(e.Object)
+		if e.Callback != nil {
+			g.collectImportsFromExpr(e.Callback)
+		}
 	}
 }
 
@@ -325,9 +334,25 @@ func (g *Generator) genProgram(prog *typed.Program) {
 	// Generate main function
 	g.writeln("func main() {")
 	g.indent++
+	// Initialize event loop
+	g.writeln("// Initialize event loop")
+	g.writeln("gts_eventLoop = &GTS_EventLoop{")
+	g.indent++
+	g.writeln("microtasks:    make([]func(), 0),")
+	g.writeln("macrotasks:    make([]func(), 0),")
+	g.writeln("timers:        make(map[int64]*time.Timer),")
+	g.writeln("pendingTimers: make(chan func(), 1000),")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+	// Execute top-level code
 	for _, stmt := range prog.TopLevel {
 		g.genStmt(stmt)
 	}
+	g.writeln("")
+	// Run event loop
+	g.writeln("// Run event loop until all tasks complete")
+	g.writeln("gts_runEventLoop()")
 	g.indent--
 	g.writeln("}")
 }
@@ -735,29 +760,280 @@ func (g *Generator) genRuntime() {
 	g.writeln("}")
 	g.writeln("")
 
+	// Event loop runtime (must be before Promise runtime)
+	g.genEventLoopRuntime()
+	g.writeln("")
+
 	// Promise runtime type and helpers
 	g.genPromiseRuntime()
 }
 
-// genPromiseRuntime generates the Promise type and related helpers.
-func (g *Generator) genPromiseRuntime() {
-	// Promise struct
-	g.writeln("// GTS_Promise represents a JavaScript-style Promise")
-	g.writeln("type GTS_Promise[T any] struct {")
+// genEventLoopRuntime generates the JavaScript-compatible event loop.
+func (g *Generator) genEventLoopRuntime() {
+	g.writeln("// GTS_EventLoop implements JavaScript-compatible event loop")
+	g.writeln("type GTS_EventLoop struct {")
 	g.indent++
-	g.writeln("done    chan struct{}")
-	g.writeln("value   T")
-	g.writeln("err     error")
-	g.writeln("settled bool")
+	g.writeln("microtasks    []func()")
+	g.writeln("macrotasks    []func()")
+	g.writeln("timers        map[int64]*time.Timer")
+	g.writeln("timerIDGen    int64")
+	g.writeln("pendingTimers chan func()")
+	g.writeln("mu            sync.Mutex")
 	g.indent--
 	g.writeln("}")
 	g.writeln("")
 
-	// Promise constructor
+	g.writeln("var gts_eventLoop *GTS_EventLoop")
+	g.writeln("")
+
+	// Queue microtask
+	g.writeln("func gts_queueMicrotask(fn func()) {")
+	g.indent++
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("gts_eventLoop.microtasks = append(gts_eventLoop.microtasks, fn)")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Queue macrotask
+	g.writeln("func gts_queueMacrotask(fn func()) {")
+	g.indent++
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("gts_eventLoop.macrotasks = append(gts_eventLoop.macrotasks, fn)")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// setTimeout
+	g.writeln("func gts_setTimeout(callback func(), delay int) int64 {")
+	g.indent++
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("gts_eventLoop.timerIDGen++")
+	g.writeln("id := gts_eventLoop.timerIDGen")
+	g.writeln("timerID := id")
+	g.writeln("timer := time.AfterFunc(time.Duration(delay)*time.Millisecond, func() {")
+	g.indent++
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("delete(gts_eventLoop.timers, timerID)")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.writeln("gts_eventLoop.pendingTimers <- callback")
+	g.indent--
+	g.writeln("})")
+	g.writeln("gts_eventLoop.timers[id] = timer")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.writeln("return id")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// setInterval
+	g.writeln("func gts_setInterval(callback func(), delay int) int64 {")
+	g.indent++
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("gts_eventLoop.timerIDGen++")
+	g.writeln("id := gts_eventLoop.timerIDGen")
+	g.writeln("var timer *time.Timer")
+	g.writeln("var tick func()")
+	g.writeln("tick = func() {")
+	g.indent++
+	g.writeln("gts_eventLoop.pendingTimers <- callback")
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("if _, exists := gts_eventLoop.timers[id]; exists {")
+	g.indent++
+	g.writeln("timer = time.AfterFunc(time.Duration(delay)*time.Millisecond, tick)")
+	g.writeln("gts_eventLoop.timers[id] = timer")
+	g.indent--
+	g.writeln("}")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.indent--
+	g.writeln("}")
+	g.writeln("timer = time.AfterFunc(time.Duration(delay)*time.Millisecond, tick)")
+	g.writeln("gts_eventLoop.timers[id] = timer")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.writeln("return id")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// clearTimeout / clearInterval
+	g.writeln("func gts_clearTimeout(id int64) {")
+	g.indent++
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("if timer, exists := gts_eventLoop.timers[id]; exists {")
+	g.indent++
+	g.writeln("timer.Stop()")
+	g.writeln("delete(gts_eventLoop.timers, id)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Run event loop
+	g.writeln("func gts_runEventLoop() {")
+	g.indent++
+	g.writeln("for {")
+	g.indent++
+	// Drain all microtasks
+	g.writeln("for {")
+	g.indent++
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("if len(gts_eventLoop.microtasks) == 0 {")
+	g.indent++
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.writeln("break")
+	g.indent--
+	g.writeln("}")
+	g.writeln("task := gts_eventLoop.microtasks[0]")
+	g.writeln("gts_eventLoop.microtasks = gts_eventLoop.microtasks[1:]")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.writeln("task()")
+	g.indent--
+	g.writeln("}")
+	// Execute one macrotask
+	g.writeln("gts_eventLoop.mu.Lock()")
+	g.writeln("if len(gts_eventLoop.macrotasks) > 0 {")
+	g.indent++
+	g.writeln("task := gts_eventLoop.macrotasks[0]")
+	g.writeln("gts_eventLoop.macrotasks = gts_eventLoop.macrotasks[1:]")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.writeln("task()")
+	g.writeln("continue")
+	g.indent--
+	g.writeln("}")
+	// Wait for timer or exit
+	g.writeln("hasTimers := len(gts_eventLoop.timers) > 0")
+	g.writeln("gts_eventLoop.mu.Unlock()")
+	g.writeln("if !hasTimers {")
+	g.indent++
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("select {")
+	g.writeln("case task := <-gts_eventLoop.pendingTimers:")
+	g.indent++
+	g.writeln("gts_queueMacrotask(task)")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+}
+
+// genPromiseRuntime generates the Promise type and related helpers.
+func (g *Generator) genPromiseRuntime() {
+	// Promise struct with event loop support
+	g.writeln("// GTS_Promise represents a JavaScript-style Promise with event loop support")
+	g.writeln("type GTS_Promise[T any] struct {")
+	g.indent++
+	g.writeln("state     int // 0=pending, 1=fulfilled, 2=rejected")
+	g.writeln("value     T")
+	g.writeln("err       error")
+	g.writeln("onFulfill []func(T)")
+	g.writeln("onReject  []func(error)")
+	g.writeln("onFinally []func()")
+	g.writeln("mu        sync.Mutex")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Promise constructor - runs executor synchronously
 	g.writeln("func GTS_NewPromise[T any](executor func(resolve func(T), reject func(error))) *GTS_Promise[T] {")
 	g.indent++
-	g.writeln("p := &GTS_Promise[T]{done: make(chan struct{})}")
-	g.writeln("go func() {")
+	g.writeln("p := &GTS_Promise[T]{state: 0}")
+	g.writeln("resolve := func(v T) {")
+	g.indent++
+	g.writeln("p.mu.Lock()")
+	g.writeln("if p.state != 0 {")
+	g.indent++
+	g.writeln("p.mu.Unlock()")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("p.state = 1")
+	g.writeln("p.value = v")
+	g.writeln("handlers := p.onFulfill")
+	g.writeln("finalizers := p.onFinally")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("for _, h := range handlers {")
+	g.indent++
+	g.writeln("handler := h")
+	g.writeln("val := v")
+	g.writeln("gts_queueMicrotask(func() { handler(val) })")
+	g.indent--
+	g.writeln("}")
+	g.writeln("for _, f := range finalizers {")
+	g.indent++
+	g.writeln("finalizer := f")
+	g.writeln("gts_queueMicrotask(func() { finalizer() })")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.writeln("reject := func(e error) {")
+	g.indent++
+	g.writeln("p.mu.Lock()")
+	g.writeln("if p.state != 0 {")
+	g.indent++
+	g.writeln("p.mu.Unlock()")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("p.state = 2")
+	g.writeln("p.err = e")
+	g.writeln("handlers := p.onReject")
+	g.writeln("finalizers := p.onFinally")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("for _, h := range handlers {")
+	g.indent++
+	g.writeln("handler := h")
+	g.writeln("err := e")
+	g.writeln("gts_queueMicrotask(func() { handler(err) })")
+	g.indent--
+	g.writeln("}")
+	g.writeln("for _, f := range finalizers {")
+	g.indent++
+	g.writeln("finalizer := f")
+	g.writeln("gts_queueMicrotask(func() { finalizer() })")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	// Execute synchronously (not in goroutine)
+	g.writeln("defer func() {")
+	g.indent++
+	g.writeln("if r := recover(); r != nil {")
+	g.indent++
+	g.writeln("if err, ok := r.(error); ok {")
+	g.indent++
+	g.writeln("reject(err)")
+	g.indent--
+	g.writeln("} else {")
+	g.indent++
+	g.writeln("reject(fmt.Errorf(\"%%v\", r))")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}()")
+	g.writeln("executor(resolve, reject)")
+	g.writeln("return p")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Promise.Then method
+	g.writeln("func (p *GTS_Promise[T]) Then(onFulfill func(T) interface{}) *GTS_Promise[interface{}] {")
+	g.indent++
+	g.writeln("return GTS_NewPromise(func(resolve func(interface{}), reject func(error)) {")
+	g.indent++
+	g.writeln("handler := func(v T) {")
 	g.indent++
 	g.writeln("defer func() {")
 	g.indent++
@@ -765,63 +1041,199 @@ func (g *Generator) genPromiseRuntime() {
 	g.indent++
 	g.writeln("if err, ok := r.(error); ok {")
 	g.indent++
-	g.writeln("p.err = err")
+	g.writeln("reject(err)")
 	g.indent--
 	g.writeln("} else {")
 	g.indent++
-	g.writeln("p.err = fmt.Errorf(\"%%v\", r)")
-	g.indent--
-	g.writeln("}")
-	g.writeln("if !p.settled {")
-	g.indent++
-	g.writeln("p.settled = true")
-	g.writeln("close(p.done)")
+	g.writeln("reject(fmt.Errorf(\"%%v\", r))")
 	g.indent--
 	g.writeln("}")
 	g.indent--
 	g.writeln("}")
 	g.indent--
 	g.writeln("}()")
-	g.writeln("resolve := func(v T) {")
-	g.indent++
-	g.writeln("if !p.settled {")
-	g.indent++
-	g.writeln("p.value = v")
-	g.writeln("p.settled = true")
-	g.writeln("close(p.done)")
+	g.writeln("result := onFulfill(v)")
+	g.writeln("resolve(result)")
 	g.indent--
 	g.writeln("}")
-	g.indent--
-	g.writeln("}")
-	g.writeln("reject := func(e error) {")
+	g.writeln("errHandler := func(e error) { reject(e) }")
+	g.writeln("p.mu.Lock()")
+	g.writeln("switch p.state {")
+	g.writeln("case 0:")
 	g.indent++
-	g.writeln("if !p.settled {")
+	g.writeln("p.onFulfill = append(p.onFulfill, handler)")
+	g.writeln("p.onReject = append(p.onReject, errHandler)")
+	g.indent--
+	g.writeln("case 1:")
 	g.indent++
-	g.writeln("p.err = e")
-	g.writeln("p.settled = true")
-	g.writeln("close(p.done)")
+	g.writeln("val := p.value")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("gts_queueMicrotask(func() { handler(val) })")
+	g.writeln("return")
+	g.indent--
+	g.writeln("case 2:")
+	g.indent++
+	g.writeln("err := p.err")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("gts_queueMicrotask(func() { errHandler(err) })")
+	g.writeln("return")
 	g.indent--
 	g.writeln("}")
+	g.writeln("p.mu.Unlock()")
 	g.indent--
-	g.writeln("}")
-	g.writeln("executor(resolve, reject)")
-	g.indent--
-	g.writeln("}()")
-	g.writeln("return p")
+	g.writeln("})")
 	g.indent--
 	g.writeln("}")
 	g.writeln("")
 
-	// gts_await helper
-	g.writeln("func gts_await[T any](p *GTS_Promise[T]) T {")
+	// Promise.Catch method
+	g.writeln("func (p *GTS_Promise[T]) Catch(onReject func(error) interface{}) *GTS_Promise[interface{}] {")
 	g.indent++
-	g.writeln("<-p.done")
-	g.writeln("if p.err != nil {")
+	g.writeln("return GTS_NewPromise(func(resolve func(interface{}), reject func(error)) {")
 	g.indent++
-	g.writeln("panic(p.err)")
+	g.writeln("fulfillHandler := func(v T) { resolve(v) }")
+	g.writeln("errHandler := func(e error) {")
+	g.indent++
+	g.writeln("defer func() {")
+	g.indent++
+	g.writeln("if r := recover(); r != nil {")
+	g.indent++
+	g.writeln("if err, ok := r.(error); ok {")
+	g.indent++
+	g.writeln("reject(err)")
+	g.indent--
+	g.writeln("} else {")
+	g.indent++
+	g.writeln("reject(fmt.Errorf(\"%%v\", r))")
 	g.indent--
 	g.writeln("}")
-	g.writeln("return p.value")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}()")
+	g.writeln("result := onReject(e)")
+	g.writeln("resolve(result)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("p.mu.Lock()")
+	g.writeln("switch p.state {")
+	g.writeln("case 0:")
+	g.indent++
+	g.writeln("p.onFulfill = append(p.onFulfill, fulfillHandler)")
+	g.writeln("p.onReject = append(p.onReject, errHandler)")
+	g.indent--
+	g.writeln("case 1:")
+	g.indent++
+	g.writeln("val := p.value")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("gts_queueMicrotask(func() { fulfillHandler(val) })")
+	g.writeln("return")
+	g.indent--
+	g.writeln("case 2:")
+	g.indent++
+	g.writeln("err := p.err")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("gts_queueMicrotask(func() { errHandler(err) })")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("p.mu.Unlock()")
+	g.indent--
+	g.writeln("})")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// Promise.Finally method
+	g.writeln("func (p *GTS_Promise[T]) Finally(onFinally func()) *GTS_Promise[T] {")
+	g.indent++
+	g.writeln("return GTS_NewPromise(func(resolve func(T), reject func(error)) {")
+	g.indent++
+	g.writeln("fulfillHandler := func(v T) {")
+	g.indent++
+	g.writeln("onFinally()")
+	g.writeln("resolve(v)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("errHandler := func(e error) {")
+	g.indent++
+	g.writeln("onFinally()")
+	g.writeln("reject(e)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("p.mu.Lock()")
+	g.writeln("switch p.state {")
+	g.writeln("case 0:")
+	g.indent++
+	g.writeln("p.onFulfill = append(p.onFulfill, fulfillHandler)")
+	g.writeln("p.onReject = append(p.onReject, errHandler)")
+	g.indent--
+	g.writeln("case 1:")
+	g.indent++
+	g.writeln("val := p.value")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("gts_queueMicrotask(func() { fulfillHandler(val) })")
+	g.writeln("return")
+	g.indent--
+	g.writeln("case 2:")
+	g.indent++
+	g.writeln("err := p.err")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("gts_queueMicrotask(func() { errHandler(err) })")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("p.mu.Unlock()")
+	g.indent--
+	g.writeln("})")
+	g.indent--
+	g.writeln("}")
+	g.writeln("")
+
+	// gts_await helper - uses event loop for waiting
+	g.writeln("func gts_await[T any](p *GTS_Promise[T]) T {")
+	g.indent++
+	g.writeln("done := make(chan struct{})")
+	g.writeln("var result T")
+	g.writeln("var err error")
+	g.writeln("p.mu.Lock()")
+	g.writeln("switch p.state {")
+	g.writeln("case 1:")
+	g.indent++
+	g.writeln("result = p.value")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("return result")
+	g.indent--
+	g.writeln("case 2:")
+	g.indent++
+	g.writeln("err = p.err")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("panic(err)")
+	g.indent--
+	g.writeln("default:")
+	g.indent++
+	g.writeln("p.onFulfill = append(p.onFulfill, func(v T) {")
+	g.indent++
+	g.writeln("result = v")
+	g.writeln("close(done)")
+	g.indent--
+	g.writeln("})")
+	g.writeln("p.onReject = append(p.onReject, func(e error) {")
+	g.indent++
+	g.writeln("err = e")
+	g.writeln("close(done)")
+	g.indent--
+	g.writeln("})")
+	g.indent--
+	g.writeln("}")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("<-done")
+	g.writeln("if err != nil {")
+	g.indent++
+	g.writeln("panic(err)")
+	g.indent--
+	g.writeln("}")
+	g.writeln("return result")
 	g.indent--
 	g.writeln("}")
 	g.writeln("")
@@ -855,20 +1267,87 @@ func (g *Generator) genPromiseRuntime() {
 	g.indent++
 	g.writeln("return GTS_NewPromise(func(resolve func([]T), reject func(error)) {")
 	g.indent++
-	g.writeln("results := make([]T, len(promises))")
-	g.writeln("for i, p := range promises {")
+	g.writeln("if len(promises) == 0 {")
 	g.indent++
-	g.writeln("<-p.done")
-	g.writeln("if p.err != nil {")
-	g.indent++
-	g.writeln("reject(p.err)")
+	g.writeln("resolve([]T{})")
 	g.writeln("return")
 	g.indent--
 	g.writeln("}")
-	g.writeln("results[i] = p.value")
+	g.writeln("results := make([]T, len(promises))")
+	g.writeln("remaining := len(promises)")
+	g.writeln("rejected := false")
+	g.writeln("var mu sync.Mutex")
+	g.writeln("for i, p := range promises {")
+	g.indent++
+	g.writeln("idx := i")
+	g.writeln("p.mu.Lock()")
+	g.writeln("switch p.state {")
+	g.writeln("case 1:")
+	g.indent++
+	g.writeln("results[idx] = p.value")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("mu.Lock()")
+	g.writeln("remaining--")
+	g.writeln("if remaining == 0 && !rejected {")
+	g.indent++
+	g.writeln("mu.Unlock()")
+	g.writeln("resolve(results)")
+	g.writeln("return")
 	g.indent--
 	g.writeln("}")
+	g.writeln("mu.Unlock()")
+	g.indent--
+	g.writeln("case 2:")
+	g.indent++
+	g.writeln("err := p.err")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("mu.Lock()")
+	g.writeln("if !rejected {")
+	g.indent++
+	g.writeln("rejected = true")
+	g.writeln("mu.Unlock()")
+	g.writeln("reject(err)")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("mu.Unlock()")
+	g.indent--
+	g.writeln("default:")
+	g.indent++
+	g.writeln("p.onFulfill = append(p.onFulfill, func(v T) {")
+	g.indent++
+	g.writeln("mu.Lock()")
+	g.writeln("results[idx] = v")
+	g.writeln("remaining--")
+	g.writeln("if remaining == 0 && !rejected {")
+	g.indent++
+	g.writeln("mu.Unlock()")
 	g.writeln("resolve(results)")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("mu.Unlock()")
+	g.indent--
+	g.writeln("})")
+	g.writeln("p.onReject = append(p.onReject, func(e error) {")
+	g.indent++
+	g.writeln("mu.Lock()")
+	g.writeln("if !rejected {")
+	g.indent++
+	g.writeln("rejected = true")
+	g.writeln("mu.Unlock()")
+	g.writeln("reject(e)")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("mu.Unlock()")
+	g.indent--
+	g.writeln("})")
+	g.writeln("p.mu.Unlock()")
+	g.indent--
+	g.writeln("}")
+	g.indent--
+	g.writeln("}")
 	g.indent--
 	g.writeln("})")
 	g.indent--
@@ -880,33 +1359,77 @@ func (g *Generator) genPromiseRuntime() {
 	g.indent++
 	g.writeln("return GTS_NewPromise(func(resolve func(T), reject func(error)) {")
 	g.indent++
-	g.writeln("done := make(chan struct{})")
+	g.writeln("settled := false")
+	g.writeln("var mu sync.Mutex")
 	g.writeln("for _, p := range promises {")
 	g.indent++
-	g.writeln("go func(pr *GTS_Promise[T]) {")
+	g.writeln("p.mu.Lock()")
+	g.writeln("switch p.state {")
+	g.writeln("case 1:")
 	g.indent++
-	g.writeln("<-pr.done")
-	g.writeln("select {")
-	g.writeln("case <-done:")
+	g.writeln("val := p.value")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("mu.Lock()")
+	g.writeln("if !settled {")
 	g.indent++
+	g.writeln("settled = true")
+	g.writeln("mu.Unlock()")
+	g.writeln("resolve(val)")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("mu.Unlock()")
+	g.writeln("return")
+	g.indent--
+	g.writeln("case 2:")
+	g.indent++
+	g.writeln("err := p.err")
+	g.writeln("p.mu.Unlock()")
+	g.writeln("mu.Lock()")
+	g.writeln("if !settled {")
+	g.indent++
+	g.writeln("settled = true")
+	g.writeln("mu.Unlock()")
+	g.writeln("reject(err)")
+	g.writeln("return")
+	g.indent--
+	g.writeln("}")
+	g.writeln("mu.Unlock()")
 	g.writeln("return")
 	g.indent--
 	g.writeln("default:")
 	g.indent++
-	g.writeln("close(done)")
-	g.writeln("if pr.err != nil {")
+	g.writeln("p.onFulfill = append(p.onFulfill, func(v T) {")
 	g.indent++
-	g.writeln("reject(pr.err)")
-	g.indent--
-	g.writeln("} else {")
+	g.writeln("mu.Lock()")
+	g.writeln("if !settled {")
 	g.indent++
-	g.writeln("resolve(pr.value)")
+	g.writeln("settled = true")
+	g.writeln("mu.Unlock()")
+	g.writeln("resolve(v)")
+	g.writeln("return")
 	g.indent--
 	g.writeln("}")
+	g.writeln("mu.Unlock()")
+	g.indent--
+	g.writeln("})")
+	g.writeln("p.onReject = append(p.onReject, func(e error) {")
+	g.indent++
+	g.writeln("mu.Lock()")
+	g.writeln("if !settled {")
+	g.indent++
+	g.writeln("settled = true")
+	g.writeln("mu.Unlock()")
+	g.writeln("reject(e)")
+	g.writeln("return")
 	g.indent--
 	g.writeln("}")
+	g.writeln("mu.Unlock()")
 	g.indent--
-	g.writeln("}(p)")
+	g.writeln("})")
+	g.writeln("p.mu.Unlock()")
+	g.indent--
+	g.writeln("}")
 	g.indent--
 	g.writeln("}")
 	g.indent--
@@ -1222,7 +1745,39 @@ func (g *Generator) genAsyncBody(body *typed.BlockStmt, innerType string) {
 func (g *Generator) genStmt(stmt typed.Stmt) {
 	switch s := stmt.(type) {
 	case *typed.ExprStmt:
-		g.writeln("%s", g.genExpr(s.Expr))
+		exprCode := g.genExpr(s.Expr)
+		// Check if the expression has a non-void return type that needs to be discarded
+		exprType := types.Unwrap(s.Expr.Type())
+		if prim, ok := exprType.(*types.Primitive); ok && prim.Kind == types.KindVoid {
+			g.writeln("%s", exprCode)
+		} else if exprType.Equals(types.AnyType) {
+			// For any type, check if it's a timer function that returns a value
+			if builtin, ok := s.Expr.(*typed.BuiltinCall); ok {
+				if builtin.Name == "setTimeout" || builtin.Name == "setInterval" {
+					g.writeln("_ = %s", exprCode)
+				} else {
+					g.writeln("%s", exprCode)
+				}
+			} else {
+				g.writeln("%s", exprCode)
+			}
+		} else if _, ok := exprType.(*types.Promise); ok {
+			// Promises don't need to be discarded (they're used for side effects)
+			g.writeln("%s", exprCode)
+		} else if prim, ok := exprType.(*types.Primitive); ok && prim.Kind != types.KindVoid {
+			// Non-void primitives (like int from setTimeout) need to be discarded
+			if builtin, ok := s.Expr.(*typed.BuiltinCall); ok {
+				if builtin.Name == "setTimeout" || builtin.Name == "setInterval" {
+					g.writeln("_ = %s", exprCode)
+				} else {
+					g.writeln("%s", exprCode)
+				}
+			} else {
+				g.writeln("%s", exprCode)
+			}
+		} else {
+			g.writeln("%s", exprCode)
+		}
 
 	case *typed.VarDecl:
 		g.genVarDecl(s)
@@ -1738,6 +2293,9 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 
 	case *typed.AwaitExpr:
 		return g.genAwaitExpr(e)
+
+	case *typed.PromiseMethodCall:
+		return g.genPromiseMethodCall(e)
 	}
 
 	return "nil"
@@ -1978,6 +2536,17 @@ func (g *Generator) genBuiltinCall(expr *typed.BuiltinCall) string {
 		return fmt.Sprintf("(!math.IsInf(%s, 0) && !math.IsNaN(%s))", args[0], args[0])
 	case "parseFloat":
 		return fmt.Sprintf("func() float64 { v, _ := strconv.ParseFloat(%s, 64); return v }()", args[0])
+	// Timer functions (event loop)
+	case "setTimeout":
+		return fmt.Sprintf("int(gts_setTimeout(func() { gts_call(%s) }, %s))", args[0], args[1])
+	case "setInterval":
+		return fmt.Sprintf("int(gts_setInterval(func() { gts_call(%s) }, %s))", args[0], args[1])
+	case "clearTimeout":
+		return fmt.Sprintf("gts_clearTimeout(int64(%s))", args[0])
+	case "clearInterval":
+		return fmt.Sprintf("gts_clearTimeout(int64(%s))", args[0]) // Same implementation as clearTimeout
+	case "queueMicrotask":
+		return fmt.Sprintf("gts_queueMicrotask(func() { gts_call(%s) })", args[0])
 	default:
 		return fmt.Sprintf("%s(%s)", expr.Name, strings.Join(args, ", "))
 	}
@@ -2276,6 +2845,25 @@ func (g *Generator) genAwaitExpr(expr *typed.AwaitExpr) string {
 		resultType = "interface{}"
 	}
 	return fmt.Sprintf("gts_await[%s](%s)", resultType, arg)
+}
+
+func (g *Generator) genPromiseMethodCall(expr *typed.PromiseMethodCall) string {
+	obj := g.genExpr(expr.Object)
+	callback := g.genExpr(expr.Callback)
+
+	switch expr.Method {
+	case "then":
+		// p.Then(func(v T) interface{} { return callback(v) })
+		return fmt.Sprintf("%s.Then(func(__v interface{}) interface{} { return gts_call(%s, __v) })", obj, callback)
+	case "catch":
+		// p.Catch(func(e error) interface{} { return callback(e) })
+		return fmt.Sprintf("%s.Catch(func(__e error) interface{} { return gts_call(%s, __e) })", obj, callback)
+	case "finally":
+		// p.Finally(func() { callback() })
+		return fmt.Sprintf("%s.Finally(func() { gts_call(%s) })", obj, callback)
+	default:
+		return fmt.Sprintf("%s.%s(%s)", obj, expr.Method, callback)
+	}
 }
 
 func (g *Generator) genMapLit(expr *typed.MapLit) string {

@@ -330,6 +330,17 @@ type AwaitExpr struct {
 func (a *AwaitExpr) exprNode()        {}
 func (a *AwaitExpr) Type() types.Type { return a.ExprType }
 
+// PromiseMethodCall represents a method call on a Promise (then, catch, finally).
+type PromiseMethodCall struct {
+	Object   Expr       // The promise
+	Method   string     // "then", "catch", or "finally"
+	Callback Expr       // The callback function
+	ExprType types.Type // The result type (usually Promise<interface{}>)
+}
+
+func (p *PromiseMethodCall) exprNode()        {}
+func (p *PromiseMethodCall) Type() types.Type { return p.ExprType }
+
 // tokenOpToString converts token.Type to operator string.
 func TokenOpToString(op ast.Node) string {
 	return op.TokenLiteral()
