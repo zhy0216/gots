@@ -163,8 +163,11 @@ func (t *ThrowStmt) stmtNode() {}
 
 // Decorator represents a typed function decorator.
 type Decorator struct {
-	Name string      // Decorator name
-	Type types.Type  // Type of the decorator function
+	Name      string     // Simple decorator name
+	Object    string     // Member expr object: "app" in @app.get
+	Property  string     // Member expr property: "get" in @app.get
+	Arguments []Expr     // Parameterized args
+	Type      types.Type // Type of the decorator function
 }
 
 // FuncDecl represents a top-level function declaration.

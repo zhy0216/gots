@@ -716,14 +716,36 @@ type Parameter struct {
 	ParamType Type
 }
 
-// Decorator represents a function decorator (e.g., @memoize).
+// Decorator represents a function decorator (e.g., @memoize, @app.get("/hello")).
 type Decorator struct {
-	Token token.Token // The '@' token
-	Name  string      // Decorator name
+	Token     token.Token  // The '@' token
+	Name      string       // Simple decorator name (backward compat)
+	Object    string       // Member expr object: "app" in @app.get
+	Property  string       // Member expr property: "get" in @app.get
+	Arguments []Expression // Parameterized args: ("/hello")
 }
 
 func (d *Decorator) TokenLiteral() string { return d.Token.Literal }
-func (d *Decorator) String() string       { return "@" + d.Name }
+func (d *Decorator) String() string {
+	var out string
+	out = "@"
+	if d.Object != "" {
+		out += d.Object + "." + d.Property
+	} else {
+		out += d.Name
+	}
+	if len(d.Arguments) > 0 {
+		out += "("
+		for i, arg := range d.Arguments {
+			if i > 0 {
+				out += ", "
+			}
+			out += arg.String()
+		}
+		out += ")"
+	}
+	return out
+}
 
 // FuncDecl represents a function declaration.
 type FuncDecl struct {

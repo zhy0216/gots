@@ -1466,15 +1466,37 @@ func (b *Builder) buildDecorators(decorators []*ast.Decorator) []*Decorator {
 
 	result := make([]*Decorator, len(decorators))
 	for i, d := range decorators {
-		// Look up the decorator function in scope
-		typ, ok := b.scope.lookup(d.Name)
-		if !ok {
-			b.error(d.Token.Line, d.Token.Column, "undefined decorator: %s", d.Name)
-			typ = types.AnyType
+		var typ types.Type
+		if d.Object != "" {
+			// Member-access decorator: @obj.method(args)
+			objType, ok := b.scope.lookup(d.Object)
+			if !ok {
+				b.error(d.Token.Line, d.Token.Column, "undefined decorator object: %s", d.Object)
+				objType = types.AnyType
+			}
+			typ = objType
+		} else {
+			// Simple decorator: @name
+			var ok bool
+			typ, ok = b.scope.lookup(d.Name)
+			if !ok {
+				b.error(d.Token.Line, d.Token.Column, "undefined decorator: %s", d.Name)
+				typ = types.AnyType
+			}
 		}
+
+		// Build typed arguments
+		var args []Expr
+		for _, arg := range d.Arguments {
+			args = append(args, b.buildExpr(arg))
+		}
+
 		result[i] = &Decorator{
-			Name: d.Name,
-			Type: typ,
+			Name:      d.Name,
+			Object:    d.Object,
+			Property:  d.Property,
+			Arguments: args,
+			Type:      typ,
 		}
 	}
 	return result

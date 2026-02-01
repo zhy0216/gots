@@ -2526,7 +2526,7 @@ func (p *Parser) parseTypeArguments() []ast.Type {
 	return args
 }
 
-// parseDecorator parses a single decorator: @name
+// parseDecorator parses a single decorator: @name, @name(args), @obj.method(args)
 func (p *Parser) parseDecorator() *ast.Decorator {
 	decorator := &ast.Decorator{Token: p.curToken}
 
@@ -2535,7 +2535,26 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 		return nil
 	}
 
-	decorator.Name = p.curToken.Literal
+	name := p.curToken.Literal
+
+	// Check for member access: @obj.method
+	if p.peekTokenIs(token.DOT) {
+		p.nextToken() // consume '.'
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		decorator.Object = name
+		decorator.Property = p.curToken.Literal
+	} else {
+		decorator.Name = name
+	}
+
+	// Check for parameterized args: @name(args) or @obj.method(args)
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken() // consume '('
+		decorator.Arguments = p.parseExpressionList(token.RPAREN)
+		// parseExpressionList already consumed the closing ')'
+	}
 
 	return decorator
 }

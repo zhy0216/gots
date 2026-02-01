@@ -1709,7 +1709,27 @@ func (g *Generator) genDecoratedFuncDecl(fn *typed.FuncDecl) {
 	// Decorators are applied from bottom to top (closest to function first)
 	decoratedExpr := internalName
 	for i := len(fn.Decorators) - 1; i >= 0; i-- {
-		decoratedExpr = fmt.Sprintf("%s(%s)", goName(fn.Decorators[i].Name), decoratedExpr)
+		d := fn.Decorators[i]
+		if d.Object != "" {
+			// Member-access decorator with args: @obj.method(args)
+			// becomes: gts_call(obj.Method(args...), _fn)
+			args := make([]string, len(d.Arguments))
+			for j, arg := range d.Arguments {
+				args[j] = g.genExpr(arg)
+			}
+			decoratedExpr = fmt.Sprintf("gts_call(%s.%s(%s), %s)", goName(d.Object), exportName(d.Property), strings.Join(args, ", "), decoratedExpr)
+		} else if len(d.Arguments) > 0 {
+			// Simple parameterized decorator: @name(args)
+			// becomes: gts_call(Name(args...), _fn)
+			args := make([]string, len(d.Arguments))
+			for j, arg := range d.Arguments {
+				args[j] = g.genExpr(arg)
+			}
+			decoratedExpr = fmt.Sprintf("gts_call(%s(%s), %s)", goName(d.Name), strings.Join(args, ", "), decoratedExpr)
+		} else {
+			// Simple decorator: @name => Name(_fn)
+			decoratedExpr = fmt.Sprintf("%s(%s)", goName(d.Name), decoratedExpr)
+		}
 	}
 
 	g.writeln("var %s = %s", goName(fn.Name), decoratedExpr)
