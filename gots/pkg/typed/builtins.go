@@ -77,6 +77,43 @@ func (b *BuiltinObjectConstant) Type() types.Type { return b.ExprType }
 // Math Built-in Object
 // ----------------------------------------------------------------------------
 
+// mathUnary creates a BuiltinMethod for a single-arg math function (e.g., math.Floor).
+func mathUnary(goFunc string) *BuiltinMethod {
+	return &BuiltinMethod{
+		Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
+		ReturnType: types.NumberType,
+		GoCodeGen:  func(args []string) string { return fmt.Sprintf("%s(%s)", goFunc, args[0]) },
+	}
+}
+
+// mathBinary creates a BuiltinMethod for a two-arg math function (e.g., math.Pow).
+func mathBinary(paramA, paramB string, goFunc string) *BuiltinMethod {
+	return &BuiltinMethod{
+		Params:     []*types.Param{{Name: paramA, Type: types.NumberType}, {Name: paramB, Type: types.NumberType}},
+		ReturnType: types.NumberType,
+		GoCodeGen:  func(args []string) string { return fmt.Sprintf("%s(%s, %s)", goFunc, args[0], args[1]) },
+	}
+}
+
+// chainedMinMax creates a variadic BuiltinMethod that chains calls to goFunc (e.g., math.Min).
+func chainedMinMax(goFunc string) *BuiltinMethod {
+	return &BuiltinMethod{
+		Params:     []*types.Param{{Name: "values", Type: types.NumberType}},
+		ReturnType: types.NumberType,
+		Variadic:   true,
+		GoCodeGen: func(args []string) string {
+			if len(args) == 1 {
+				return args[0]
+			}
+			result := fmt.Sprintf("%s(%s, %s)", goFunc, args[0], args[1])
+			for i := 2; i < len(args); i++ {
+				result = fmt.Sprintf("%s(%s, %s)", goFunc, result, args[i])
+			}
+			return result
+		},
+	}
+}
+
 func init() {
 	RegisterBuiltin(&BuiltinObject{
 		Name:    "Math",
@@ -87,152 +124,39 @@ func init() {
 		},
 		Methods: map[string]*BuiltinMethod{
 			// Rounding
-			"round": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Round(%s)", args[0]) },
-			},
-			"floor": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Floor(%s)", args[0]) },
-			},
-			"ceil": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Ceil(%s)", args[0]) },
-			},
-			"trunc": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Trunc(%s)", args[0]) },
-			},
+			"round": mathUnary("math.Round"),
+			"floor": mathUnary("math.Floor"),
+			"ceil":  mathUnary("math.Ceil"),
+			"trunc": mathUnary("math.Trunc"),
 			// Power and roots
-			"sqrt": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Sqrt(%s)", args[0]) },
-			},
-			"cbrt": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Cbrt(%s)", args[0]) },
-			},
-			"pow": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}, {Name: "y", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Pow(%s, %s)", args[0], args[1]) },
-			},
-			"exp": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Exp(%s)", args[0]) },
-			},
+			"sqrt": mathUnary("math.Sqrt"),
+			"cbrt": mathUnary("math.Cbrt"),
+			"pow":  mathBinary("x", "y", "math.Pow"),
+			"exp":  mathUnary("math.Exp"),
 			// Logarithms
-			"log": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Log(%s)", args[0]) },
-			},
-			"log10": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Log10(%s)", args[0]) },
-			},
-			"log2": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Log2(%s)", args[0]) },
-			},
+			"log":   mathUnary("math.Log"),
+			"log10": mathUnary("math.Log10"),
+			"log2":  mathUnary("math.Log2"),
 			// Absolute value and sign
-			"abs": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Abs(%s)", args[0]) },
-			},
+			"abs": mathUnary("math.Abs"),
 			"sign": {
 				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
 				ReturnType: types.NumberType,
-				// Go doesn't have math.Sign, so we implement it inline
 				GoCodeGen: func(args []string) string {
 					return fmt.Sprintf("func() float64 { x := %s; if x > 0 { return 1 } else if x < 0 { return -1 }; return 0 }()", args[0])
 				},
 			},
 			// Min/Max (variadic)
-			"min": {
-				Params:     []*types.Param{{Name: "values", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				Variadic:   true,
-				GoCodeGen: func(args []string) string {
-					if len(args) == 1 {
-						return args[0]
-					}
-					if len(args) == 2 {
-						return fmt.Sprintf("math.Min(%s, %s)", args[0], args[1])
-					}
-					// Chain multiple math.Min calls
-					result := fmt.Sprintf("math.Min(%s, %s)", args[0], args[1])
-					for i := 2; i < len(args); i++ {
-						result = fmt.Sprintf("math.Min(%s, %s)", result, args[i])
-					}
-					return result
-				},
-			},
-			"max": {
-				Params:     []*types.Param{{Name: "values", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				Variadic:   true,
-				GoCodeGen: func(args []string) string {
-					if len(args) == 1 {
-						return args[0]
-					}
-					if len(args) == 2 {
-						return fmt.Sprintf("math.Max(%s, %s)", args[0], args[1])
-					}
-					// Chain multiple math.Max calls
-					result := fmt.Sprintf("math.Max(%s, %s)", args[0], args[1])
-					for i := 2; i < len(args); i++ {
-						result = fmt.Sprintf("math.Max(%s, %s)", result, args[i])
-					}
-					return result
-				},
-			},
+			"min": chainedMinMax("math.Min"),
+			"max": chainedMinMax("math.Max"),
 			// Trigonometric
-			"sin": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Sin(%s)", args[0]) },
-			},
-			"cos": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Cos(%s)", args[0]) },
-			},
-			"tan": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Tan(%s)", args[0]) },
-			},
-			"asin": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Asin(%s)", args[0]) },
-			},
-			"acos": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Acos(%s)", args[0]) },
-			},
-			"atan": {
-				Params:     []*types.Param{{Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Atan(%s)", args[0]) },
-			},
-			"atan2": {
-				Params:     []*types.Param{{Name: "y", Type: types.NumberType}, {Name: "x", Type: types.NumberType}},
-				ReturnType: types.NumberType,
-				GoCodeGen:  func(args []string) string { return fmt.Sprintf("math.Atan2(%s, %s)", args[0], args[1]) },
-			},
+			"sin":   mathUnary("math.Sin"),
+			"cos":   mathUnary("math.Cos"),
+			"tan":   mathUnary("math.Tan"),
+			"asin":  mathUnary("math.Asin"),
+			"acos":  mathUnary("math.Acos"),
+			"atan":  mathUnary("math.Atan"),
+			"atan2": mathBinary("y", "x", "math.Atan2"),
 			// Random
 			"random": {
 				Params:     []*types.Param{},

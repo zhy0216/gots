@@ -2823,19 +2823,19 @@ func (g *Generator) genDateMethodCall(expr *typed.DateMethodCall) string {
 	case "setTime":
 		return fmt.Sprintf("func() float64 { %s = time.UnixMilli(int64(%s)); return float64(%s.UnixMilli()) }()", obj, args[0], obj)
 	case "setFullYear":
-		return fmt.Sprintf("func() float64 { %s = time.Date(%s, %s.Month(), %s.Day(), %s.Hour(), %s.Minute(), %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, args[0], obj, obj, obj, obj, obj, obj, obj, obj)
+		return g.genDateSetter(obj, args[0], obj+".Month()", obj+".Day()", obj+".Hour()", obj+".Minute()", obj+".Second()", obj+".Nanosecond()")
 	case "setMonth":
-		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), time.Month(%s+1), %s.Day(), %s.Hour(), %s.Minute(), %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, args[0], obj, obj, obj, obj, obj, obj, obj)
+		return g.genDateSetter(obj, obj+".Year()", "time.Month("+args[0]+"+1)", obj+".Day()", obj+".Hour()", obj+".Minute()", obj+".Second()", obj+".Nanosecond()")
 	case "setDate":
-		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s, %s.Hour(), %s.Minute(), %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, args[0], obj, obj, obj, obj, obj, obj)
+		return g.genDateSetter(obj, obj+".Year()", obj+".Month()", args[0], obj+".Hour()", obj+".Minute()", obj+".Second()", obj+".Nanosecond()")
 	case "setHours":
-		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s.Day(), %s, %s.Minute(), %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, obj, args[0], obj, obj, obj, obj, obj)
+		return g.genDateSetter(obj, obj+".Year()", obj+".Month()", obj+".Day()", args[0], obj+".Minute()", obj+".Second()", obj+".Nanosecond()")
 	case "setMinutes":
-		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s.Day(), %s.Hour(), %s, %s.Second(), %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, obj, obj, args[0], obj, obj, obj, obj)
+		return g.genDateSetter(obj, obj+".Year()", obj+".Month()", obj+".Day()", obj+".Hour()", args[0], obj+".Second()", obj+".Nanosecond()")
 	case "setSeconds":
-		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s.Day(), %s.Hour(), %s.Minute(), %s, %s.Nanosecond(), %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, obj, obj, obj, args[0], obj, obj, obj)
+		return g.genDateSetter(obj, obj+".Year()", obj+".Month()", obj+".Day()", obj+".Hour()", obj+".Minute()", args[0], obj+".Nanosecond()")
 	case "setMilliseconds":
-		return fmt.Sprintf("func() float64 { %s = time.Date(%s.Year(), %s.Month(), %s.Day(), %s.Hour(), %s.Minute(), %s.Second(), %s*1000000, %s.Location()); return float64(%s.UnixMilli()) }()", obj, obj, obj, obj, obj, obj, obj, args[0], obj, obj)
+		return g.genDateSetter(obj, obj+".Year()", obj+".Month()", obj+".Day()", obj+".Hour()", obj+".Minute()", obj+".Second()", args[0]+"*1000000")
 
 	// String methods
 	case "toString":
@@ -2860,6 +2860,13 @@ func (g *Generator) genDateMethodCall(expr *typed.DateMethodCall) string {
 	default:
 		return fmt.Sprintf("/* unknown Date method %s */ nil", expr.Method)
 	}
+}
+
+// genDateSetter generates Go code for a Date setter that reconstructs a time.Date
+// with one field replaced, then returns the timestamp.
+func (g *Generator) genDateSetter(obj, year, month, day, hour, min, sec, nsec string) string {
+	return fmt.Sprintf("func() float64 { %s = time.Date(%s, %s, %s, %s, %s, %s, %s, %s.Location()); return float64(%s.UnixMilli()) }()",
+		obj, year, month, day, hour, min, sec, nsec, obj, obj)
 }
 
 func (g *Generator) genBuiltinObjectCall(expr *typed.BuiltinObjectCall) string {
