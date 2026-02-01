@@ -2409,6 +2409,15 @@ func (g *Generator) genCallExpr(expr *typed.CallExpr) string {
 		args[i] = g.genExpr(arg)
 	}
 
+	// Handle explicit type arguments for generic function calls
+	if len(expr.TypeArgs) > 0 {
+		typeArgs := make([]string, len(expr.TypeArgs))
+		for i, ta := range expr.TypeArgs {
+			typeArgs[i] = g.goType(ta)
+		}
+		return fmt.Sprintf("%s[%s](%s)", callee, strings.Join(typeArgs, ", "), strings.Join(args, ", "))
+	}
+
 	// Handle optional chaining: fn?.()
 	if expr.Optional {
 		resultType := g.goType(expr.ExprType)
@@ -3708,6 +3717,14 @@ func (g *Generator) goType(t types.Type) string {
 	case *types.GenericClass:
 		// For generic class types without type arguments, use the name with type parameter placeholder
 		return "*" + exportName(typ.Name)
+
+	case *types.GenericAlias:
+		// Uninstantiated generic alias - use interface{}
+		return "interface{}"
+
+	case *types.GenericInterface:
+		// Uninstantiated generic interface - use interface{}
+		return "interface{}"
 	}
 
 	return "interface{}"

@@ -14,7 +14,9 @@ type Builder struct {
 	scope           *Scope
 	typeAliases     map[string]types.Type
 	classes         map[string]*types.Class
-	genericClasses  map[string]*types.GenericClass
+	genericClasses    map[string]*types.GenericClass
+	genericAliases    map[string]*types.GenericAlias
+	genericInterfaces map[string]*types.GenericInterface
 	interfaces      map[string]*types.Interface
 	enums           map[string]*types.Enum
 	goImports       []*GoImportDecl
@@ -92,7 +94,9 @@ func NewBuilder() *Builder {
 		scope:          newScope(nil),
 		typeAliases:    make(map[string]types.Type),
 		classes:        make(map[string]*types.Class),
-		genericClasses: make(map[string]*types.GenericClass),
+		genericClasses:    make(map[string]*types.GenericClass),
+		genericAliases:    make(map[string]*types.GenericAlias),
+		genericInterfaces: make(map[string]*types.GenericInterface),
 		interfaces:     make(map[string]*types.Interface),
 		enums:          make(map[string]*types.Enum),
 		narrowing:      make(map[string]types.Type),
@@ -401,12 +405,48 @@ func (b *Builder) Build(program *ast.Program) *Program {
 // ----------------------------------------------------------------------------
 
 func (b *Builder) collectTypeAlias(decl *ast.TypeAliasDecl) {
-	b.typeAliases[decl.Name] = &types.Alias{Name: decl.Name}
+	if len(decl.TypeParams) > 0 {
+		// Generic type alias - register as placeholder
+		typeParams := make([]*types.TypeParameter, len(decl.TypeParams))
+		for i, tp := range decl.TypeParams {
+			var constraint types.Type
+			if tp.Constraint != nil {
+				constraint = b.resolveType(tp.Constraint)
+			}
+			var defaultType types.Type
+			if tp.Default != nil {
+				defaultType = b.resolveType(tp.Default)
+			}
+			typeParams[i] = &types.TypeParameter{
+				Name:       tp.Name,
+				Constraint: constraint,
+				Default:    defaultType,
+			}
+		}
+		b.genericAliases[decl.Name] = &types.GenericAlias{
+			Name:       decl.Name,
+			TypeParams: typeParams,
+		}
+	} else {
+		b.typeAliases[decl.Name] = &types.Alias{Name: decl.Name}
+	}
 }
 
 func (b *Builder) resolveTypeAlias(decl *ast.TypeAliasDecl) {
-	alias := b.typeAliases[decl.Name].(*types.Alias)
-	alias.Resolved = b.resolveType(decl.AliasType)
+	if len(decl.TypeParams) > 0 {
+		// Generic type alias - resolve body with type params in scope
+		ga := b.genericAliases[decl.Name]
+		savedTypeParamScope := b.typeParamScope
+		b.typeParamScope = make(map[string]*types.TypeParameter)
+		for _, tp := range ga.TypeParams {
+			b.typeParamScope[tp.Name] = tp
+		}
+		ga.Body = b.resolveType(decl.AliasType)
+		b.typeParamScope = savedTypeParamScope
+	} else {
+		alias := b.typeAliases[decl.Name].(*types.Alias)
+		alias.Resolved = b.resolveType(decl.AliasType)
+	}
 }
 
 func (b *Builder) buildEnumDecl(decl *ast.EnumDecl) *EnumDecl {
@@ -458,9 +498,14 @@ func (b *Builder) collectClass(decl *ast.ClassDecl) {
 			if tp.Constraint != nil {
 				constraint = b.resolveType(tp.Constraint)
 			}
+			var defaultType types.Type
+			if tp.Default != nil {
+				defaultType = b.resolveType(tp.Default)
+			}
 			typeParams[i] = &types.TypeParameter{
 				Name:       tp.Name,
 				Constraint: constraint,
+				Default:    defaultType,
 			}
 		}
 		b.genericClasses[decl.Name] = &types.GenericClass{
@@ -578,9 +623,66 @@ func (b *Builder) resolveClass(decl *ast.ClassDecl) {
 }
 
 func (b *Builder) collectInterface(decl *ast.InterfaceDecl) {
-	b.interfaces[decl.Name] = &types.Interface{
-		Name:    decl.Name,
-		Methods: make(map[string]*types.InterfaceMethod),
+	if len(decl.TypeParams) > 0 {
+		// Generic interface
+		typeParams := make([]*types.TypeParameter, len(decl.TypeParams))
+		for i, tp := range decl.TypeParams {
+			var constraint types.Type
+			if tp.Constraint != nil {
+				constraint = b.resolveType(tp.Constraint)
+			}
+			var defaultType types.Type
+			if tp.Default != nil {
+				defaultType = b.resolveType(tp.Default)
+			}
+			typeParams[i] = &types.TypeParameter{
+				Name:       tp.Name,
+				Constraint: constraint,
+				Default:    defaultType,
+			}
+		}
+
+		// Resolve methods with type params in scope
+		savedTypeParamScope := b.typeParamScope
+		b.typeParamScope = make(map[string]*types.TypeParameter)
+		for _, tp := range typeParams {
+			b.typeParamScope[tp.Name] = tp
+		}
+
+		methods := make(map[string]*types.InterfaceMethod)
+		for _, m := range decl.Methods {
+			params := make([]*types.Param, len(m.Params))
+			for j, p := range m.Params {
+				params[j] = &types.Param{
+					Name: p.Name,
+					Type: b.resolveType(p.ParamType),
+				}
+			}
+			var retType types.Type
+			if m.ReturnType != nil {
+				retType = b.resolveType(m.ReturnType)
+			} else {
+				retType = types.VoidType
+			}
+			methods[m.Name] = &types.InterfaceMethod{
+				Name:       m.Name,
+				Params:     params,
+				ReturnType: retType,
+			}
+		}
+
+		b.typeParamScope = savedTypeParamScope
+
+		b.genericInterfaces[decl.Name] = &types.GenericInterface{
+			Name:       decl.Name,
+			TypeParams: typeParams,
+			Methods:    methods,
+		}
+	} else {
+		b.interfaces[decl.Name] = &types.Interface{
+			Name:    decl.Name,
+			Methods: make(map[string]*types.InterfaceMethod),
+		}
 	}
 }
 
@@ -699,6 +801,31 @@ func (b *Builder) resolveInterface(decl *ast.InterfaceDecl) {
 }
 
 func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
+	if len(decl.TypeParams) > 0 {
+		// Generic interface - already collected, just build the typed AST node
+		gi := b.genericInterfaces[decl.Name]
+		methods := make([]*InterfaceMethodDecl, len(decl.Methods))
+		for i, m := range decl.Methods {
+			giMethod := gi.Methods[m.Name]
+			params := make([]*Param, len(m.Params))
+			for j, p := range m.Params {
+				params[j] = &Param{
+					Name: p.Name,
+					Type: giMethod.Params[j].Type,
+				}
+			}
+			methods[i] = &InterfaceMethodDecl{
+				Name:       m.Name,
+				Params:     params,
+				ReturnType: giMethod.ReturnType,
+			}
+		}
+		return &InterfaceDecl{
+			Name:    decl.Name,
+			Methods: methods,
+		}
+	}
+
 	iface := b.interfaces[decl.Name]
 
 	methods := make([]*InterfaceMethodDecl, len(decl.Methods))
@@ -730,6 +857,24 @@ func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
 // Type Resolution
 // ----------------------------------------------------------------------------
 
+// resolveTypeArgsWithDefaults resolves AST type arguments, filling in defaults from type params.
+func (b *Builder) resolveTypeArgsWithDefaults(astTypeArgs []ast.Type, typeParams []*types.TypeParameter) []types.Type {
+	typeArgs := make([]types.Type, len(typeParams))
+	for i, ta := range astTypeArgs {
+		if i < len(typeParams) {
+			typeArgs[i] = b.resolveType(ta)
+		}
+	}
+	// Fill remaining with defaults
+	for i := len(astTypeArgs); i < len(typeParams); i++ {
+		if typeParams[i].Default != nil {
+			typeArgs[i] = typeParams[i].Default
+		} else {
+			typeArgs[i] = types.AnyType
+		}
+	}
+	return typeArgs
+}
 func (b *Builder) resolveType(astType ast.Type) types.Type {
 	if astType == nil {
 		return types.VoidType
@@ -877,6 +1022,26 @@ func (b *Builder) resolveType(astType ast.Type) types.Type {
 				}
 				return instantiated
 			}
+			// Check for generic alias instantiation
+			if genericAlias, ok := b.genericAliases[t.Name]; ok {
+				typeArgs := b.resolveTypeArgsWithDefaults(t.TypeArgs, genericAlias.TypeParams)
+				instantiated, err := genericAlias.Instantiate(typeArgs)
+				if err != nil {
+					b.error(0, 0, "cannot instantiate %s: %s", t.Name, err.Error())
+					return types.AnyType
+				}
+				return instantiated
+			}
+			// Check for generic interface instantiation
+			if genericInterface, ok := b.genericInterfaces[t.Name]; ok {
+				typeArgs := b.resolveTypeArgsWithDefaults(t.TypeArgs, genericInterface.TypeParams)
+				instantiated, err := genericInterface.Instantiate(typeArgs)
+				if err != nil {
+					b.error(0, 0, "cannot instantiate %s: %s", t.Name, err.Error())
+					return types.AnyType
+				}
+				return instantiated
+			}
 		}
 		if alias, ok := b.typeAliases[t.Name]; ok {
 			return alias
@@ -887,6 +1052,34 @@ func (b *Builder) resolveType(astType ast.Type) types.Type {
 		if genericClass, ok := b.genericClasses[t.Name]; ok {
 			// Using generic class without type arguments - return the generic type itself
 			return genericClass
+		}
+		if genericAlias, ok := b.genericAliases[t.Name]; ok {
+			// Check if all type params have defaults
+			if len(t.TypeArgs) == 0 {
+				allHaveDefaults := true
+				for _, tp := range genericAlias.TypeParams {
+					if tp.Default == nil {
+						allHaveDefaults = false
+						break
+					}
+				}
+				if allHaveDefaults {
+					typeArgs := make([]types.Type, len(genericAlias.TypeParams))
+					for i, tp := range genericAlias.TypeParams {
+						typeArgs[i] = tp.Default
+					}
+					instantiated, err := genericAlias.Instantiate(typeArgs)
+					if err != nil {
+						b.error(0, 0, "cannot instantiate %s: %s", t.Name, err.Error())
+						return types.AnyType
+					}
+					return instantiated
+				}
+			}
+			return genericAlias
+		}
+		if genericInterface, ok := b.genericInterfaces[t.Name]; ok {
+			return genericInterface
 		}
 		if iface, ok := b.interfaces[t.Name]; ok {
 			return iface
@@ -2109,20 +2302,39 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 			args[i] = b.buildExpr(arg)
 		}
 
-		// Infer type arguments from actual arguments
-		typeArgs := make([]types.Type, len(gfn.TypeParams))
-		for i, tp := range gfn.TypeParams {
-			// Find the first parameter that uses this type parameter and infer from argument
-			for j, param := range gfn.Params {
-				if typeParam, ok := param.Type.(*types.TypeParameter); ok && typeParam.Name == tp.Name {
-					if j < len(args) {
-						typeArgs[i] = args[j].Type()
-						break
-					}
+		var typeArgs []types.Type
+		if len(expr.TypeArgs) > 0 {
+			// Explicit type arguments provided
+			typeArgs = make([]types.Type, len(gfn.TypeParams))
+			for i := 0; i < len(gfn.TypeParams); i++ {
+				if i < len(expr.TypeArgs) {
+					typeArgs[i] = b.resolveType(expr.TypeArgs[i])
+				} else if gfn.TypeParams[i].Default != nil {
+					typeArgs[i] = gfn.TypeParams[i].Default
+				} else {
+					typeArgs[i] = types.AnyType
 				}
 			}
-			if typeArgs[i] == nil {
-				typeArgs[i] = types.AnyType
+		} else {
+			// Infer type arguments from actual arguments
+			typeArgs = make([]types.Type, len(gfn.TypeParams))
+			for i, tp := range gfn.TypeParams {
+				// Find the first parameter that uses this type parameter and infer from argument
+				for j, param := range gfn.Params {
+					if typeParam, ok := param.Type.(*types.TypeParameter); ok && typeParam.Name == tp.Name {
+						if j < len(args) {
+							typeArgs[i] = args[j].Type()
+							break
+						}
+					}
+				}
+				if typeArgs[i] == nil {
+					if tp.Default != nil {
+						typeArgs[i] = tp.Default
+					} else {
+						typeArgs[i] = types.AnyType
+					}
+				}
 			}
 		}
 
@@ -2138,8 +2350,15 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 			}
 		}
 
+		// Only pass explicit type args (not inferred) for codegen
+		var explicitTypeArgs []types.Type
+		if len(expr.TypeArgs) > 0 {
+			explicitTypeArgs = typeArgs
+		}
+
 		return &CallExpr{
 			Callee:   callee,
+			TypeArgs: explicitTypeArgs,
 			Args:     args,
 			Optional: expr.Optional,
 			ExprType: fn.ReturnType,

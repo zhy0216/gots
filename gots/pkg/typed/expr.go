@@ -108,6 +108,7 @@ func (s *SpreadExpr) Type() types.Type { return s.ExprType }
 // CallExpr represents a function call.
 type CallExpr struct {
 	Callee   Expr
+	TypeArgs []types.Type // Explicit type arguments for generic calls
 	Args     []Expr
 	Optional bool // true for ?.() optional chaining
 	ExprType types.Type

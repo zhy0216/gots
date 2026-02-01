@@ -178,6 +178,7 @@ func (u *UnaryExpr) String() string {
 type CallExpr struct {
 	Token     token.Token // The '(' token
 	Function  Expression  // Identifier or PropertyExpr
+	TypeArgs  []Type       // Explicit type arguments (e.g., <number> in identity<number>(42))
 	Arguments []Expression
 	Optional  bool // true for optional chaining ?.()
 }
@@ -832,9 +833,10 @@ func (c *ClassDecl) String() string {
 
 // TypeAliasDecl represents a type alias declaration.
 type TypeAliasDecl struct {
-	Token     token.Token // The 'type' token
-	Name      string
-	AliasType Type
+	Token      token.Token // The 'type' token
+	Name       string
+	TypeParams []*TypeParam // Generic type parameters (e.g., <T, U>)
+	AliasType  Type
 }
 
 func (t *TypeAliasDecl) statementNode()       {}
@@ -1063,15 +1065,20 @@ func (n *NamedType) String() string {
 type TypeParam struct {
 	Name       string
 	Constraint Type // Optional constraint (e.g., T extends Comparable)
+	Default    Type // Optional default type (e.g., T = string)
 }
 
 func (t *TypeParam) typeNode()            {}
 func (t *TypeParam) TokenLiteral() string { return t.Name }
 func (t *TypeParam) String() string {
+	base := t.Name
 	if t.Constraint != nil {
-		return fmt.Sprintf("%s extends %s", t.Name, t.Constraint.String())
+		base = fmt.Sprintf("%s extends %s", t.Name, t.Constraint.String())
 	}
-	return t.Name
+	if t.Default != nil {
+		base = fmt.Sprintf("%s = %s", base, t.Default.String())
+	}
+	return base
 }
 
 // MapType represents a map type (e.g., Map<string, int>).
@@ -1130,9 +1137,10 @@ func (r *RegExpType) String() string       { return "RegExp" }
 
 // InterfaceDecl represents an interface declaration.
 type InterfaceDecl struct {
-	Token   token.Token
-	Name    string
-	Methods []*InterfaceMethod
+	Token      token.Token
+	Name       string
+	TypeParams []*TypeParam // Generic type parameters (e.g., <T>)
+	Methods    []*InterfaceMethod
 }
 
 func (i *InterfaceDecl) statementNode()       {}

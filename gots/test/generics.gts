@@ -12,7 +12,7 @@ function pair<A, B>(a: A, b: B): A {
     return a
 }
 
-// Test generic functions
+// Test generic functions with inference
 let num: int = identity(42)
 println(num)
 
@@ -21,6 +21,13 @@ println(str)
 
 let result: int = pair(1, "test")
 println(result)
+
+// Test explicit type arguments on function calls
+let x: number = identity<number>(99)
+println(x)
+
+let y: string = identity<string>("explicit")
+println(y)
 
 // Generic class
 class Box<T> {
@@ -48,5 +55,13 @@ println(intBox.get())
 // Use generic class with string
 let strBox: Box<string> = new Box("world")
 println(strBox.get())
+
+// Default type parameters
+function makeValue<T = number>(x: T): T {
+    return x
+}
+
+let defaultVal: int = makeValue(42)
+println(defaultVal)
 
 println("Generics test passed!")

@@ -291,6 +291,29 @@ func (p *Parser) parseExpression(precedence int) ast.Expression {
 	leftExp := prefix()
 
 	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
+		// Try to parse explicit type arguments for generic function calls: f<T>(...)
+		if p.peekTokenIs(token.LT) {
+			if _, isIdent := leftExp.(*ast.Identifier); isIdent {
+				p.nextToken() // move to LT
+				if result := p.tryParseExplicitTypeArgs(leftExp); result != nil {
+					leftExp = result
+					continue
+				}
+				// Failed - LT is already curToken, fall through to normal infix
+				leftExp = p.parseBinaryExpression(leftExp)
+				continue
+			}
+			if _, isProp := leftExp.(*ast.PropertyExpr); isProp {
+				p.nextToken() // move to LT
+				if result := p.tryParseExplicitTypeArgs(leftExp); result != nil {
+					leftExp = result
+					continue
+				}
+				leftExp = p.parseBinaryExpression(leftExp)
+				continue
+			}
+		}
+
 		infix := p.infixParseFns[p.peekToken.Type]
 		if infix == nil {
 			return leftExp
@@ -596,8 +619,90 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) ast.Expression {
 	return expr
 }
 
+// parserState holds the parser state for speculative parsing.
+type parserState struct {
+	curToken  token.Token
+	peekToken token.Token
+	errors    []string
+	lexState  lexer.LexerState
+}
+
+func (p *Parser) saveState() parserState {
+	errorsCopy := make([]string, len(p.errors))
+	copy(errorsCopy, p.errors)
+	return parserState{
+		curToken:  p.curToken,
+		peekToken: p.peekToken,
+		errors:    errorsCopy,
+		lexState:  p.l.SaveState(),
+	}
+}
+
+func (p *Parser) restoreState(state parserState) {
+	p.curToken = state.curToken
+	p.peekToken = state.peekToken
+	p.errors = state.errors
+	p.l.RestoreState(state.lexState)
+}
+
 func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 	call := &ast.CallExpr{Token: p.curToken, Function: function}
+	call.Arguments = p.parseExpressionList(token.RPAREN)
+	return call
+}
+
+// tryParseExplicitTypeArgs attempts to parse explicit type arguments on a function call.
+// Called when we see LT after an identifier-like expression in the expression loop.
+// Returns the call expression with type args, or nil if this is not a generic call.
+func (p *Parser) tryParseExplicitTypeArgs(left ast.Expression) ast.Expression {
+	// Save state for backtracking
+	state := p.saveState()
+
+	// curToken is LT, try to parse type arguments
+	// We're positioned at LT (consumed by expression loop moving to infix)
+	typeArgs := []ast.Type{}
+
+	// Parse first type argument
+	p.nextToken()
+	arg := p.parseType()
+	if arg == nil {
+		p.restoreState(state)
+		return nil
+	}
+	typeArgs = append(typeArgs, arg)
+
+	// Parse remaining type arguments
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // consume comma
+		p.nextToken() // move to next type arg
+		arg := p.parseType()
+		if arg == nil {
+			p.restoreState(state)
+			return nil
+		}
+		typeArgs = append(typeArgs, arg)
+	}
+
+	// Expect >
+	if !p.peekTokenIs(token.GT) {
+		p.restoreState(state)
+		return nil
+	}
+	p.nextToken() // consume >
+
+	// Must be followed by ( to be a generic call
+	if !p.peekTokenIs(token.LPAREN) {
+		p.restoreState(state)
+		return nil
+	}
+	p.nextToken() // consume (
+
+	// This is a generic function call
+	call := &ast.CallExpr{
+		Token:    p.curToken,
+		Function: left,
+		TypeArgs: typeArgs,
+	}
 	call.Arguments = p.parseExpressionList(token.RPAREN)
 	return call
 }
@@ -1328,6 +1433,11 @@ func (p *Parser) parseTypeAlias() *ast.TypeAliasDecl {
 	}
 
 	decl.Name = p.curToken.Literal
+
+	// Check for type parameters <T, U>
+	if p.peekTokenIs(token.LT) {
+		decl.TypeParams = p.parseTypeParameters()
+	}
 
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
@@ -2133,6 +2243,11 @@ func (p *Parser) parseInterfaceDeclaration() *ast.InterfaceDecl {
 	}
 	decl.Name = p.curToken.Literal
 
+	// Check for type parameters <T, U>
+	if p.peekTokenIs(token.LT) {
+		decl.TypeParams = p.parseTypeParameters()
+	}
+
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
@@ -2474,7 +2589,7 @@ func (p *Parser) parseTypeParameters() []*ast.TypeParam {
 	return params
 }
 
-// parseTypeParameter parses a single type parameter (e.g., T or T extends Comparable)
+// parseTypeParameter parses a single type parameter (e.g., T or T extends Comparable or T = string)
 func (p *Parser) parseTypeParameter() *ast.TypeParam {
 	if !p.curTokenIs(token.IDENT) {
 		return nil
@@ -2489,6 +2604,13 @@ func (p *Parser) parseTypeParameter() *ast.TypeParam {
 		p.nextToken() // consume 'extends'
 		p.nextToken() // move to constraint type
 		param.Constraint = p.parseType()
+	}
+
+	// Check for default: T = SomeType
+	if p.peekTokenIs(token.ASSIGN) {
+		p.nextToken() // consume '='
+		p.nextToken() // move to default type
+		param.Default = p.parseType()
 	}
 
 	return param

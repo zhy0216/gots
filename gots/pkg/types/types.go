@@ -1279,6 +1279,7 @@ func classImplementsInterface(class *Class, iface *Interface) bool {
 type TypeParameter struct {
 	Name       string
 	Constraint Type // Optional constraint (e.g., T extends Comparable)
+	Default    Type // Optional default type (e.g., T = string)
 }
 
 func (t *TypeParameter) typeNode() {}
@@ -1353,6 +1354,19 @@ func (g *GenericFunction) Equals(other Type) bool {
 
 // Instantiate creates a concrete function type by substituting type parameters.
 func (g *GenericFunction) Instantiate(typeArgs []Type) (*Function, error) {
+	// Fill in defaults for missing type args
+	if len(typeArgs) < len(g.TypeParams) {
+		filled := make([]Type, len(g.TypeParams))
+		copy(filled, typeArgs)
+		for i := len(typeArgs); i < len(g.TypeParams); i++ {
+			if g.TypeParams[i].Default != nil {
+				filled[i] = g.TypeParams[i].Default
+			} else {
+				return nil, fmt.Errorf("expected %d type arguments, got %d", len(g.TypeParams), len(typeArgs))
+			}
+		}
+		typeArgs = filled
+	}
 	if len(typeArgs) != len(g.TypeParams) {
 		return nil, fmt.Errorf("expected %d type arguments, got %d", len(g.TypeParams), len(typeArgs))
 	}
@@ -1519,6 +1533,45 @@ func substituteType(t Type, subst map[string]Type) Type {
 			Params:     params,
 			ReturnType: substituteType(typ.ReturnType, subst),
 		}
+	case *Union:
+		types := make([]Type, len(typ.Types))
+		for i, t := range typ.Types {
+			types[i] = substituteType(t, subst)
+		}
+		return &Union{Types: types}
+	case *Intersection:
+		types := make([]Type, len(typ.Types))
+		for i, t := range typ.Types {
+			types[i] = substituteType(t, subst)
+		}
+		return &Intersection{Types: types}
+	case *Tuple:
+		elements := make([]Type, len(typ.Elements))
+		for i, e := range typ.Elements {
+			elements[i] = substituteType(e, subst)
+		}
+		var rest Type
+		if typ.Rest != nil {
+			rest = substituteType(typ.Rest, subst)
+		}
+		return &Tuple{Elements: elements, Rest: rest}
+	case *Object:
+		props := make(map[string]*Property)
+		for name, prop := range typ.Properties {
+			props[name] = &Property{
+				Name:     prop.Name,
+				Type:     substituteType(prop.Type, subst),
+				Optional: prop.Optional,
+			}
+		}
+		return &Object{Properties: props}
+	case *Literal:
+		return t
+	case *Alias:
+		return &Alias{
+			Name:     typ.Name,
+			Resolved: substituteType(typ.Resolved, subst),
+		}
 	default:
 		return t
 	}
@@ -1554,4 +1607,118 @@ func WidenLiteral(t Type) Type {
 		return lit.BaseType()
 	}
 	return t
+}
+
+// ----------------------------------------------------------------------------
+// Generic Alias Type
+// ----------------------------------------------------------------------------
+
+// GenericAlias represents a generic type alias (e.g., type Pair<T, U> = { first: T, second: U }).
+type GenericAlias struct {
+	Name       string
+	TypeParams []*TypeParameter
+	Body       Type // The uninstantiated body type (contains TypeParameter references)
+}
+
+func (g *GenericAlias) typeNode() {}
+func (g *GenericAlias) String() string {
+	typeParams := make([]string, len(g.TypeParams))
+	for i, tp := range g.TypeParams {
+		typeParams[i] = tp.String()
+	}
+	return fmt.Sprintf("%s<%s>", g.Name, strings.Join(typeParams, ", "))
+}
+
+func (g *GenericAlias) Equals(other Type) bool {
+	if og, ok := other.(*GenericAlias); ok {
+		return g.Name == og.Name
+	}
+	return false
+}
+
+// Instantiate creates a concrete type by substituting type parameters.
+func (g *GenericAlias) Instantiate(typeArgs []Type) (Type, error) {
+	if len(typeArgs) != len(g.TypeParams) {
+		return nil, fmt.Errorf("expected %d type arguments, got %d", len(g.TypeParams), len(typeArgs))
+	}
+
+	subst := make(map[string]Type)
+	for i, tp := range g.TypeParams {
+		if !tp.SatisfiesConstraint(typeArgs[i]) {
+			return nil, fmt.Errorf("type %s does not satisfy constraint %s", typeArgs[i].String(), tp.Constraint.String())
+		}
+		subst[tp.Name] = typeArgs[i]
+	}
+
+	return substituteType(g.Body, subst), nil
+}
+
+// ----------------------------------------------------------------------------
+// Generic Interface Type
+// ----------------------------------------------------------------------------
+
+// GenericInterface represents a generic interface type (e.g., interface Container<T> { get(): T }).
+type GenericInterface struct {
+	Name       string
+	TypeParams []*TypeParameter
+	Methods    map[string]*InterfaceMethod // Uninstantiated methods (contain TypeParameter references)
+}
+
+func (g *GenericInterface) typeNode() {}
+func (g *GenericInterface) String() string {
+	typeParams := make([]string, len(g.TypeParams))
+	for i, tp := range g.TypeParams {
+		typeParams[i] = tp.String()
+	}
+	return fmt.Sprintf("%s<%s>", g.Name, strings.Join(typeParams, ", "))
+}
+
+func (g *GenericInterface) Equals(other Type) bool {
+	if og, ok := other.(*GenericInterface); ok {
+		return g.Name == og.Name
+	}
+	return false
+}
+
+// Instantiate creates a concrete interface type by substituting type parameters.
+func (g *GenericInterface) Instantiate(typeArgs []Type) (*Interface, error) {
+	if len(typeArgs) != len(g.TypeParams) {
+		return nil, fmt.Errorf("expected %d type arguments, got %d", len(g.TypeParams), len(typeArgs))
+	}
+
+	subst := make(map[string]Type)
+	for i, tp := range g.TypeParams {
+		if !tp.SatisfiesConstraint(typeArgs[i]) {
+			return nil, fmt.Errorf("type %s does not satisfy constraint %s", typeArgs[i].String(), tp.Constraint.String())
+		}
+		subst[tp.Name] = typeArgs[i]
+	}
+
+	// Build instantiated name
+	argNames := make([]string, len(typeArgs))
+	for i, t := range typeArgs {
+		argNames[i] = typeNameForInstantiation(t)
+	}
+	instName := g.Name + "_" + strings.Join(argNames, "_")
+
+	methods := make(map[string]*InterfaceMethod)
+	for name, m := range g.Methods {
+		params := make([]*Param, len(m.Params))
+		for i, p := range m.Params {
+			params[i] = &Param{
+				Name: p.Name,
+				Type: substituteType(p.Type, subst),
+			}
+		}
+		methods[name] = &InterfaceMethod{
+			Name:       m.Name,
+			Params:     params,
+			ReturnType: substituteType(m.ReturnType, subst),
+		}
+	}
+
+	return &Interface{
+		Name:    instName,
+		Methods: methods,
+	}, nil
 }
