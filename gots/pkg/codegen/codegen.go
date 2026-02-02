@@ -1467,9 +1467,23 @@ func (g *Generator) genTypeAlias(alias *typed.TypeAlias) {
 }
 
 // genInterface generates a Go interface type from an InterfaceDecl.
+// Field-only interfaces generate Go structs; method-only or mixed generate Go interfaces.
 func (g *Generator) genInterface(iface *typed.InterfaceDecl) {
 	name := exportName(iface.Name)
 
+	if len(iface.Fields) > 0 && len(iface.Methods) == 0 {
+		// Field-only interface → generate Go struct
+		g.writeln("type %s struct {", name)
+		g.indent++
+		for _, field := range iface.Fields {
+			g.writeln("%s %s", exportName(field.Name), g.goType(field.FieldType))
+		}
+		g.indent--
+		g.writeln("}")
+		return
+	}
+
+	// Method-only or mixed → generate Go interface (existing logic)
 	g.writeln("type %s interface {", name)
 	g.indent++
 
@@ -2726,6 +2740,18 @@ func (g *Generator) genArrayLit(expr *typed.ArrayLit) string {
 }
 
 func (g *Generator) genObjectLit(expr *typed.ObjectLit) string {
+	// Check if target type is a field-bearing interface (generates as struct)
+	if ifaceType, ok := types.Unwrap(expr.ExprType).(*types.Interface); ok {
+		if len(ifaceType.Fields) > 0 && len(ifaceType.Methods) == 0 {
+			name := exportName(ifaceType.Name)
+			props := make([]string, len(expr.Properties))
+			for i, p := range expr.Properties {
+				props[i] = fmt.Sprintf("%s: %s", exportName(p.Key), g.genExpr(p.Value))
+			}
+			return fmt.Sprintf("&%s{%s}", name, strings.Join(props, ", "))
+		}
+	}
+
 	// Generate as a struct literal or map
 	// For now, use anonymous struct
 	if len(expr.Properties) == 0 {
@@ -3704,7 +3730,11 @@ func (g *Generator) goType(t types.Type) string {
 		return "*" + exportName(typ.Name)
 
 	case *types.Interface:
-		return exportName(typ.Name)
+		name := exportName(typ.Name)
+		if len(typ.Fields) > 0 && len(typ.Methods) == 0 {
+			return "*" + name // Struct pointer for field-bearing interfaces
+		}
+		return name
 
 	case *types.TypeParameter:
 		// Type parameters are used directly by name in Go generics
