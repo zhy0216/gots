@@ -137,6 +137,32 @@ func (d *Date) Equals(other Type) bool {
 var DateType = &Date{}
 
 // ----------------------------------------------------------------------------
+// SQLDatabase Type
+// ----------------------------------------------------------------------------
+
+// SQLDatabase represents a database connection (maps to *sql.DB in Go).
+type SQLDatabase struct{}
+
+func (s *SQLDatabase) typeNode()          {}
+func (s *SQLDatabase) String() string     { return "SQLDatabase" }
+func (s *SQLDatabase) Equals(t Type) bool { _, ok := t.(*SQLDatabase); return ok }
+
+// ----------------------------------------------------------------------------
+// SQLTransaction Type
+// ----------------------------------------------------------------------------
+
+// SQLTransaction represents a database transaction (maps to *sql.Tx in Go).
+type SQLTransaction struct{}
+
+func (s *SQLTransaction) typeNode()          {}
+func (s *SQLTransaction) String() string     { return "SQLTransaction" }
+func (s *SQLTransaction) Equals(t Type) bool { _, ok := t.(*SQLTransaction); return ok }
+
+// Singleton instances for SQL types.
+var SQLDatabaseType = &SQLDatabase{}
+var SQLTransactionType = &SQLTransaction{}
+
+// ----------------------------------------------------------------------------
 // BuiltinObject Type (for Math, JSON, etc.)
 // ----------------------------------------------------------------------------
 
