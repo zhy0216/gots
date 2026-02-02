@@ -290,7 +290,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expression {
 
 	leftExp := prefix()
 
-	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
+	for !p.peekTokenIs(token.SEMICOLON) && (precedence < p.peekPrecedence() || p.peekTokenIs(token.TEMPLATE_LITERAL) || p.peekTokenIs(token.TEMPLATE_HEAD)) {
 		// Try to parse explicit type arguments for generic function calls: f<T>(...)
 		if p.peekTokenIs(token.LT) {
 			if _, isIdent := leftExp.(*ast.Identifier); isIdent {
@@ -312,6 +312,19 @@ func (p *Parser) parseExpression(precedence int) ast.Expression {
 				leftExp = p.parseBinaryExpression(leftExp)
 				continue
 			}
+		}
+
+		// Check for tagged template literal: expr`...`
+		if p.peekTokenIs(token.TEMPLATE_LITERAL) || p.peekTokenIs(token.TEMPLATE_HEAD) {
+			p.nextToken()
+			tmpl := p.parseTemplateLiteral().(*ast.TemplateLiteral)
+			leftExp = &ast.TaggedTemplateLiteral{
+				Token:       tmpl.Token,
+				Tag:         leftExp,
+				Parts:       tmpl.Parts,
+				Expressions: tmpl.Expressions,
+			}
+			continue
 		}
 
 		infix := p.infixParseFns[p.peekToken.Type]
@@ -690,21 +703,32 @@ func (p *Parser) tryParseExplicitTypeArgs(left ast.Expression) ast.Expression {
 	}
 	p.nextToken() // consume >
 
-	// Must be followed by ( to be a generic call
-	if !p.peekTokenIs(token.LPAREN) {
-		p.restoreState(state)
-		return nil
+	// Must be followed by ( for a generic call, or template literal for tagged template
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken() // consume (
+		call := &ast.CallExpr{
+			Token:    p.curToken,
+			Function: left,
+			TypeArgs: typeArgs,
+		}
+		call.Arguments = p.parseExpressionList(token.RPAREN)
+		return call
 	}
-	p.nextToken() // consume (
 
-	// This is a generic function call
-	call := &ast.CallExpr{
-		Token:    p.curToken,
-		Function: left,
-		TypeArgs: typeArgs,
+	if p.peekTokenIs(token.TEMPLATE_LITERAL) || p.peekTokenIs(token.TEMPLATE_HEAD) {
+		p.nextToken()
+		tmpl := p.parseTemplateLiteral().(*ast.TemplateLiteral)
+		return &ast.TaggedTemplateLiteral{
+			Token:       tmpl.Token,
+			Tag:         left,
+			TypeArgs:    typeArgs,
+			Parts:       tmpl.Parts,
+			Expressions: tmpl.Expressions,
+		}
 	}
-	call.Arguments = p.parseExpressionList(token.RPAREN)
-	return call
+
+	p.restoreState(state)
+	return nil
 }
 
 func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
