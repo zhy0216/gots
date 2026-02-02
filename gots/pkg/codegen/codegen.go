@@ -272,6 +272,11 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		if e.Callback != nil {
 			g.collectImportsFromExpr(e.Callback)
 		}
+	case *typed.TaggedTemplateLit:
+		for _, ex := range e.Expressions {
+			g.collectImportsFromExpr(ex)
+		}
+		g.collectImportsFromExpr(e.Tag)
 	}
 }
 
@@ -2330,6 +2335,9 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 
 	case *typed.PromiseMethodCall:
 		return g.genPromiseMethodCall(e)
+
+	case *typed.TaggedTemplateLit:
+		return g.genTaggedTemplateLit(e)
 	}
 
 	return "nil"
@@ -3806,6 +3814,31 @@ func (g *Generator) genTemplateLit(e *typed.TemplateLit) string {
 	g.imports["fmt"] = true
 
 	return fmt.Sprintf("fmt.Sprintf(%q, %s)", formatStr, strings.Join(args, ", "))
+}
+
+// genTaggedTemplateLit generates Go code for a tagged template literal.
+// SQL-specific generation will be added in later tasks.
+// For now, fall back to generating the template as a plain string via fmt.Sprintf.
+func (g *Generator) genTaggedTemplateLit(expr *typed.TaggedTemplateLit) string {
+	parts := expr.Parts
+	args := make([]string, len(expr.Expressions))
+	for i, e := range expr.Expressions {
+		args[i] = g.genExpr(e)
+	}
+
+	if len(args) == 0 {
+		return fmt.Sprintf("%q", parts[0])
+	}
+
+	format := ""
+	for i, part := range parts {
+		format += strings.ReplaceAll(part, "%", "%%")
+		if i < len(args) {
+			format += "%v"
+		}
+	}
+	g.imports["fmt"] = true
+	return fmt.Sprintf("fmt.Sprintf(%q, %s)", format, strings.Join(args, ", "))
 }
 
 func (g *Generator) genRegexLit(e *typed.RegexLit) string {

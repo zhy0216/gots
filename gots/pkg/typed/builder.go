@@ -2013,9 +2013,37 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 
 	case *ast.AwaitExpr:
 		return b.buildAwaitExpr(e)
+
+	case *ast.TaggedTemplateLiteral:
+		return b.buildTaggedTemplateLit(e)
 	}
 
 	return &NullLit{ExprType: types.AnyType}
+}
+
+func (b *Builder) buildTaggedTemplateLit(expr *ast.TaggedTemplateLiteral) Expr {
+	tag := b.buildExpr(expr.Tag)
+
+	typeArgs := make([]types.Type, len(expr.TypeArgs))
+	for i, ta := range expr.TypeArgs {
+		typeArgs[i] = b.resolveType(ta)
+	}
+
+	exprs := make([]Expr, len(expr.Expressions))
+	for i, e := range expr.Expressions {
+		exprs[i] = b.buildExpr(e)
+	}
+
+	// Default result type - SQL-specific logic will be added in Task 8
+	resultType := types.AnyType
+
+	return &TaggedTemplateLit{
+		Tag:         tag,
+		TypeArgs:    typeArgs,
+		Parts:       expr.Parts,
+		Expressions: exprs,
+		ExprType:    resultType,
+	}
 }
 
 func (b *Builder) buildIdent(ident *ast.Identifier) Expr {
