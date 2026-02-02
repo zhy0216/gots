@@ -950,3 +950,64 @@ func TestParseOptionalPropertyAccess(t *testing.T) {
 		t.Errorf("prop.Property = %q, want %q", prop.Property, "property")
 	}
 }
+
+func TestInterfaceWithFields(t *testing.T) {
+	input := `interface User {
+		id: int
+		name: string
+		active: boolean
+	}`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+	iface, ok := program.Statements[0].(*ast.InterfaceDecl)
+	if !ok {
+		t.Fatalf("expected InterfaceDecl, got %T", program.Statements[0])
+	}
+	if len(iface.Fields) != 3 {
+		t.Fatalf("expected 3 fields, got %d", len(iface.Fields))
+	}
+	if iface.Fields[0].Name != "id" {
+		t.Errorf("expected field name 'id', got '%s'", iface.Fields[0].Name)
+	}
+	if iface.Fields[1].Name != "name" {
+		t.Errorf("expected field name 'name', got '%s'", iface.Fields[1].Name)
+	}
+	if iface.Fields[2].Name != "active" {
+		t.Errorf("expected field name 'active', got '%s'", iface.Fields[2].Name)
+	}
+	if len(iface.Methods) != 0 {
+		t.Errorf("expected 0 methods, got %d", len(iface.Methods))
+	}
+}
+
+func TestInterfaceWithFieldsAndMethods(t *testing.T) {
+	input := `interface Shape {
+		x: int
+		y: int
+		area(): float
+	}`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	iface := program.Statements[0].(*ast.InterfaceDecl)
+	if len(iface.Fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(iface.Fields))
+	}
+	if len(iface.Methods) != 1 {
+		t.Fatalf("expected 1 method, got %d", len(iface.Methods))
+	}
+	if iface.Fields[0].Name != "x" {
+		t.Errorf("expected field 'x', got '%s'", iface.Fields[0].Name)
+	}
+	if iface.Methods[0].Name != "area" {
+		t.Errorf("expected method 'area', got '%s'", iface.Methods[0].Name)
+	}
+}

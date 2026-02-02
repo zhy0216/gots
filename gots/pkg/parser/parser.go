@@ -2252,12 +2252,41 @@ func (p *Parser) parseInterfaceDeclaration() *ast.InterfaceDecl {
 		return nil
 	}
 
+	decl.Fields = []*ast.InterfaceField{}
 	decl.Methods = []*ast.InterfaceMethod{}
 
 	for !p.peekTokenIs(token.RBRACE) && !p.peekTokenIs(token.EOF) {
-		method := p.parseInterfaceMethod()
-		if method != nil {
-			decl.Methods = append(decl.Methods, method)
+		p.nextToken() // move to member name
+		if p.curToken.Type != token.IDENT {
+			continue
+		}
+
+		name := p.curToken.Literal
+
+		if p.peekTokenIs(token.LPAREN) {
+			// Method
+			p.nextToken() // consume (
+			params := p.parseParameterList()
+			var retType ast.Type
+			if p.peekTokenIs(token.COLON) {
+				p.nextToken()
+				p.nextToken()
+				retType = p.parseType()
+			}
+			decl.Methods = append(decl.Methods, &ast.InterfaceMethod{
+				Name:       name,
+				Params:     params,
+				ReturnType: retType,
+			})
+		} else if p.peekTokenIs(token.COLON) {
+			// Field
+			p.nextToken() // consume :
+			p.nextToken() // move to type
+			fieldType := p.parseType()
+			decl.Fields = append(decl.Fields, &ast.InterfaceField{
+				Name:      name,
+				FieldType: fieldType,
+			})
 		}
 
 		// Handle optional separator (semicolon or newline)
@@ -2271,35 +2300,6 @@ func (p *Parser) parseInterfaceDeclaration() *ast.InterfaceDecl {
 	}
 
 	return decl
-}
-
-// parseInterfaceMethod parses a method signature in an interface
-func (p *Parser) parseInterfaceMethod() *ast.InterfaceMethod {
-	p.nextToken() // move to method name
-
-	if p.curToken.Type != token.IDENT {
-		p.peekError(token.IDENT)
-		return nil
-	}
-
-	method := &ast.InterfaceMethod{
-		Name: p.curToken.Literal,
-	}
-
-	if !p.expectPeek(token.LPAREN) {
-		return nil
-	}
-
-	method.Params = p.parseParameterList()
-
-	// Parse return type
-	if p.peekTokenIs(token.COLON) {
-		p.nextToken() // consume ':'
-		p.nextToken() // move to type
-		method.ReturnType = p.parseType()
-	}
-
-	return method
 }
 
 // parseImportDeclaration parses an import statement.
