@@ -272,6 +272,12 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
 			g.imports["strings"] = true
 		}
+		// Check if this is a SQL database method call
+		if _, ok := objType.(*types.SQLDatabase); ok {
+			g.usesSQL = true
+			g.imports["database/sql"] = true
+			g.imports["context"] = true
+		}
 	case *typed.PromiseMethodCall:
 		g.collectImportsFromExpr(e.Object)
 		if e.Callback != nil {
@@ -3416,6 +3422,20 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 		case "exec":
 			// re.exec(str) => re.FindStringSubmatch(str) (returns nil if no match)
 			return fmt.Sprintf("%s.FindStringSubmatch(%s)", obj, args[0])
+		}
+	}
+
+	// Handle SQL database method calls
+	if _, ok := types.Unwrap(expr.Object.Type()).(*types.SQLDatabase); ok {
+		dbExpr := g.genExpr(expr.Object)
+		switch expr.Method {
+		case "close":
+			return fmt.Sprintf("gts_db_close(%s)", dbExpr)
+		case "begin":
+			if len(expr.Args) == 1 {
+				callbackExpr := g.genExpr(expr.Args[0])
+				return fmt.Sprintf("gts_db_begin(%s, %s)", dbExpr, callbackExpr)
+			}
 		}
 	}
 
