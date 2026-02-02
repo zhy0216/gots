@@ -365,6 +365,12 @@ func (e *Enum) GetMember(name string) *EnumMember {
 // Interface Type
 // ----------------------------------------------------------------------------
 
+// InterfaceField represents a field declaration in an interface.
+type InterfaceField struct {
+	Name string
+	Type Type
+}
+
 // InterfaceMethod represents a method signature in an interface.
 type InterfaceMethod struct {
 	Name       string
@@ -374,8 +380,10 @@ type InterfaceMethod struct {
 
 // Interface represents an interface type.
 type Interface struct {
-	Name    string
-	Methods map[string]*InterfaceMethod
+	Name       string
+	Fields     map[string]*InterfaceField
+	FieldOrder []string // Preserves declaration order (needed for codegen)
+	Methods    map[string]*InterfaceMethod
 }
 
 func (i *Interface) typeNode() {}
@@ -385,7 +393,23 @@ func (i *Interface) String() string {
 
 func (i *Interface) Equals(other Type) bool {
 	if o, ok := other.(*Interface); ok {
-		return i.Name == o.Name
+		if i.Name != o.Name {
+			return false
+		}
+		// Compare fields
+		if len(i.Fields) != len(o.Fields) {
+			return false
+		}
+		for name, field := range i.Fields {
+			otherField, ok := o.Fields[name]
+			if !ok {
+				return false
+			}
+			if !field.Type.Equals(otherField.Type) {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }
@@ -399,6 +423,23 @@ func (i *Interface) HasMethod(name string) bool {
 // GetMethod returns the method with the given name, or nil if not found.
 func (i *Interface) GetMethod(name string) *InterfaceMethod {
 	return i.Methods[name]
+}
+
+// HasField checks if the interface has a field with the given name.
+func (i *Interface) HasField(name string) bool {
+	if i.Fields == nil {
+		return false
+	}
+	_, ok := i.Fields[name]
+	return ok
+}
+
+// GetField returns the field with the given name, or nil if not found.
+func (i *Interface) GetField(name string) *InterfaceField {
+	if i.Fields == nil {
+		return nil
+	}
+	return i.Fields[name]
 }
 
 // ----------------------------------------------------------------------------
@@ -1062,6 +1103,25 @@ func IsAssignableTo(from, to Type) bool {
 			}
 			return true
 		}
+		// Object can be assigned to interface if it has all required fields
+		if toIface, ok := to.(*Interface); ok {
+			// Check that the object has all interface fields with compatible types
+			for fieldName, ifaceField := range toIface.Fields {
+				objProp := fromObj.Properties[fieldName]
+				if objProp == nil {
+					return false
+				}
+				if !IsAssignableTo(objProp.Type, ifaceField.Type) {
+					return false
+				}
+			}
+			// Check that the object has all interface methods (would need function-typed properties)
+			// For now, objects with only fields can satisfy field-only interfaces
+			if len(toIface.Methods) > 0 {
+				return false
+			}
+			return true
+		}
 	}
 
 	// Function type compatibility
@@ -1245,6 +1305,18 @@ func NumericResultType(left, right Type) Type {
 
 // classImplementsInterface checks if a class implements an interface (structural typing).
 func classImplementsInterface(class *Class, iface *Interface) bool {
+	// Check fields
+	for fieldName, ifaceField := range iface.Fields {
+		classField := class.GetField(fieldName)
+		if classField == nil {
+			return false
+		}
+		if !IsAssignableTo(classField.Type, ifaceField.Type) {
+			return false
+		}
+	}
+
+	// Check methods
 	for methodName, ifaceMethod := range iface.Methods {
 		classMethod := class.GetMethod(methodName)
 		if classMethod == nil {
@@ -1661,6 +1733,8 @@ func (g *GenericAlias) Instantiate(typeArgs []Type) (Type, error) {
 type GenericInterface struct {
 	Name       string
 	TypeParams []*TypeParameter
+	Fields     map[string]*InterfaceField  // Uninstantiated fields (may contain TypeParameter references)
+	FieldOrder []string                     // Preserves declaration order
 	Methods    map[string]*InterfaceMethod // Uninstantiated methods (contain TypeParameter references)
 }
 
@@ -1717,8 +1791,21 @@ func (g *GenericInterface) Instantiate(typeArgs []Type) (*Interface, error) {
 		}
 	}
 
+	// Substitute in fields
+	fields := make(map[string]*InterfaceField)
+	fieldOrder := make([]string, len(g.FieldOrder))
+	copy(fieldOrder, g.FieldOrder)
+	for name, f := range g.Fields {
+		fields[name] = &InterfaceField{
+			Name: f.Name,
+			Type: substituteType(f.Type, subst),
+		}
+	}
+
 	return &Interface{
-		Name:    instName,
-		Methods: methods,
+		Name:       instName,
+		Fields:     fields,
+		FieldOrder: fieldOrder,
+		Methods:    methods,
 	}, nil
 }

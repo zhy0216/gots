@@ -642,11 +642,19 @@ func (b *Builder) collectInterface(decl *ast.InterfaceDecl) {
 			}
 		}
 
-		// Resolve methods with type params in scope
+		// Resolve methods and fields with type params in scope
 		savedTypeParamScope := b.typeParamScope
 		b.typeParamScope = make(map[string]*types.TypeParameter)
 		for _, tp := range typeParams {
 			b.typeParamScope[tp.Name] = tp
+		}
+
+		fields := make(map[string]*types.InterfaceField)
+		fieldOrder := []string{}
+		for _, f := range decl.Fields {
+			resolvedType := b.resolveType(f.FieldType)
+			fields[f.Name] = &types.InterfaceField{Name: f.Name, Type: resolvedType}
+			fieldOrder = append(fieldOrder, f.Name)
 		}
 
 		methods := make(map[string]*types.InterfaceMethod)
@@ -676,11 +684,14 @@ func (b *Builder) collectInterface(decl *ast.InterfaceDecl) {
 		b.genericInterfaces[decl.Name] = &types.GenericInterface{
 			Name:       decl.Name,
 			TypeParams: typeParams,
+			Fields:     fields,
+			FieldOrder: fieldOrder,
 			Methods:    methods,
 		}
 	} else {
 		b.interfaces[decl.Name] = &types.Interface{
 			Name:    decl.Name,
+			Fields:  make(map[string]*types.InterfaceField),
 			Methods: make(map[string]*types.InterfaceMethod),
 		}
 	}
@@ -784,6 +795,19 @@ func (b *Builder) buildDecl(decl ast.Statement) Stmt {
 func (b *Builder) resolveInterface(decl *ast.InterfaceDecl) {
 	iface := b.interfaces[decl.Name]
 
+	// Resolve fields
+	fieldOrder := []string{}
+	for _, f := range decl.Fields {
+		resolvedType := b.resolveType(f.FieldType)
+		iface.Fields[f.Name] = &types.InterfaceField{
+			Name: f.Name,
+			Type: resolvedType,
+		}
+		fieldOrder = append(fieldOrder, f.Name)
+	}
+	iface.FieldOrder = fieldOrder
+
+	// Resolve methods
 	for _, m := range decl.Methods {
 		params := make([]*types.Param, len(m.Params))
 		for i, p := range m.Params {
@@ -804,6 +828,16 @@ func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
 	if len(decl.TypeParams) > 0 {
 		// Generic interface - already collected, just build the typed AST node
 		gi := b.genericInterfaces[decl.Name]
+
+		fields := make([]*InterfaceFieldDecl, len(decl.Fields))
+		for i, f := range decl.Fields {
+			giField := gi.Fields[f.Name]
+			fields[i] = &InterfaceFieldDecl{
+				Name:      f.Name,
+				FieldType: giField.Type,
+			}
+		}
+
 		methods := make([]*InterfaceMethodDecl, len(decl.Methods))
 		for i, m := range decl.Methods {
 			giMethod := gi.Methods[m.Name]
@@ -822,11 +856,21 @@ func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
 		}
 		return &InterfaceDecl{
 			Name:    decl.Name,
+			Fields:  fields,
 			Methods: methods,
 		}
 	}
 
 	iface := b.interfaces[decl.Name]
+
+	fields := make([]*InterfaceFieldDecl, len(decl.Fields))
+	for i, f := range decl.Fields {
+		ifaceField := iface.Fields[f.Name]
+		fields[i] = &InterfaceFieldDecl{
+			Name:      f.Name,
+			FieldType: ifaceField.Type,
+		}
+	}
 
 	methods := make([]*InterfaceMethodDecl, len(decl.Methods))
 	for i, m := range decl.Methods {
@@ -849,6 +893,7 @@ func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
 
 	return &InterfaceDecl{
 		Name:    decl.Name,
+		Fields:  fields,
 		Methods: methods,
 	}
 }
@@ -2538,8 +2583,11 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 		}
 
 	case *types.Interface:
-		// Access method on interface type
-		if method, ok := obj.Methods[expr.Property]; ok {
+		// Check fields first
+		if field := obj.GetField(expr.Property); field != nil {
+			resultType = field.Type
+		} else if method, ok := obj.Methods[expr.Property]; ok {
+			// Access method on interface type
 			params := make([]*types.Param, len(method.Params))
 			copy(params, method.Params)
 			resultType = &types.Function{
@@ -2548,7 +2596,7 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 			}
 		} else {
 			b.error(expr.Token.Line, expr.Token.Column,
-				"method %s does not exist on interface %s", expr.Property, obj.Name)
+				"property %s does not exist on interface %s", expr.Property, obj.Name)
 			resultType = types.AnyType
 		}
 

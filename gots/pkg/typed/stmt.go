@@ -217,9 +217,16 @@ type MethodDecl struct {
 	Body       *BlockStmt
 }
 
+// InterfaceFieldDecl represents a field declaration in a typed interface.
+type InterfaceFieldDecl struct {
+	Name      string
+	FieldType types.Type
+}
+
 // InterfaceDecl represents a typed interface declaration.
 type InterfaceDecl struct {
 	Name    string
+	Fields  []*InterfaceFieldDecl
 	Methods []*InterfaceMethodDecl
 }
 
