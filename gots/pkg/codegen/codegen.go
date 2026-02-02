@@ -429,6 +429,12 @@ func (g *Generator) genRuntime() {
 	g.indent--
 	g.writeln("default:")
 	g.indent++
+	g.writeln("rv := reflect.ValueOf(v)")
+	g.writeln("if rv.Kind() == reflect.Slice {")
+	g.indent++
+	g.writeln("return rv.Len()")
+	g.indent--
+	g.writeln("}")
 	g.writeln("return 0")
 	g.indent--
 	g.writeln("}")
@@ -3762,6 +3768,12 @@ func (g *Generator) goType(t types.Type) string {
 		if _, isMap := typ.Inner.(*types.Map); isMap {
 			// Maps in Go can already be nil, no need for pointer
 			return g.goType(typ.Inner)
+		}
+		if iface, ok := typ.Inner.(*types.Interface); ok {
+			if len(iface.Fields) > 0 && len(iface.Methods) == 0 {
+				// Field-bearing interfaces are already *StructName (pointer), can be nil
+				return g.goType(typ.Inner)
+			}
 		}
 		inner := g.goType(typ.Inner)
 		return "*" + inner

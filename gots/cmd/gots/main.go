@@ -147,8 +147,31 @@ func runFile(path string) {
 		os.Exit(1)
 	}
 
+	// If code uses external dependencies (like modernc.org/sqlite), init a go module
+	usesModules := strings.Contains(string(goCode), "modernc.org/sqlite")
+	if usesModules {
+		initCmd := exec.Command("go", "mod", "init", "gts_temp")
+		initCmd.Dir = tmpDir
+		if out, err := initCmd.CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing module: %v\n%s\n", err, out)
+			os.Exit(1)
+		}
+		tidyCmd := exec.Command("go", "mod", "tidy")
+		tidyCmd.Dir = tmpDir
+		if out, err := tidyCmd.CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching dependencies: %v\n%s\n", err, out)
+			os.Exit(1)
+		}
+	}
+
 	// Run the Go code
-	cmd := exec.Command("go", "run", goFile)
+	var cmd *exec.Cmd
+	if usesModules {
+		cmd = exec.Command("go", "run", ".")
+		cmd.Dir = tmpDir
+	} else {
+		cmd = exec.Command("go", "run", goFile)
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
@@ -201,10 +224,32 @@ func buildFile(input, output string, emitGo bool) {
 		os.Exit(1)
 	}
 
+	// If code uses external dependencies (like modernc.org/sqlite), init a go module
+	usesModules := strings.Contains(string(goCode), "modernc.org/sqlite")
+	if usesModules {
+		initCmd := exec.Command("go", "mod", "init", "gts_temp")
+		initCmd.Dir = tmpDir
+		if out, err := initCmd.CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing module: %v\n%s\n", err, out)
+			os.Exit(1)
+		}
+		tidyCmd := exec.Command("go", "mod", "tidy")
+		tidyCmd.Dir = tmpDir
+		if out, err := tidyCmd.CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching dependencies: %v\n%s\n", err, out)
+			os.Exit(1)
+		}
+	}
+
 	// Build the binary
 	absOutput, _ := filepath.Abs(output)
-	cmd := exec.Command("go", "build", "-o", absOutput, goFile)
-	cmd.Dir = tmpDir
+	var cmd *exec.Cmd
+	if usesModules {
+		cmd = exec.Command("go", "build", "-o", absOutput, ".")
+		cmd.Dir = tmpDir
+	} else {
+		cmd = exec.Command("go", "build", "-o", absOutput, goFile)
+	}
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "Build error: %v\n%s\n", err, out)

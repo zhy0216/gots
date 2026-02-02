@@ -114,6 +114,10 @@ func NewBuilder() *Builder {
 	// Date is the built-in Date type
 	b.typeAliases["Date"] = types.DateType
 
+	// SQL types
+	b.typeAliases["DB"] = types.SQLDatabaseType
+	b.typeAliases["Transaction"] = types.SQLTransactionType
+
 	return b
 }
 
@@ -716,7 +720,30 @@ func (b *Builder) collectGoImport(decl *ast.GoImportDecl) {
 	})
 }
 
+// builtinModules maps module paths to their exported names and types.
+var builtinModules = map[string]map[string]types.Type{
+	"sql": {
+		"connect": &types.Function{
+			Params:     []*types.Param{{Name: "path", Type: types.StringType}},
+			ReturnType: types.SQLDatabaseType,
+		},
+	},
+}
+
 func (b *Builder) collectModuleImport(decl *ast.ModuleImportDecl) {
+	// Check if this is a built-in module
+	if builtinExports, ok := builtinModules[decl.Path]; ok {
+		for _, name := range decl.Names {
+			if _, exists := builtinExports[name]; !exists {
+				b.error(decl.Token.Line, decl.Token.Column,
+					"unknown import %s from module %q", name, decl.Path)
+			}
+			// Don't define in scope - let the builtins map handle it
+		}
+		// Don't add to moduleImports - built-in modules are handled by codegen
+		return
+	}
+
 	// For now, register imported names with any type
 	// In a full implementation, we would load the module and get the actual types
 	for _, name := range decl.Names {
