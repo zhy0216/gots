@@ -105,6 +105,21 @@ func (t *TemplateLiteral) String() string {
 	return out.String()
 }
 
+// TaggedTemplateLiteral represents a tagged template literal: tag`...` or tag<T>`...`
+type TaggedTemplateLiteral struct {
+	Token       token.Token
+	Tag         Expression   // The tag expression (e.g., db.sql, html, sql)
+	TypeArgs    []Type       // Optional generic type arguments (e.g., <User[]>)
+	Parts       []string     // Static string parts of the template
+	Expressions []Expression // Interpolated expressions
+}
+
+func (t *TaggedTemplateLiteral) expressionNode()      {}
+func (t *TaggedTemplateLiteral) TokenLiteral() string  { return t.Token.Literal }
+func (t *TaggedTemplateLiteral) String() string {
+	return "TaggedTemplate(" + t.Tag.String() + ")"
+}
+
 // BoolLiteral represents a boolean literal (true/false).
 type BoolLiteral struct {
 	Token token.Token
@@ -1140,17 +1155,21 @@ type InterfaceDecl struct {
 	Token      token.Token
 	Name       string
 	TypeParams []*TypeParam // Generic type parameters (e.g., <T>)
+	Fields     []*InterfaceField
 	Methods    []*InterfaceMethod
 }
 
 func (i *InterfaceDecl) statementNode()       {}
 func (i *InterfaceDecl) TokenLiteral() string { return i.Token.Literal }
 func (i *InterfaceDecl) String() string {
-	var methods []string
-	for _, m := range i.Methods {
-		methods = append(methods, m.String())
+	var members []string
+	for _, f := range i.Fields {
+		members = append(members, f.String())
 	}
-	return fmt.Sprintf("interface %s { %s }", i.Name, strings.Join(methods, "; "))
+	for _, m := range i.Methods {
+		members = append(members, m.String())
+	}
+	return fmt.Sprintf("interface %s { %s }", i.Name, strings.Join(members, "; "))
 }
 
 // InterfaceMethod represents a method signature in an interface.
@@ -1173,6 +1192,16 @@ func (m *InterfaceMethod) String() string {
 		return fmt.Sprintf("%s(%s): %s", m.Name, strings.Join(params, ", "), m.ReturnType.String())
 	}
 	return fmt.Sprintf("%s(%s)", m.Name, strings.Join(params, ", "))
+}
+
+// InterfaceField represents a field declaration in an interface.
+type InterfaceField struct {
+	Name      string
+	FieldType Type
+}
+
+func (f *InterfaceField) String() string {
+	return fmt.Sprintf("%s: %s", f.Name, f.FieldType.String())
 }
 
 // GoImportDecl represents an import from a Go package.

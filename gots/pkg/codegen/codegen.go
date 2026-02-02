@@ -19,6 +19,7 @@ type Generator struct {
 	goImportedNames map[string]string // maps imported name to its package
 	currentRetType  types.Type        // Track return type for type assertions
 	currentClass    *typed.ClassDecl  // Track current class for super() handling
+	usesSQL         bool              // Track SQL usage for runtime inclusion
 }
 
 // Generate produces Go source code from a typed program.
@@ -169,6 +170,10 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 			g.imports["strings"] = true
 		case "parseFloat":
 			g.imports["strconv"] = true
+		case "connect":
+			g.usesSQL = true
+			g.imports["database/sql"] = true
+			g.imports["context"] = true
 		}
 		for _, arg := range e.Args {
 			g.collectImportsFromExpr(arg)
@@ -267,12 +272,41 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 		if prim, ok := objType.(*types.Primitive); ok && prim.Kind == types.KindString {
 			g.imports["strings"] = true
 		}
+		// Check if this is a SQL database method call
+		if _, ok := objType.(*types.SQLDatabase); ok {
+			g.usesSQL = true
+			g.imports["database/sql"] = true
+			g.imports["context"] = true
+		}
 	case *typed.PromiseMethodCall:
 		g.collectImportsFromExpr(e.Object)
 		if e.Callback != nil {
 			g.collectImportsFromExpr(e.Callback)
 		}
+	case *typed.TaggedTemplateLit:
+		for _, ex := range e.Expressions {
+			g.collectImportsFromExpr(ex)
+		}
+		g.collectImportsFromExpr(e.Tag)
+		// Check if SQL tagged template
+		if g.isSQLTaggedTemplate(e) {
+			g.usesSQL = true
+			g.imports["database/sql"] = true
+			g.imports["context"] = true
+		}
 	}
+}
+
+func (g *Generator) isSQLTaggedTemplate(expr *typed.TaggedTemplateLit) bool {
+	if propExpr, ok := expr.Tag.(*typed.PropertyExpr); ok {
+		if propExpr.Property == "sql" {
+			objType := types.Unwrap(propExpr.Object.Type())
+			_, isDB := objType.(*types.SQLDatabase)
+			_, isTx := objType.(*types.SQLTransaction)
+			return isDB || isTx
+		}
+	}
+	return false
 }
 
 func (g *Generator) genProgram(prog *typed.Program) {
@@ -290,6 +324,9 @@ func (g *Generator) genProgram(prog *typed.Program) {
 			g.indent++
 			for pkg := range g.imports {
 				g.writeln("%q", pkg)
+			}
+			if g.usesSQL {
+				g.writeln("_ \"modernc.org/sqlite\"")
 			}
 			g.indent--
 			g.writeln(")")
@@ -392,6 +429,12 @@ func (g *Generator) genRuntime() {
 	g.indent--
 	g.writeln("default:")
 	g.indent++
+	g.writeln("rv := reflect.ValueOf(v)")
+	g.writeln("if rv.Kind() == reflect.Slice {")
+	g.indent++
+	g.writeln("return rv.Len()")
+	g.indent--
+	g.writeln("}")
 	g.writeln("return 0")
 	g.indent--
 	g.writeln("}")
@@ -766,6 +809,11 @@ func (g *Generator) genRuntime() {
 
 	// Promise runtime type and helpers
 	g.genPromiseRuntime()
+
+	// SQL runtime helpers (conditional)
+	if g.usesSQL {
+		g.buf.WriteString(sqlRuntime)
+	}
 }
 
 // genEventLoopRuntime generates the JavaScript-compatible event loop.
@@ -1467,9 +1515,23 @@ func (g *Generator) genTypeAlias(alias *typed.TypeAlias) {
 }
 
 // genInterface generates a Go interface type from an InterfaceDecl.
+// Field-only interfaces generate Go structs; method-only or mixed generate Go interfaces.
 func (g *Generator) genInterface(iface *typed.InterfaceDecl) {
 	name := exportName(iface.Name)
 
+	if len(iface.Fields) > 0 && len(iface.Methods) == 0 {
+		// Field-only interface → generate Go struct
+		g.writeln("type %s struct {", name)
+		g.indent++
+		for _, field := range iface.Fields {
+			g.writeln("%s %s", exportName(field.Name), g.goType(field.FieldType))
+		}
+		g.indent--
+		g.writeln("}")
+		return
+	}
+
+	// Method-only or mixed → generate Go interface (existing logic)
 	g.writeln("type %s interface {", name)
 	g.indent++
 
@@ -2316,6 +2378,9 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 
 	case *typed.PromiseMethodCall:
 		return g.genPromiseMethodCall(e)
+
+	case *typed.TaggedTemplateLit:
+		return g.genTaggedTemplateLit(e)
 	}
 
 	return "nil"
@@ -2576,6 +2641,8 @@ func (g *Generator) genBuiltinCall(expr *typed.BuiltinCall) string {
 		return fmt.Sprintf("gts_clearTimeout(int64(%s))", args[0]) // Same implementation as clearTimeout
 	case "queueMicrotask":
 		return fmt.Sprintf("gts_queueMicrotask(func() { gts_call(%s) })", args[0])
+	case "connect":
+		return fmt.Sprintf("gts_connect(%s)", args[0])
 	default:
 		return fmt.Sprintf("%s(%s)", expr.Name, strings.Join(args, ", "))
 	}
@@ -2726,6 +2793,18 @@ func (g *Generator) genArrayLit(expr *typed.ArrayLit) string {
 }
 
 func (g *Generator) genObjectLit(expr *typed.ObjectLit) string {
+	// Check if target type is a field-bearing interface (generates as struct)
+	if ifaceType, ok := types.Unwrap(expr.ExprType).(*types.Interface); ok {
+		if len(ifaceType.Fields) > 0 && len(ifaceType.Methods) == 0 {
+			name := exportName(ifaceType.Name)
+			props := make([]string, len(expr.Properties))
+			for i, p := range expr.Properties {
+				props[i] = fmt.Sprintf("%s: %s", exportName(p.Key), g.genExpr(p.Value))
+			}
+			return fmt.Sprintf("&%s{%s}", name, strings.Join(props, ", "))
+		}
+	}
+
 	// Generate as a struct literal or map
 	// For now, use anonymous struct
 	if len(expr.Properties) == 0 {
@@ -3352,6 +3431,20 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 		}
 	}
 
+	// Handle SQL database method calls
+	if _, ok := types.Unwrap(expr.Object.Type()).(*types.SQLDatabase); ok {
+		dbExpr := g.genExpr(expr.Object)
+		switch expr.Method {
+		case "close":
+			return fmt.Sprintf("gts_db_close(%s)", dbExpr)
+		case "begin":
+			if len(expr.Args) == 1 {
+				callbackExpr := g.genExpr(expr.Args[0])
+				return fmt.Sprintf("gts_db_begin(%s, %s)", dbExpr, callbackExpr)
+			}
+		}
+	}
+
 	// Fallback for other method calls (class methods, etc.)
 	return fmt.Sprintf("%s.%s(%s)", obj, exportName(expr.Method), strings.Join(args, ", "))
 }
@@ -3676,6 +3769,12 @@ func (g *Generator) goType(t types.Type) string {
 			// Maps in Go can already be nil, no need for pointer
 			return g.goType(typ.Inner)
 		}
+		if iface, ok := typ.Inner.(*types.Interface); ok {
+			if len(iface.Fields) > 0 && len(iface.Methods) == 0 {
+				// Field-bearing interfaces are already *StructName (pointer), can be nil
+				return g.goType(typ.Inner)
+			}
+		}
 		inner := g.goType(typ.Inner)
 		return "*" + inner
 
@@ -3704,7 +3803,11 @@ func (g *Generator) goType(t types.Type) string {
 		return "*" + exportName(typ.Name)
 
 	case *types.Interface:
-		return exportName(typ.Name)
+		name := exportName(typ.Name)
+		if len(typ.Fields) > 0 && len(typ.Methods) == 0 {
+			return "*" + name // Struct pointer for field-bearing interfaces
+		}
+		return name
 
 	case *types.TypeParameter:
 		// Type parameters are used directly by name in Go generics
@@ -3725,6 +3828,12 @@ func (g *Generator) goType(t types.Type) string {
 	case *types.GenericInterface:
 		// Uninstantiated generic interface - use interface{}
 		return "interface{}"
+
+	case *types.SQLDatabase:
+		return "*GTS_DB"
+
+	case *types.SQLTransaction:
+		return "*GTS_Tx"
 	}
 
 	return "interface{}"
@@ -3776,6 +3885,36 @@ func (g *Generator) genTemplateLit(e *typed.TemplateLit) string {
 	g.imports["fmt"] = true
 
 	return fmt.Sprintf("fmt.Sprintf(%q, %s)", formatStr, strings.Join(args, ", "))
+}
+
+// genTaggedTemplateLit generates Go code for a tagged template literal.
+// SQL tagged templates (db.sql`...`) generate proper SQL query code.
+// Non-SQL tagged templates fall back to fmt.Sprintf.
+func (g *Generator) genTaggedTemplateLit(expr *typed.TaggedTemplateLit) string {
+	if g.isSQLTaggedTemplate(expr) {
+		return g.genSQLTaggedTemplate(expr)
+	}
+
+	// Non-SQL fallback
+	parts := expr.Parts
+	args := make([]string, len(expr.Expressions))
+	for i, e := range expr.Expressions {
+		args[i] = g.genExpr(e)
+	}
+
+	if len(args) == 0 {
+		return fmt.Sprintf("%q", parts[0])
+	}
+
+	format := ""
+	for i, part := range parts {
+		format += strings.ReplaceAll(part, "%", "%%")
+		if i < len(args) {
+			format += "%v"
+		}
+	}
+	g.imports["fmt"] = true
+	return fmt.Sprintf("fmt.Sprintf(%q, %s)", format, strings.Join(args, ", "))
 }
 
 func (g *Generator) genRegexLit(e *typed.RegexLit) string {

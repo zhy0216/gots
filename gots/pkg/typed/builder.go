@@ -114,6 +114,10 @@ func NewBuilder() *Builder {
 	// Date is the built-in Date type
 	b.typeAliases["Date"] = types.DateType
 
+	// SQL types
+	b.typeAliases["DB"] = types.SQLDatabaseType
+	b.typeAliases["Transaction"] = types.SQLTransactionType
+
 	return b
 }
 
@@ -642,11 +646,19 @@ func (b *Builder) collectInterface(decl *ast.InterfaceDecl) {
 			}
 		}
 
-		// Resolve methods with type params in scope
+		// Resolve methods and fields with type params in scope
 		savedTypeParamScope := b.typeParamScope
 		b.typeParamScope = make(map[string]*types.TypeParameter)
 		for _, tp := range typeParams {
 			b.typeParamScope[tp.Name] = tp
+		}
+
+		fields := make(map[string]*types.InterfaceField)
+		fieldOrder := []string{}
+		for _, f := range decl.Fields {
+			resolvedType := b.resolveType(f.FieldType)
+			fields[f.Name] = &types.InterfaceField{Name: f.Name, Type: resolvedType}
+			fieldOrder = append(fieldOrder, f.Name)
 		}
 
 		methods := make(map[string]*types.InterfaceMethod)
@@ -676,11 +688,14 @@ func (b *Builder) collectInterface(decl *ast.InterfaceDecl) {
 		b.genericInterfaces[decl.Name] = &types.GenericInterface{
 			Name:       decl.Name,
 			TypeParams: typeParams,
+			Fields:     fields,
+			FieldOrder: fieldOrder,
 			Methods:    methods,
 		}
 	} else {
 		b.interfaces[decl.Name] = &types.Interface{
 			Name:    decl.Name,
+			Fields:  make(map[string]*types.InterfaceField),
 			Methods: make(map[string]*types.InterfaceMethod),
 		}
 	}
@@ -705,7 +720,30 @@ func (b *Builder) collectGoImport(decl *ast.GoImportDecl) {
 	})
 }
 
+// builtinModules maps module paths to their exported names and types.
+var builtinModules = map[string]map[string]types.Type{
+	"sql": {
+		"connect": &types.Function{
+			Params:     []*types.Param{{Name: "path", Type: types.StringType}},
+			ReturnType: types.SQLDatabaseType,
+		},
+	},
+}
+
 func (b *Builder) collectModuleImport(decl *ast.ModuleImportDecl) {
+	// Check if this is a built-in module
+	if builtinExports, ok := builtinModules[decl.Path]; ok {
+		for _, name := range decl.Names {
+			if _, exists := builtinExports[name]; !exists {
+				b.error(decl.Token.Line, decl.Token.Column,
+					"unknown import %s from module %q", name, decl.Path)
+			}
+			// Don't define in scope - let the builtins map handle it
+		}
+		// Don't add to moduleImports - built-in modules are handled by codegen
+		return
+	}
+
 	// For now, register imported names with any type
 	// In a full implementation, we would load the module and get the actual types
 	for _, name := range decl.Names {
@@ -784,6 +822,19 @@ func (b *Builder) buildDecl(decl ast.Statement) Stmt {
 func (b *Builder) resolveInterface(decl *ast.InterfaceDecl) {
 	iface := b.interfaces[decl.Name]
 
+	// Resolve fields
+	fieldOrder := []string{}
+	for _, f := range decl.Fields {
+		resolvedType := b.resolveType(f.FieldType)
+		iface.Fields[f.Name] = &types.InterfaceField{
+			Name: f.Name,
+			Type: resolvedType,
+		}
+		fieldOrder = append(fieldOrder, f.Name)
+	}
+	iface.FieldOrder = fieldOrder
+
+	// Resolve methods
 	for _, m := range decl.Methods {
 		params := make([]*types.Param, len(m.Params))
 		for i, p := range m.Params {
@@ -804,6 +855,16 @@ func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
 	if len(decl.TypeParams) > 0 {
 		// Generic interface - already collected, just build the typed AST node
 		gi := b.genericInterfaces[decl.Name]
+
+		fields := make([]*InterfaceFieldDecl, len(decl.Fields))
+		for i, f := range decl.Fields {
+			giField := gi.Fields[f.Name]
+			fields[i] = &InterfaceFieldDecl{
+				Name:      f.Name,
+				FieldType: giField.Type,
+			}
+		}
+
 		methods := make([]*InterfaceMethodDecl, len(decl.Methods))
 		for i, m := range decl.Methods {
 			giMethod := gi.Methods[m.Name]
@@ -822,11 +883,21 @@ func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
 		}
 		return &InterfaceDecl{
 			Name:    decl.Name,
+			Fields:  fields,
 			Methods: methods,
 		}
 	}
 
 	iface := b.interfaces[decl.Name]
+
+	fields := make([]*InterfaceFieldDecl, len(decl.Fields))
+	for i, f := range decl.Fields {
+		ifaceField := iface.Fields[f.Name]
+		fields[i] = &InterfaceFieldDecl{
+			Name:      f.Name,
+			FieldType: ifaceField.Type,
+		}
+	}
 
 	methods := make([]*InterfaceMethodDecl, len(decl.Methods))
 	for i, m := range decl.Methods {
@@ -849,6 +920,7 @@ func (b *Builder) buildInterfaceDecl(decl *ast.InterfaceDecl) *InterfaceDecl {
 
 	return &InterfaceDecl{
 		Name:    decl.Name,
+		Fields:  fields,
 		Methods: methods,
 	}
 }
@@ -1968,9 +2040,68 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 
 	case *ast.AwaitExpr:
 		return b.buildAwaitExpr(e)
+
+	case *ast.TaggedTemplateLiteral:
+		return b.buildTaggedTemplateLit(e)
 	}
 
 	return &NullLit{ExprType: types.AnyType}
+}
+
+func (b *Builder) buildTaggedTemplateLit(expr *ast.TaggedTemplateLiteral) Expr {
+	tag := b.buildExpr(expr.Tag)
+
+	typeArgs := make([]types.Type, len(expr.TypeArgs))
+	for i, ta := range expr.TypeArgs {
+		typeArgs[i] = b.resolveType(ta)
+	}
+
+	exprs := make([]Expr, len(expr.Expressions))
+	for i, e := range expr.Expressions {
+		exprs[i] = b.buildExpr(e)
+	}
+
+	var resultType types.Type = types.AnyType
+
+	// Check if this is a SQL tagged template
+	if propExpr, ok := tag.(*PropertyExpr); ok && propExpr.Property == "sql" {
+		objType := types.Unwrap(propExpr.Object.Type())
+		_, isDB := objType.(*types.SQLDatabase)
+		_, isTx := objType.(*types.SQLTransaction)
+		if isDB || isTx {
+			resultType = b.resolveSQLReturnType(typeArgs)
+		}
+	}
+
+	return &TaggedTemplateLit{
+		Tag:         tag,
+		TypeArgs:    typeArgs,
+		Parts:       expr.Parts,
+		Expressions: exprs,
+		ExprType:    resultType,
+	}
+}
+
+func (b *Builder) resolveSQLReturnType(typeArgs []types.Type) types.Type {
+	if len(typeArgs) == 0 {
+		// No type param -> exec, return ExecResult object
+		return &types.Object{
+			Properties: map[string]*types.Property{
+				"rowsAffected": {Name: "rowsAffected", Type: types.IntType},
+				"lastInsertId": {Name: "lastInsertId", Type: types.IntType},
+			},
+		}
+	}
+
+	ta := typeArgs[0]
+
+	// If T[] -> return T[] (query returning multiple rows)
+	if _, ok := ta.(*types.Array); ok {
+		return ta
+	}
+
+	// If T -> return T | null (single row query)
+	return &types.Nullable{Inner: ta}
 }
 
 func (b *Builder) buildIdent(ident *ast.Identifier) Expr {
@@ -2169,6 +2300,11 @@ var builtins = map[string]types.Type{
 	"clearTimeout":   &types.Function{Params: []*types.Param{{Name: "id", Type: types.IntType}}, ReturnType: types.VoidType},
 	"clearInterval":  &types.Function{Params: []*types.Param{{Name: "id", Type: types.IntType}}, ReturnType: types.VoidType},
 	"queueMicrotask": &types.Function{Params: []*types.Param{{Name: "callback", Type: types.AnyType}}, ReturnType: types.VoidType},
+	// SQL database
+	"connect": &types.Function{
+		Params:     []*types.Param{{Name: "path", Type: types.StringType}},
+		ReturnType: types.SQLDatabaseType,
+	},
 }
 
 func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
@@ -2275,6 +2411,25 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		// Handle built-in object method calls (Math, JSON, etc.)
 		if builtinType, ok := objType.(*types.BuiltinObject); ok {
 			return b.buildBuiltinMethodCall(builtinType.Name, propExpr.Property, expr)
+		}
+		// Handle SQLDatabase method calls (close, begin)
+		if _, ok := objType.(*types.SQLDatabase); ok {
+			args := make([]Expr, len(expr.Arguments))
+			for i, a := range expr.Arguments {
+				args[i] = b.buildExpr(a)
+			}
+			propObj := b.buildExpr(propExpr.Object)
+			propTyped := b.buildPropertyExpr(propExpr)
+			retType := types.Unwrap(propTyped.Type())
+			if fn, ok := retType.(*types.Function); ok {
+				retType = fn.ReturnType
+			}
+			return &MethodCallExpr{
+				Object:   propObj,
+				Method:   propExpr.Property,
+				Args:     args,
+				ExprType: retType,
+			}
 		}
 	}
 
@@ -2538,8 +2693,11 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 		}
 
 	case *types.Interface:
-		// Access method on interface type
-		if method, ok := obj.Methods[expr.Property]; ok {
+		// Check fields first
+		if field := obj.GetField(expr.Property); field != nil {
+			resultType = field.Type
+		} else if method, ok := obj.Methods[expr.Property]; ok {
+			// Access method on interface type
 			params := make([]*types.Param, len(method.Params))
 			copy(params, method.Params)
 			resultType = &types.Function{
@@ -2548,7 +2706,7 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 			}
 		} else {
 			b.error(expr.Token.Line, expr.Token.Column,
-				"method %s does not exist on interface %s", expr.Property, obj.Name)
+				"property %s does not exist on interface %s", expr.Property, obj.Name)
 			resultType = types.AnyType
 		}
 
@@ -2601,6 +2759,56 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"property %s does not exist on %s", expr.Property, obj.Name)
 			resultType = types.AnyType
+		}
+
+	case *types.SQLDatabase:
+		switch expr.Property {
+		case "sql":
+			// sql is accessed as a tagged template tag - type resolved by buildTaggedTemplateLit
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				ExprType: types.AnyType,
+				Optional: expr.Optional,
+			}
+		case "close":
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				ExprType: &types.Function{Params: []*types.Param{}, ReturnType: types.VoidType},
+				Optional: expr.Optional,
+			}
+		case "begin":
+			txCallbackType := &types.Function{
+				Params:     []*types.Param{{Name: "tx", Type: types.SQLTransactionType}},
+				ReturnType: types.VoidType,
+			}
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				ExprType: &types.Function{
+					Params:     []*types.Param{{Name: "callback", Type: txCallbackType}},
+					ReturnType: types.VoidType,
+				},
+				Optional: expr.Optional,
+			}
+		default:
+			b.error(expr.Token.Line, expr.Token.Column, "SQLDatabase has no property '%s'", expr.Property)
+			return &PropertyExpr{Object: object, Property: expr.Property, ExprType: types.AnyType, Optional: expr.Optional}
+		}
+
+	case *types.SQLTransaction:
+		switch expr.Property {
+		case "sql":
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				ExprType: types.AnyType,
+				Optional: expr.Optional,
+			}
+		default:
+			b.error(expr.Token.Line, expr.Token.Column, "SQLTransaction has no property '%s'", expr.Property)
+			return &PropertyExpr{Object: object, Property: expr.Property, ExprType: types.AnyType, Optional: expr.Optional}
 		}
 
 	default:

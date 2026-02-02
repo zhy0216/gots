@@ -39,6 +39,18 @@ type TemplateLit struct {
 func (t *TemplateLit) exprNode()        {}
 func (t *TemplateLit) Type() types.Type { return t.ExprType }
 
+// TaggedTemplateLit represents a typed tagged template literal.
+type TaggedTemplateLit struct {
+	Tag         Expr
+	TypeArgs    []types.Type
+	Parts       []string
+	Expressions []Expr
+	ExprType    types.Type
+}
+
+func (t *TaggedTemplateLit) exprNode()        {}
+func (t *TaggedTemplateLit) Type() types.Type { return t.ExprType }
+
 // BoolLit represents a boolean literal.
 type BoolLit struct {
 	Value    bool

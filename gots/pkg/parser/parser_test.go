@@ -950,3 +950,166 @@ func TestParseOptionalPropertyAccess(t *testing.T) {
 		t.Errorf("prop.Property = %q, want %q", prop.Property, "property")
 	}
 }
+
+func TestInterfaceWithFields(t *testing.T) {
+	input := `interface User {
+		id: int
+		name: string
+		active: boolean
+	}`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+	iface, ok := program.Statements[0].(*ast.InterfaceDecl)
+	if !ok {
+		t.Fatalf("expected InterfaceDecl, got %T", program.Statements[0])
+	}
+	if len(iface.Fields) != 3 {
+		t.Fatalf("expected 3 fields, got %d", len(iface.Fields))
+	}
+	if iface.Fields[0].Name != "id" {
+		t.Errorf("expected field name 'id', got '%s'", iface.Fields[0].Name)
+	}
+	if iface.Fields[1].Name != "name" {
+		t.Errorf("expected field name 'name', got '%s'", iface.Fields[1].Name)
+	}
+	if iface.Fields[2].Name != "active" {
+		t.Errorf("expected field name 'active', got '%s'", iface.Fields[2].Name)
+	}
+	if len(iface.Methods) != 0 {
+		t.Errorf("expected 0 methods, got %d", len(iface.Methods))
+	}
+}
+
+func TestInterfaceWithFieldsAndMethods(t *testing.T) {
+	input := `interface Shape {
+		x: int
+		y: int
+		area(): float
+	}`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	iface := program.Statements[0].(*ast.InterfaceDecl)
+	if len(iface.Fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(iface.Fields))
+	}
+	if len(iface.Methods) != 1 {
+		t.Fatalf("expected 1 method, got %d", len(iface.Methods))
+	}
+	if iface.Fields[0].Name != "x" {
+		t.Errorf("expected field 'x', got '%s'", iface.Fields[0].Name)
+	}
+	if iface.Methods[0].Name != "area" {
+		t.Errorf("expected method 'area', got '%s'", iface.Methods[0].Name)
+	}
+}
+
+func TestTaggedTemplateLiteral(t *testing.T) {
+	input := "html`<h1>Hello</h1>`"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+	stmt, ok := program.Statements[0].(*ast.ExprStmt)
+	if !ok {
+		t.Fatalf("expected ExprStmt, got %T", program.Statements[0])
+	}
+	tagged, ok := stmt.Expr.(*ast.TaggedTemplateLiteral)
+	if !ok {
+		t.Fatalf("expected TaggedTemplateLiteral, got %T", stmt.Expr)
+	}
+	tagIdent, ok := tagged.Tag.(*ast.Identifier)
+	if !ok {
+		t.Fatalf("expected Identifier tag, got %T", tagged.Tag)
+	}
+	if tagIdent.Name != "html" {
+		t.Errorf("expected tag 'html', got '%s'", tagIdent.Name)
+	}
+	if len(tagged.Parts) != 1 || tagged.Parts[0] != "<h1>Hello</h1>" {
+		t.Errorf("unexpected parts: %v", tagged.Parts)
+	}
+	if len(tagged.Expressions) != 0 {
+		t.Errorf("expected 0 expressions, got %d", len(tagged.Expressions))
+	}
+}
+
+func TestTaggedTemplateLiteralWithInterpolation(t *testing.T) {
+	input := "sql`SELECT * FROM users WHERE id = ${id}`"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExprStmt)
+	tagged, ok := stmt.Expr.(*ast.TaggedTemplateLiteral)
+	if !ok {
+		t.Fatalf("expected TaggedTemplateLiteral, got %T", stmt.Expr)
+	}
+	if len(tagged.Parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(tagged.Parts))
+	}
+	if tagged.Parts[0] != "SELECT * FROM users WHERE id = " {
+		t.Errorf("unexpected first part: %q", tagged.Parts[0])
+	}
+	if len(tagged.Expressions) != 1 {
+		t.Fatalf("expected 1 expression, got %d", len(tagged.Expressions))
+	}
+}
+
+func TestTaggedTemplateLiteralWithTypeArgs(t *testing.T) {
+	input := "db.sql<User>`SELECT * FROM users`"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExprStmt)
+	tagged, ok := stmt.Expr.(*ast.TaggedTemplateLiteral)
+	if !ok {
+		t.Fatalf("expected TaggedTemplateLiteral, got %T", stmt.Expr)
+	}
+	if len(tagged.TypeArgs) != 1 {
+		t.Fatalf("expected 1 type arg, got %d", len(tagged.TypeArgs))
+	}
+	// Tag should be db.sql (PropertyExpr)
+	prop, ok := tagged.Tag.(*ast.PropertyExpr)
+	if !ok {
+		t.Fatalf("expected PropertyExpr tag, got %T", tagged.Tag)
+	}
+	if prop.Property != "sql" {
+		t.Errorf("expected property 'sql', got '%s'", prop.Property)
+	}
+}
+
+func TestTaggedTemplateLiteralArrayTypeArg(t *testing.T) {
+	input := "db.sql<User[]>`SELECT * FROM users`"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExprStmt)
+	tagged, ok := stmt.Expr.(*ast.TaggedTemplateLiteral)
+	if !ok {
+		t.Fatalf("expected TaggedTemplateLiteral, got %T", stmt.Expr)
+	}
+	if len(tagged.TypeArgs) != 1 {
+		t.Fatalf("expected 1 type arg, got %d", len(tagged.TypeArgs))
+	}
+	_, isArray := tagged.TypeArgs[0].(*ast.ArrayType)
+	if !isArray {
+		t.Fatalf("expected ArrayType type arg, got %T", tagged.TypeArgs[0])
+	}
+}
