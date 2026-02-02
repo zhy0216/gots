@@ -19,6 +19,7 @@ type Generator struct {
 	goImportedNames map[string]string // maps imported name to its package
 	currentRetType  types.Type        // Track return type for type assertions
 	currentClass    *typed.ClassDecl  // Track current class for super() handling
+	usesSQL         bool              // Track SQL usage for runtime inclusion
 }
 
 // Generate produces Go source code from a typed program.
@@ -169,6 +170,10 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 			g.imports["strings"] = true
 		case "parseFloat":
 			g.imports["strconv"] = true
+		case "connect":
+			g.usesSQL = true
+			g.imports["database/sql"] = true
+			g.imports["context"] = true
 		}
 		for _, arg := range e.Args {
 			g.collectImportsFromExpr(arg)
@@ -277,7 +282,25 @@ func (g *Generator) collectImportsFromExpr(expr typed.Expr) {
 			g.collectImportsFromExpr(ex)
 		}
 		g.collectImportsFromExpr(e.Tag)
+		// Check if SQL tagged template
+		if g.isSQLTaggedTemplate(e) {
+			g.usesSQL = true
+			g.imports["database/sql"] = true
+			g.imports["context"] = true
+		}
 	}
+}
+
+func (g *Generator) isSQLTaggedTemplate(expr *typed.TaggedTemplateLit) bool {
+	if propExpr, ok := expr.Tag.(*typed.PropertyExpr); ok {
+		if propExpr.Property == "sql" {
+			objType := types.Unwrap(propExpr.Object.Type())
+			_, isDB := objType.(*types.SQLDatabase)
+			_, isTx := objType.(*types.SQLTransaction)
+			return isDB || isTx
+		}
+	}
+	return false
 }
 
 func (g *Generator) genProgram(prog *typed.Program) {
@@ -295,6 +318,9 @@ func (g *Generator) genProgram(prog *typed.Program) {
 			g.indent++
 			for pkg := range g.imports {
 				g.writeln("%q", pkg)
+			}
+			if g.usesSQL {
+				g.writeln("_ \"modernc.org/sqlite\"")
 			}
 			g.indent--
 			g.writeln(")")
@@ -771,6 +797,11 @@ func (g *Generator) genRuntime() {
 
 	// Promise runtime type and helpers
 	g.genPromiseRuntime()
+
+	// SQL runtime helpers (conditional)
+	if g.usesSQL {
+		g.buf.WriteString(sqlRuntime)
+	}
 }
 
 // genEventLoopRuntime generates the JavaScript-compatible event loop.
@@ -2598,6 +2629,8 @@ func (g *Generator) genBuiltinCall(expr *typed.BuiltinCall) string {
 		return fmt.Sprintf("gts_clearTimeout(int64(%s))", args[0]) // Same implementation as clearTimeout
 	case "queueMicrotask":
 		return fmt.Sprintf("gts_queueMicrotask(func() { gts_call(%s) })", args[0])
+	case "connect":
+		return fmt.Sprintf("gts_connect(%s)", args[0])
 	default:
 		return fmt.Sprintf("%s(%s)", expr.Name, strings.Join(args, ", "))
 	}
@@ -3763,6 +3796,12 @@ func (g *Generator) goType(t types.Type) string {
 	case *types.GenericInterface:
 		// Uninstantiated generic interface - use interface{}
 		return "interface{}"
+
+	case *types.SQLDatabase:
+		return "*GTS_DB"
+
+	case *types.SQLTransaction:
+		return "*GTS_Tx"
 	}
 
 	return "interface{}"
