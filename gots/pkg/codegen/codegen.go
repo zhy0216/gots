@@ -3856,9 +3856,14 @@ func (g *Generator) genTemplateLit(e *typed.TemplateLit) string {
 }
 
 // genTaggedTemplateLit generates Go code for a tagged template literal.
-// SQL-specific generation will be added in later tasks.
-// For now, fall back to generating the template as a plain string via fmt.Sprintf.
+// SQL tagged templates (db.sql`...`) generate proper SQL query code.
+// Non-SQL tagged templates fall back to fmt.Sprintf.
 func (g *Generator) genTaggedTemplateLit(expr *typed.TaggedTemplateLit) string {
+	if g.isSQLTaggedTemplate(expr) {
+		return g.genSQLTaggedTemplate(expr)
+	}
+
+	// Non-SQL fallback
 	parts := expr.Parts
 	args := make([]string, len(expr.Expressions))
 	for i, e := range expr.Expressions {
