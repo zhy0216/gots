@@ -2034,8 +2034,17 @@ func (b *Builder) buildTaggedTemplateLit(expr *ast.TaggedTemplateLiteral) Expr {
 		exprs[i] = b.buildExpr(e)
 	}
 
-	// Default result type - SQL-specific logic will be added in Task 8
-	resultType := types.AnyType
+	var resultType types.Type = types.AnyType
+
+	// Check if this is a SQL tagged template
+	if propExpr, ok := tag.(*PropertyExpr); ok && propExpr.Property == "sql" {
+		objType := types.Unwrap(propExpr.Object.Type())
+		_, isDB := objType.(*types.SQLDatabase)
+		_, isTx := objType.(*types.SQLTransaction)
+		if isDB || isTx {
+			resultType = b.resolveSQLReturnType(typeArgs)
+		}
+	}
 
 	return &TaggedTemplateLit{
 		Tag:         tag,
@@ -2044,6 +2053,28 @@ func (b *Builder) buildTaggedTemplateLit(expr *ast.TaggedTemplateLiteral) Expr {
 		Expressions: exprs,
 		ExprType:    resultType,
 	}
+}
+
+func (b *Builder) resolveSQLReturnType(typeArgs []types.Type) types.Type {
+	if len(typeArgs) == 0 {
+		// No type param -> exec, return ExecResult object
+		return &types.Object{
+			Properties: map[string]*types.Property{
+				"rowsAffected": {Name: "rowsAffected", Type: types.IntType},
+				"lastInsertId": {Name: "lastInsertId", Type: types.IntType},
+			},
+		}
+	}
+
+	ta := typeArgs[0]
+
+	// If T[] -> return T[] (query returning multiple rows)
+	if _, ok := ta.(*types.Array); ok {
+		return ta
+	}
+
+	// If T -> return T | null (single row query)
+	return &types.Nullable{Inner: ta}
 }
 
 func (b *Builder) buildIdent(ident *ast.Identifier) Expr {
@@ -2242,6 +2273,11 @@ var builtins = map[string]types.Type{
 	"clearTimeout":   &types.Function{Params: []*types.Param{{Name: "id", Type: types.IntType}}, ReturnType: types.VoidType},
 	"clearInterval":  &types.Function{Params: []*types.Param{{Name: "id", Type: types.IntType}}, ReturnType: types.VoidType},
 	"queueMicrotask": &types.Function{Params: []*types.Param{{Name: "callback", Type: types.AnyType}}, ReturnType: types.VoidType},
+	// SQL database
+	"connect": &types.Function{
+		Params:     []*types.Param{{Name: "path", Type: types.StringType}},
+		ReturnType: types.SQLDatabaseType,
+	},
 }
 
 func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
@@ -2348,6 +2384,25 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 		// Handle built-in object method calls (Math, JSON, etc.)
 		if builtinType, ok := objType.(*types.BuiltinObject); ok {
 			return b.buildBuiltinMethodCall(builtinType.Name, propExpr.Property, expr)
+		}
+		// Handle SQLDatabase method calls (close, begin)
+		if _, ok := objType.(*types.SQLDatabase); ok {
+			args := make([]Expr, len(expr.Arguments))
+			for i, a := range expr.Arguments {
+				args[i] = b.buildExpr(a)
+			}
+			propObj := b.buildExpr(propExpr.Object)
+			propTyped := b.buildPropertyExpr(propExpr)
+			retType := types.Unwrap(propTyped.Type())
+			if fn, ok := retType.(*types.Function); ok {
+				retType = fn.ReturnType
+			}
+			return &MethodCallExpr{
+				Object:   propObj,
+				Method:   propExpr.Property,
+				Args:     args,
+				ExprType: retType,
+			}
 		}
 	}
 
@@ -2677,6 +2732,56 @@ func (b *Builder) buildPropertyExpr(expr *ast.PropertyExpr) Expr {
 			b.error(expr.Token.Line, expr.Token.Column,
 				"property %s does not exist on %s", expr.Property, obj.Name)
 			resultType = types.AnyType
+		}
+
+	case *types.SQLDatabase:
+		switch expr.Property {
+		case "sql":
+			// sql is accessed as a tagged template tag - type resolved by buildTaggedTemplateLit
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				ExprType: types.AnyType,
+				Optional: expr.Optional,
+			}
+		case "close":
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				ExprType: &types.Function{Params: []*types.Param{}, ReturnType: types.VoidType},
+				Optional: expr.Optional,
+			}
+		case "begin":
+			txCallbackType := &types.Function{
+				Params:     []*types.Param{{Name: "tx", Type: types.SQLTransactionType}},
+				ReturnType: types.VoidType,
+			}
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				ExprType: &types.Function{
+					Params:     []*types.Param{{Name: "callback", Type: txCallbackType}},
+					ReturnType: types.VoidType,
+				},
+				Optional: expr.Optional,
+			}
+		default:
+			b.error(expr.Token.Line, expr.Token.Column, "SQLDatabase has no property '%s'", expr.Property)
+			return &PropertyExpr{Object: object, Property: expr.Property, ExprType: types.AnyType, Optional: expr.Optional}
+		}
+
+	case *types.SQLTransaction:
+		switch expr.Property {
+		case "sql":
+			return &PropertyExpr{
+				Object:   object,
+				Property: expr.Property,
+				ExprType: types.AnyType,
+				Optional: expr.Optional,
+			}
+		default:
+			b.error(expr.Token.Line, expr.Token.Column, "SQLTransaction has no property '%s'", expr.Property)
+			return &PropertyExpr{Object: object, Property: expr.Property, ExprType: types.AnyType, Optional: expr.Optional}
 		}
 
 	default:
