@@ -105,6 +105,21 @@ func (t *TemplateLiteral) String() string {
 	return out.String()
 }
 
+// TaggedTemplateLiteral represents a tagged template literal: tag`...` or tag<T>`...`
+type TaggedTemplateLiteral struct {
+	Token       token.Token
+	Tag         Expression   // The tag expression (e.g., db.sql, html, sql)
+	TypeArgs    []Type       // Optional generic type arguments (e.g., <User[]>)
+	Parts       []string     // Static string parts of the template
+	Expressions []Expression // Interpolated expressions
+}
+
+func (t *TaggedTemplateLiteral) expressionNode()      {}
+func (t *TaggedTemplateLiteral) TokenLiteral() string  { return t.Token.Literal }
+func (t *TaggedTemplateLiteral) String() string {
+	return "TaggedTemplate(" + t.Tag.String() + ")"
+}
+
 // BoolLiteral represents a boolean literal (true/false).
 type BoolLiteral struct {
 	Token token.Token
