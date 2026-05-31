@@ -3881,6 +3881,17 @@ func (b *Builder) buildNumberMethodCall(obj Expr, method string, expr *ast.CallE
 		}
 		resultType = types.StringType
 
+	case "toFixed", "toPrecision", "toExponential":
+		// toFixed(digits): string / toPrecision(p): string / toExponential(d): string
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Number.%s expects 1 argument, got %d", method, len(args))
+		} else if !types.IsNumeric(args[0].Type()) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Number.%s argument must be numeric, got %s", method, args[0].Type().String())
+		}
+		resultType = types.StringType
+
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown Number method: %s", method)

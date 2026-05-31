@@ -3431,6 +3431,16 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 		case "toString":
 			// num.toString() => gts_tostring(num)
 			return fmt.Sprintf("gts_tostring(%s)", obj)
+		case "toFixed", "toPrecision", "toExponential":
+			// num.toFixed(d) => strconv.FormatFloat(float64(num), 'f', int(d), 64)
+			// toPrecision uses 'g' and toExponential uses 'e'.
+			g.imports["strconv"] = true
+			verb := map[string]string{"toFixed": "f", "toPrecision": "g", "toExponential": "e"}[expr.Method]
+			digits := "0"
+			if len(args) > 0 {
+				digits = args[0]
+			}
+			return fmt.Sprintf("strconv.FormatFloat(float64(%s), '%s', int(%s), 64)", obj, verb, digits)
 		}
 	}
 
