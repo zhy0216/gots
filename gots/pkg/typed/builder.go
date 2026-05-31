@@ -3734,6 +3734,35 @@ func (b *Builder) buildArrayMethodCall(obj Expr, arrType *types.Array, method st
 		}
 		resultType = arrType
 
+	case "toReversed":
+		// toReversed(): T[] — returns a reversed copy (ES2023, immutable)
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.toReversed expects 0 arguments, got %d", len(args))
+		}
+		resultType = arrType
+
+	case "toSorted":
+		// toSorted(compareFn?): T[] — returns a sorted copy (ES2023, immutable)
+		if len(args) > 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.toSorted expects 0-1 arguments, got %d", len(args))
+		}
+		resultType = arrType
+
+	case "with":
+		// with(index: int, value: T): T[] — returns a copy with one element
+		// replaced (ES2023, immutable)
+		if len(args) != 2 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.with expects 2 arguments, got %d", len(args))
+		} else if !types.IsAssignableTo(args[1].Type(), arrType.Element) {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.with value type mismatch: expected %s, got %s",
+				arrType.Element.String(), args[1].Type().String())
+		}
+		resultType = arrType
+
 	case "map":
 		// map(callback: (value: T, index: int) => U): U[]
 		if len(args) != 1 {
