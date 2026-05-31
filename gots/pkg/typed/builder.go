@@ -4221,6 +4221,28 @@ func (b *Builder) buildStringMethodCall(obj Expr, method string, expr *ast.CallE
 		}
 		resultType = types.StringType
 
+	case "match":
+		// match(re: RegExp): string[] | null — the captured groups, or null
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.match expects 1 argument, got %d", len(args))
+		} else if _, ok := types.Unwrap(args[0].Type()).(*types.RegExp); !ok {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.match argument must be a RegExp, got %s", args[0].Type().String())
+		}
+		resultType = &types.Nullable{Inner: &types.Array{Element: types.StringType}}
+
+	case "search":
+		// search(re: RegExp): int — index of the first match, or -1
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.search expects 1 argument, got %d", len(args))
+		} else if _, ok := types.Unwrap(args[0].Type()).(*types.RegExp); !ok {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"String.search argument must be a RegExp, got %s", args[0].Type().String())
+		}
+		resultType = types.IntType
+
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown String method: %s", method)

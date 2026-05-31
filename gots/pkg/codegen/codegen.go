@@ -3586,6 +3586,16 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 		case "replaceAll":
 			// str.replaceAll(old, new) => strings.ReplaceAll(str, old, new)
 			return fmt.Sprintf("strings.ReplaceAll(%s, %s, %s)", obj, args[0], args[1])
+
+		case "match":
+			// str.match(re) => re.FindStringSubmatch(str) (nil if no match)
+			g.imports["regexp"] = true
+			return fmt.Sprintf("%s.FindStringSubmatch(%s)", args[0], obj)
+
+		case "search":
+			// str.search(re) => index of first match, or -1
+			g.imports["regexp"] = true
+			return fmt.Sprintf("func() int { loc := %s.FindStringIndex(%s); if loc == nil { return -1 }; return loc[0] }()", args[0], obj)
 		}
 	}
 
