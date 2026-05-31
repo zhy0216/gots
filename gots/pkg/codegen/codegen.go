@@ -997,9 +997,15 @@ func (g *Generator) genPromiseRuntime() {
 	g.writeln("")
 
 	// Promise constructor - runs executor synchronously
-	g.writeln("func GTS_NewPromise[T any](executor func(resolve func(T), reject func(error))) *GTS_Promise[T] {")
+	// NOTE: the return value is NAMED (p) on purpose. The executor runs
+	// synchronously and a throw inside it panics; the deferred recover below
+	// turns that into a rejection. With an unnamed return, the post-recover
+	// function result would be the zero value (nil), so an async function that
+	// throws would hand back a nil *GTS_Promise and gts_await would nil-deref.
+	// Naming the result makes recovery return the (rejected) promise instead.
+	g.writeln("func GTS_NewPromise[T any](executor func(resolve func(T), reject func(error))) (p *GTS_Promise[T]) {")
 	g.indent++
-	g.writeln("p := &GTS_Promise[T]{state: 0}")
+	g.writeln("p = &GTS_Promise[T]{state: 0}")
 	g.writeln("resolve := func(v T) {")
 	g.indent++
 	g.writeln("p.mu.Lock()")
@@ -1280,10 +1286,9 @@ func (g *Generator) genPromiseRuntime() {
 	g.writeln("<-done")
 	g.indent--
 	g.writeln("}")
-	// Surface a rejection from a single point. Panicking inside the switch
-	// cases above could be mis-inlined by the Go compiler at the call site
-	// (yielding a spurious nil-pointer panic instead of the rejection value),
-	// so settle the result here and panic only when actually rejected.
+	// Settle the result from a single exit point: record value/err in the
+	// switch above, then re-raise a rejection here so the surrounding
+	// try/catch (a deferred recover) receives the original thrown value.
 	g.writeln("if err != nil {")
 	g.indent++
 	g.writeln("panic(err)")
