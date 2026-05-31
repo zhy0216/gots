@@ -3291,6 +3291,22 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 			// Custom comparator
 			return fmt.Sprintf("func() []%s { sort.Slice(%s, func(i, j int) bool { return %s(%s[i], %s[j]) < 0 }); return %s }()", elemType, obj, args[0], obj, obj, obj)
 
+		case "toReversed":
+			// arr.toReversed() => reverse a copy (original untouched)
+			return fmt.Sprintf("func() []%s { c := append([]%s{}, %s...); for i, j := 0, len(c)-1; i < j; i, j = i+1, j-1 { c[i], c[j] = c[j], c[i] }; return c }()", elemType, elemType, obj)
+
+		case "toSorted":
+			// arr.toSorted(compareFn?) => sort a copy (original untouched)
+			g.imports["sort"] = true
+			if len(args) == 0 {
+				return fmt.Sprintf("func() []%s { c := append([]%s{}, %s...); sort.Slice(c, func(i, j int) bool { return c[i] < c[j] }); return c }()", elemType, elemType, obj)
+			}
+			return fmt.Sprintf("func() []%s { c := append([]%s{}, %s...); sort.Slice(c, func(i, j int) bool { return %s(c[i], c[j]) < 0 }); return c }()", elemType, elemType, obj, args[0])
+
+		case "with":
+			// arr.with(index, value) => copy with one element replaced
+			return fmt.Sprintf("func() []%s { c := append([]%s{}, %s...); c[%s] = %s; return c }()", elemType, elemType, obj, args[0], args[1])
+
 		case "map":
 			// arr.map(callback) => func() []U { result := make([]U, 0); for _, v := range arr { result = append(result, callback(v)) }; return result }()
 			resultElemType := "interface{}"
