@@ -1996,6 +1996,9 @@ func (b *Builder) buildExpr(expr ast.Expression) Expr {
 	case *ast.UnaryExpr:
 		return b.buildUnaryExpr(e)
 
+	case *ast.ConditionalExpr:
+		return b.buildConditionalExpr(e)
+
 	case *ast.SpreadExpr:
 		return b.buildSpreadExpr(e)
 
@@ -2212,6 +2215,21 @@ func (b *Builder) buildBinaryExpr(expr *ast.BinaryExpr) Expr {
 		Op:       op,
 		Right:    right,
 		ExprType: resultType,
+	}
+}
+
+func (b *Builder) buildConditionalExpr(expr *ast.ConditionalExpr) Expr {
+	cond := b.buildExpr(expr.Condition)
+	consequent := b.buildExpr(expr.Consequent)
+	alternate := b.buildExpr(expr.Alternate)
+
+	resultType := types.LeastUpperBound(consequent.Type(), alternate.Type())
+
+	return &ConditionalExpr{
+		Condition:  cond,
+		Consequent: consequent,
+		Alternate:  alternate,
+		ExprType:   resultType,
 	}
 }
 

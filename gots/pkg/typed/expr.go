@@ -108,6 +108,17 @@ type UnaryExpr struct {
 func (u *UnaryExpr) exprNode()        {}
 func (u *UnaryExpr) Type() types.Type { return u.ExprType }
 
+// ConditionalExpr represents a ternary expression (cond ? a : b).
+type ConditionalExpr struct {
+	Condition  Expr
+	Consequent Expr
+	Alternate  Expr
+	ExprType   types.Type
+}
+
+func (c *ConditionalExpr) exprNode()        {}
+func (c *ConditionalExpr) Type() types.Type { return c.ExprType }
+
 // SpreadExpr represents a spread expression (...arg).
 type SpreadExpr struct {
 	Argument Expr

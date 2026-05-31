@@ -189,6 +189,20 @@ func (u *UnaryExpr) String() string {
 	return fmt.Sprintf("(%s%s)", u.Token.Literal, u.Operand.String())
 }
 
+// ConditionalExpr represents a ternary expression (e.g., cond ? a : b).
+type ConditionalExpr struct {
+	Token      token.Token // The '?' token
+	Condition  Expression
+	Consequent Expression
+	Alternate  Expression
+}
+
+func (c *ConditionalExpr) expressionNode()      {}
+func (c *ConditionalExpr) TokenLiteral() string { return c.Token.Literal }
+func (c *ConditionalExpr) String() string {
+	return fmt.Sprintf("(%s ? %s : %s)", c.Condition.String(), c.Consequent.String(), c.Alternate.String())
+}
+
 // CallExpr represents a function call expression (e.g., fn() or fn?.()).
 type CallExpr struct {
 	Token     token.Token // The '(' token

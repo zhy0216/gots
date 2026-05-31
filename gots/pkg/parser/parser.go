@@ -16,6 +16,7 @@ const (
 	_ int = iota
 	LOWEST
 	ASSIGN          // =
+	TERNARY         // ?:
 	NULLISH         // ??
 	OR              // ||
 	AND             // &&
@@ -36,6 +37,7 @@ var precedences = map[token.Type]int{
 	token.STAR_ASSIGN:      ASSIGN,
 	token.SLASH_ASSIGN:     ASSIGN,
 	token.PERCENT_ASSIGN:   ASSIGN,
+	token.QUESTION:         TERNARY,
 	token.NULLISH_COALESCE: NULLISH,
 	token.OR:               OR,
 	token.AND:              AND,
@@ -125,6 +127,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
 	p.registerInfix(token.DOT, p.parsePropertyExpression)
 	p.registerInfix(token.QUESTION_DOT, p.parseOptionalChainExpression)
+	p.registerInfix(token.QUESTION, p.parseConditionalExpression)
 	p.registerInfix(token.ASSIGN, p.parseAssignExpression)
 	p.registerInfix(token.PLUS_ASSIGN, p.parseCompoundAssignExpression)
 	p.registerInfix(token.MINUS_ASSIGN, p.parseCompoundAssignExpression)
@@ -628,6 +631,25 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) ast.Expression {
 	precedence := p.curPrecedence()
 	p.nextToken()
 	expr.Right = p.parseExpression(precedence)
+
+	return expr
+}
+
+func (p *Parser) parseConditionalExpression(cond ast.Expression) ast.Expression {
+	expr := &ast.ConditionalExpr{
+		Token:     p.curToken, // the '?' token
+		Condition: cond,
+	}
+
+	p.nextToken()
+	expr.Consequent = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(token.COLON) {
+		return nil
+	}
+
+	p.nextToken()
+	expr.Alternate = p.parseExpression(TERNARY - 1) // right-associative
 
 	return expr
 }
