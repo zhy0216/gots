@@ -108,6 +108,7 @@ const (
 	OF          // of
 	TRY         // try
 	CATCH       // catch
+	FINALLY     // finally
 	THROW       // throw
 	ENUM        // enum
 	ASYNC       // async
@@ -256,6 +257,7 @@ var typeStrings = map[Type]string{
 	OF:          "of",
 	TRY:         "try",
 	CATCH:       "catch",
+	FINALLY:     "finally",
 	THROW:       "throw",
 	ENUM:        "enum",
 	ASYNC:       "async",
@@ -310,6 +312,7 @@ var keywords = map[string]Type{
 	"of":          OF,
 	"try":         TRY,
 	"catch":       CATCH,
+	"finally":     FINALLY,
 	"throw":       THROW,
 	"enum":        ENUM,
 	"async":       ASYNC,
@@ -348,7 +351,7 @@ func IsKeyword(t Type) bool {
 	case LET, CONST, FUNCTION, RETURN, IF, ELSE, WHILE, FOR,
 		BREAK, CONTINUE, CLASS, EXTENDS, NEW, THIS, SUPER,
 		CONSTRUCTOR, TYPE, TRUE, FALSE, NULL, SWITCH, CASE, DEFAULT, OF,
-		TRY, CATCH, THROW, ENUM, ASYNC, AWAIT,
+		TRY, CATCH, FINALLY, THROW, ENUM, ASYNC, AWAIT,
 		INT_TYPE, FLOAT_TYPE, NUMBER_TYPE, STRING_TYPE, BOOLEAN_TYPE, VOID_TYPE,
 		MAP, SET, INTERFACE, IMPORT, FROM, EXPORT, DECLARE, MODULE, AS:
 		return true

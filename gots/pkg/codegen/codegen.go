@@ -142,6 +142,7 @@ func (g *Generator) collectImportsFromStmt(stmt typed.Stmt) {
 	case *typed.TryStmt:
 		g.collectImportsFromBlock(s.TryBlock)
 		g.collectImportsFromBlock(s.CatchBlock)
+		g.collectImportsFromBlock(s.FinallyBlock)
 	case *typed.ThrowStmt:
 		g.collectImportsFromExpr(s.Value)
 	case *typed.FuncDecl:
@@ -2233,19 +2234,36 @@ func (g *Generator) genTryStmt(stmt *typed.TryStmt) {
 
 	g.writeln("func() {")
 	g.indent++
-	g.writeln("defer func() {")
-	g.indent++
-	g.writeln("if r := recover(); r != nil {")
-	g.indent++
-	g.writeln("%s := r", goName(stmt.CatchParam.Name))
-	g.writeln("_ = %s // prevent unused variable error", goName(stmt.CatchParam.Name))
-	for _, inner := range stmt.CatchBlock.Stmts {
-		g.genStmt(inner)
+
+	// The finally block runs on both the normal and panic paths. Register it
+	// first so that, with Go's LIFO defer ordering, it runs after the catch
+	// recover handler.
+	if stmt.FinallyBlock != nil {
+		g.writeln("defer func() {")
+		g.indent++
+		for _, inner := range stmt.FinallyBlock.Stmts {
+			g.genStmt(inner)
+		}
+		g.indent--
+		g.writeln("}()")
 	}
-	g.indent--
-	g.writeln("}")
-	g.indent--
-	g.writeln("}()")
+
+	if stmt.CatchBlock != nil {
+		g.writeln("defer func() {")
+		g.indent++
+		g.writeln("if r := recover(); r != nil {")
+		g.indent++
+		g.writeln("%s := r", goName(stmt.CatchParam.Name))
+		g.writeln("_ = %s // prevent unused variable error", goName(stmt.CatchParam.Name))
+		for _, inner := range stmt.CatchBlock.Stmts {
+			g.genStmt(inner)
+		}
+		g.indent--
+		g.writeln("}")
+		g.indent--
+		g.writeln("}()")
+	}
+
 	for _, inner := range stmt.TryBlock.Stmts {
 		g.genStmt(inner)
 	}

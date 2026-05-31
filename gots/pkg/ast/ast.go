@@ -710,18 +710,27 @@ func (c *ContinueStmt) statementNode()       {}
 func (c *ContinueStmt) TokenLiteral() string { return "continue" }
 func (c *ContinueStmt) String() string       { return "continue;" }
 
-// TryStmt represents a try/catch statement.
+// TryStmt represents a try/catch/finally statement.
+// CatchBlock and FinallyBlock are optional, but at least one must be present.
 type TryStmt struct {
-	Token      token.Token // The 'try' token
-	TryBlock   *Block
-	CatchParam string // The catch parameter name (e.g., 'e' in catch(e))
-	CatchBlock *Block
+	Token        token.Token // The 'try' token
+	TryBlock     *Block
+	CatchParam   string // The catch parameter name (e.g., 'e' in catch(e)); empty if no catch
+	CatchBlock   *Block // nil if there is no catch clause
+	FinallyBlock *Block // nil if there is no finally clause
 }
 
 func (t *TryStmt) statementNode()       {}
 func (t *TryStmt) TokenLiteral() string { return "try" }
 func (t *TryStmt) String() string {
-	return fmt.Sprintf("try %s catch(%s) %s", t.TryBlock.String(), t.CatchParam, t.CatchBlock.String())
+	out := fmt.Sprintf("try %s", t.TryBlock.String())
+	if t.CatchBlock != nil {
+		out += fmt.Sprintf(" catch(%s) %s", t.CatchParam, t.CatchBlock.String())
+	}
+	if t.FinallyBlock != nil {
+		out += fmt.Sprintf(" finally %s", t.FinallyBlock.String())
+	}
+	return out
 }
 
 // ThrowStmt represents a throw statement.

@@ -145,11 +145,13 @@ type ContinueStmt struct{}
 
 func (c *ContinueStmt) stmtNode() {}
 
-// TryStmt represents a try/catch statement.
+// TryStmt represents a try/catch/finally statement.
+// CatchBlock and FinallyBlock are optional, but at least one is present.
 type TryStmt struct {
-	TryBlock   *BlockStmt
-	CatchParam *VarDecl // The catch parameter (e.g., 'e' in catch(e))
-	CatchBlock *BlockStmt
+	TryBlock     *BlockStmt
+	CatchParam   *VarDecl   // The catch parameter (e.g., 'e' in catch(e)); nil if no catch
+	CatchBlock   *BlockStmt // nil if there is no catch clause
+	FinallyBlock *BlockStmt // nil if there is no finally clause
 }
 
 func (t *TryStmt) stmtNode() {}

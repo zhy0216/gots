@@ -1566,31 +1566,39 @@ func (b *Builder) buildTryStmt(stmt *ast.TryStmt) *TryStmt {
 	// Build the try block
 	tryBlock := b.buildBlock(stmt.TryBlock)
 
-	// Build the catch block with the catch parameter in scope
-	b.pushScope()
-	// The catch parameter has type 'any' since any error can be thrown
-	b.scope.define(stmt.CatchParam, types.AnyType)
-	catchBlock := &BlockStmt{}
-	stmts := make([]Stmt, 0, len(stmt.CatchBlock.Statements))
-	for _, s := range stmt.CatchBlock.Statements {
-		if typedStmt := b.buildStmt(s); typedStmt != nil {
-			stmts = append(stmts, typedStmt)
+	result := &TryStmt{
+		TryBlock: tryBlock,
+	}
+
+	// Build the optional catch block with the catch parameter in scope
+	if stmt.CatchBlock != nil {
+		b.pushScope()
+		// The catch parameter has type 'any' since any error can be thrown
+		b.scope.define(stmt.CatchParam, types.AnyType)
+		catchBlock := &BlockStmt{}
+		stmts := make([]Stmt, 0, len(stmt.CatchBlock.Statements))
+		for _, s := range stmt.CatchBlock.Statements {
+			if typedStmt := b.buildStmt(s); typedStmt != nil {
+				stmts = append(stmts, typedStmt)
+			}
 		}
-	}
-	catchBlock.Stmts = stmts
-	b.popScope()
+		catchBlock.Stmts = stmts
+		b.popScope()
 
-	catchParam := &VarDecl{
-		Name:    stmt.CatchParam,
-		VarType: types.AnyType,
-		IsConst: false,
+		result.CatchParam = &VarDecl{
+			Name:    stmt.CatchParam,
+			VarType: types.AnyType,
+			IsConst: false,
+		}
+		result.CatchBlock = catchBlock
 	}
 
-	return &TryStmt{
-		TryBlock:   tryBlock,
-		CatchParam: catchParam,
-		CatchBlock: catchBlock,
+	// Build the optional finally block
+	if stmt.FinallyBlock != nil {
+		result.FinallyBlock = b.buildBlock(stmt.FinallyBlock)
 	}
+
+	return result
 }
 
 func (b *Builder) buildThrowStmt(stmt *ast.ThrowStmt) *ThrowStmt {

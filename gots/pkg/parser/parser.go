@@ -2189,33 +2189,49 @@ func (p *Parser) parseTryStatement() *ast.TryStmt {
 
 	stmt.TryBlock = p.parseBlockStatement()
 
-	// Expect 'catch'
-	if !p.expectPeek(token.CATCH) {
-		p.errors = append(p.errors, "expected 'catch' after try block")
-		return nil
+	// Optional 'catch (param) { ... }'
+	if p.peekTokenIs(token.CATCH) {
+		p.nextToken()
+
+		// Parse catch parameter: catch (e)
+		if !p.expectPeek(token.LPAREN) {
+			return nil
+		}
+
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+
+		stmt.CatchParam = p.curToken.Literal
+
+		if !p.expectPeek(token.RPAREN) {
+			return nil
+		}
+
+		// Parse the catch block
+		if !p.expectPeek(token.LBRACE) {
+			return nil
+		}
+
+		stmt.CatchBlock = p.parseBlockStatement()
 	}
 
-	// Parse catch parameter: catch (e)
-	if !p.expectPeek(token.LPAREN) {
-		return nil
+	// Optional 'finally { ... }'
+	if p.peekTokenIs(token.FINALLY) {
+		p.nextToken()
+
+		if !p.expectPeek(token.LBRACE) {
+			return nil
+		}
+
+		stmt.FinallyBlock = p.parseBlockStatement()
 	}
 
-	if !p.expectPeek(token.IDENT) {
+	// Require at least one of catch / finally
+	if stmt.CatchBlock == nil && stmt.FinallyBlock == nil {
+		p.errors = append(p.errors, "expected 'catch' or 'finally' after try block")
 		return nil
 	}
-
-	stmt.CatchParam = p.curToken.Literal
-
-	if !p.expectPeek(token.RPAREN) {
-		return nil
-	}
-
-	// Parse the catch block
-	if !p.expectPeek(token.LBRACE) {
-		return nil
-	}
-
-	stmt.CatchBlock = p.parseBlockStatement()
 
 	return stmt
 }
