@@ -77,7 +77,11 @@ func TestIntegrationEmitGo(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			cmd := exec.Command(bin, "emit-go", file)
+			// Emit into a temp dir so the test never pollutes the source tree.
+			// (Writing test/<name>.go siblings would create many `package main`
+			// files in one directory and break `go build ./...`.)
+			out := filepath.Join(t.TempDir(), testName+".go")
+			cmd := exec.Command(bin, "emit-go", file, out)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Errorf("Failed to emit Go for %s: %v\nOutput:\n%s", file, err, output)
