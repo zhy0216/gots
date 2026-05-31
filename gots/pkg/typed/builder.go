@@ -3849,6 +3849,18 @@ func (b *Builder) buildArrayMethodCall(obj Expr, arrType *types.Array, method st
 		}
 		resultType = arrType
 
+	case "flat":
+		// flat(): flattens one level. T[][] -> T[]; otherwise returns T[].
+		if len(args) != 0 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.flat expects 0 arguments, got %d", len(args))
+		}
+		if inner, ok := types.Unwrap(arrType.Element).(*types.Array); ok {
+			resultType = &types.Array{Element: inner.Element}
+		} else {
+			resultType = arrType
+		}
+
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown Array method: %s", method)

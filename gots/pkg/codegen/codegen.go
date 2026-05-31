@@ -3422,6 +3422,16 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 				return fmt.Sprintf("func() []%s { copy(%s[%s:], %s[%s:]); return %s }()", elemType, obj, args[0], obj, args[1], obj)
 			}
 			return fmt.Sprintf("func() []%s { copy(%s[%s:], %s[%s:%s]); return %s }()", elemType, obj, args[0], obj, args[1], args[2], obj)
+
+		case "flat":
+			// arr.flat() flattens one level. For an array of arrays, concatenate
+			// the inner slices; for a non-nested array it returns a copy. elemType
+			// here is the element type of the receiver array.
+			if inner, ok := types.Unwrap(arrType.Element).(*types.Array); ok {
+				innerElem := g.goType(inner.Element)
+				return fmt.Sprintf("func() []%s { out := []%s{}; for _, sub := range %s { out = append(out, sub...) }; return out }()", innerElem, innerElem, obj)
+			}
+			return fmt.Sprintf("append([]%s{}, %s...)", elemType, obj)
 		}
 	}
 
