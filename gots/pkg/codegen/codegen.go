@@ -1256,13 +1256,11 @@ func (g *Generator) genPromiseRuntime() {
 	g.indent++
 	g.writeln("result = p.value")
 	g.writeln("p.mu.Unlock()")
-	g.writeln("return result")
 	g.indent--
 	g.writeln("case 2:")
 	g.indent++
 	g.writeln("err = p.err")
 	g.writeln("p.mu.Unlock()")
-	g.writeln("panic(err)")
 	g.indent--
 	g.writeln("default:")
 	g.indent++
@@ -1278,10 +1276,14 @@ func (g *Generator) genPromiseRuntime() {
 	g.writeln("close(done)")
 	g.indent--
 	g.writeln("})")
-	g.indent--
-	g.writeln("}")
 	g.writeln("p.mu.Unlock()")
 	g.writeln("<-done")
+	g.indent--
+	g.writeln("}")
+	// Surface a rejection from a single point. Panicking inside the switch
+	// cases above could be mis-inlined by the Go compiler at the call site
+	// (yielding a spurious nil-pointer panic instead of the rejection value),
+	// so settle the result here and panic only when actually rejected.
 	g.writeln("if err != nil {")
 	g.indent++
 	g.writeln("panic(err)")
