@@ -2329,6 +2329,12 @@ func (g *Generator) genExpr(expr typed.Expr) string {
 	case *typed.UnaryExpr:
 		return g.genUnaryExpr(e)
 
+	case *typed.ConditionalExpr:
+		// Go has no ternary operator; emit an immediately-invoked
+		// function literal that returns one branch or the other.
+		return fmt.Sprintf("func() %s { if %s { return %s } else { return %s } }()",
+			g.goType(e.ExprType), g.genExpr(e.Condition), g.genExpr(e.Consequent), g.genExpr(e.Alternate))
+
 	case *typed.SpreadExpr:
 		// For function call contexts, this returns arg...
 		// For array literals, genArrayLit handles it specially
