@@ -196,8 +196,9 @@ type FuncExpr struct {
 }
 
 type Param struct {
-	Name string
-	Type types.Type
+	Name    string
+	Type    types.Type
+	Default Expr // default value expression; nil if none
 }
 
 func (f *FuncExpr) exprNode()        {}

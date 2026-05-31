@@ -1109,6 +1109,13 @@ func (p *Parser) parseParameter() *ast.Parameter {
 	p.nextToken()
 	param.ParamType = p.parseType()
 
+	// Optional default value (e.g., by: int = 1)
+	if p.peekTokenIs(token.ASSIGN) {
+		p.nextToken() // consume '='
+		p.nextToken() // move to default expression
+		param.Default = p.parseExpression(LOWEST)
+	}
+
 	return param
 }
 

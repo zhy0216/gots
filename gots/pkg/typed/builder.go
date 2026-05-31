@@ -1673,13 +1673,24 @@ func (b *Builder) buildFuncDecl(decl *ast.FuncDecl) *FuncDecl {
 	typeParamsForFunc := make([]*types.Param, len(decl.Params))
 	for i, p := range decl.Params {
 		paramType := b.resolveType(p.ParamType)
+		var def Expr
+		if p.Default != nil {
+			def = b.buildExpr(p.Default)
+			if !types.IsAssignableTo(def.Type(), paramType) {
+				b.error(decl.Token.Line, decl.Token.Column,
+					"default value for parameter %s: cannot assign %s to %s",
+					p.Name, def.Type().String(), paramType.String())
+			}
+		}
 		params[i] = &Param{
-			Name: p.Name,
-			Type: paramType,
+			Name:    p.Name,
+			Type:    paramType,
+			Default: def,
 		}
 		typeParamsForFunc[i] = &types.Param{
-			Name: p.Name,
-			Type: paramType,
+			Name:     p.Name,
+			Type:     paramType,
+			Optional: p.Default != nil,
 		}
 	}
 
@@ -2578,7 +2589,12 @@ func (b *Builder) buildCallExpr(expr *ast.CallExpr) Expr {
 
 	// Skip argument count check for generic function types (all any params)
 	isGenericFunc := len(fn.Params) > 0 && fn.Params[0].Type.Equals(types.AnyType) && fn.ReturnType.Equals(types.AnyType)
-	if !isGenericFunc && len(args) != len(fn.Params) {
+	// Allow fewer args when the omitted trailing params are optional (have defaults).
+	minArgs := len(fn.Params)
+	for minArgs > 0 && fn.Params[minArgs-1].Optional {
+		minArgs--
+	}
+	if !isGenericFunc && (len(args) < minArgs || len(args) > len(fn.Params)) {
 		b.error(expr.Token.Line, expr.Token.Column,
 			"expected %d arguments, got %d", len(fn.Params), len(args))
 	}

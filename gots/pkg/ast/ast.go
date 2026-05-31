@@ -760,6 +760,7 @@ func (t *ThrowStmt) String() string {
 type Parameter struct {
 	Name      string
 	ParamType Type
+	Default   Expression // Optional default value (e.g., by: int = 1); nil if none
 }
 
 // Decorator represents a function decorator (e.g., @memoize, @app.get("/hello")).

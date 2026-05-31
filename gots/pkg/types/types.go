@@ -533,8 +533,9 @@ func (o *Object) GetProperty(name string) *Property {
 
 // Param represents a function parameter type.
 type Param struct {
-	Name string
-	Type Type
+	Name     string
+	Type     Type
+	Optional bool // true if the parameter has a default value and may be omitted
 }
 
 // Function represents a function type.

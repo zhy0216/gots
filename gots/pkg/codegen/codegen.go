@@ -13,6 +13,7 @@ import (
 
 // Generator transforms typed AST into Go source code.
 type Generator struct {
+	funcDecls       map[string]*typed.FuncDecl
 	buf             *bytes.Buffer
 	indent          int
 	imports         map[string]bool
@@ -311,6 +312,10 @@ func (g *Generator) isSQLTaggedTemplate(expr *typed.TaggedTemplateLit) bool {
 }
 
 func (g *Generator) genProgram(prog *typed.Program) {
+	g.funcDecls = make(map[string]*typed.FuncDecl)
+	for _, fn := range prog.Functions {
+		g.funcDecls[fn.Name] = fn
+	}
 	g.writeln("package main")
 	g.writeln("")
 
@@ -2493,6 +2498,19 @@ func (g *Generator) genCallExpr(expr *typed.CallExpr) string {
 	args := make([]string, len(expr.Args))
 	for i, arg := range expr.Args {
 		args[i] = g.genExpr(arg)
+	}
+
+	// default-param fill: for direct calls to top-level named functions that
+	// omit trailing parameters with defaults, append the default expressions.
+	if id, ok := expr.Callee.(*typed.Ident); ok {
+		if decl, ok := g.funcDecls[id.Name]; ok && len(args) < len(decl.Params) {
+			for di := len(args); di < len(decl.Params); di++ {
+				if decl.Params[di].Default == nil {
+					break
+				}
+				args = append(args, g.genExpr(decl.Params[di].Default))
+			}
+		}
 	}
 
 	// Handle explicit type arguments for generic function calls
