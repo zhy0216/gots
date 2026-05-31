@@ -3861,6 +3861,25 @@ func (b *Builder) buildArrayMethodCall(obj Expr, arrType *types.Array, method st
 			resultType = arrType
 		}
 
+	case "flatMap":
+		// flatMap(callback: (value: T, index?: int) => U[]): U[]
+		// Maps then flattens one level; the result element type is the element
+		// type of the callback's (array) return type, or the return type itself
+		// if the callback returns a scalar.
+		if len(args) != 1 {
+			b.error(expr.Token.Line, expr.Token.Column,
+				"Array.flatMap expects 1 argument, got %d", len(args))
+			resultType = &types.Array{Element: types.AnyType}
+		} else if fn, ok := types.Unwrap(args[0].Type()).(*types.Function); ok {
+			if retArr, ok := types.Unwrap(fn.ReturnType).(*types.Array); ok {
+				resultType = &types.Array{Element: retArr.Element}
+			} else {
+				resultType = &types.Array{Element: fn.ReturnType}
+			}
+		} else {
+			resultType = &types.Array{Element: types.AnyType}
+		}
+
 	default:
 		b.error(expr.Token.Line, expr.Token.Column,
 			"unknown Array method: %s", method)

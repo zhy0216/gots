@@ -3432,6 +3432,33 @@ func (g *Generator) genMethodCallExpr(expr *typed.MethodCallExpr) string {
 				return fmt.Sprintf("func() []%s { out := []%s{}; for _, sub := range %s { out = append(out, sub...) }; return out }()", innerElem, innerElem, obj)
 			}
 			return fmt.Sprintf("append([]%s{}, %s...)", elemType, obj)
+
+		case "flatMap":
+			// arr.flatMap(cb) maps then flattens one level.
+			resultElemType := "interface{}"
+			if exprType, ok := expr.ExprType.(*types.Array); ok {
+				resultElemType = g.goType(exprType.Element)
+			}
+			// Spread the callback result when it returns a slice; otherwise
+			// append it directly.
+			cbReturnsArray := false
+			if cbType, ok := expr.Args[0].Type().(*types.Function); ok {
+				if _, ok := types.Unwrap(cbType.ReturnType).(*types.Array); ok {
+					cbReturnsArray = true
+				}
+			}
+			var callbackCall, forClause string
+			if cbType, ok := expr.Args[0].Type().(*types.Function); ok && len(cbType.Params) >= 2 {
+				callbackCall = fmt.Sprintf("%s(v, i)", args[0])
+				forClause = "for i, v := range"
+			} else {
+				callbackCall = fmt.Sprintf("%s(v)", args[0])
+				forClause = "for _, v := range"
+			}
+			if cbReturnsArray {
+				return fmt.Sprintf("func() []%s { out := []%s{}; %s %s { out = append(out, %s...) }; return out }()", resultElemType, resultElemType, forClause, obj, callbackCall)
+			}
+			return fmt.Sprintf("func() []%s { out := []%s{}; %s %s { out = append(out, %s) }; return out }()", resultElemType, resultElemType, forClause, obj, callbackCall)
 		}
 	}
 
