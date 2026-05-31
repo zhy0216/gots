@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"sort"
 	"strings"
 
 	"github.com/zhy0216/quickts/gots/pkg/typed"
@@ -319,26 +320,14 @@ func (g *Generator) genProgram(prog *typed.Program) {
 	g.writeln("package main")
 	g.writeln("")
 
-	// Write imports
-	if len(g.imports) > 0 {
-		if len(g.imports) == 1 {
-			for pkg := range g.imports {
-				g.writeln("import %q", pkg)
-			}
-		} else {
-			g.writeln("import (")
-			g.indent++
-			for pkg := range g.imports {
-				g.writeln("%q", pkg)
-			}
-			if g.usesSQL {
-				g.writeln("_ \"modernc.org/sqlite\"")
-			}
-			g.indent--
-			g.writeln(")")
-		}
-		g.writeln("")
-	}
+	// Generate the body (runtime helpers + declarations + main) into a
+	// temporary buffer so the import list can be pruned to the packages the
+	// generated code actually references. Built-in objects declare imports at
+	// the object level (e.g. Number -> math, strconv), but a program may use
+	// only some of their methods; go/format does not drop unused imports, so
+	// an unreferenced one would otherwise break the build.
+	bodyHeader := g.buf
+	g.buf = new(bytes.Buffer)
 
 	// Generate runtime helpers
 	g.genRuntime()
@@ -398,6 +387,74 @@ func (g *Generator) genProgram(prog *typed.Program) {
 	g.writeln("gts_runEventLoop()")
 	g.indent--
 	g.writeln("}")
+
+	// Reassemble: the body is complete; emit the import block (pruned to the
+	// packages the body actually references) into the header buffer, then
+	// append the body.
+	body := g.buf.String()
+	g.buf = bodyHeader
+
+	used := make([]string, 0, len(g.imports))
+	for pkg := range g.imports {
+		if bodyReferences(body, selectorOf(pkg)) {
+			used = append(used, pkg)
+		}
+	}
+	sort.Strings(used)
+
+	if len(used) > 0 || g.usesSQL {
+		if len(used) == 1 && !g.usesSQL {
+			g.writeln("import %q", used[0])
+		} else {
+			g.writeln("import (")
+			g.indent++
+			for _, pkg := range used {
+				g.writeln("%q", pkg)
+			}
+			if g.usesSQL {
+				g.writeln("_ \"modernc.org/sqlite\"")
+			}
+			g.indent--
+			g.writeln(")")
+		}
+		g.writeln("")
+	}
+
+	g.buf.WriteString(body)
+}
+
+// selectorOf returns the package selector used to qualify identifiers, i.e. the
+// final path element ("encoding/json" -> "json", "math/rand" -> "rand").
+func selectorOf(pkg string) string {
+	if i := strings.LastIndex(pkg, "/"); i >= 0 {
+		return pkg[i+1:]
+	}
+	return pkg
+}
+
+// bodyReferences reports whether the generated body refers to a package via its
+// selector (e.g. "strconv."), requiring the match not be part of a longer
+// identifier so "mytime." does not count as a use of "time".
+func bodyReferences(body, sel string) bool {
+	needle := sel + "."
+	for from := 0; ; {
+		i := strings.Index(body[from:], needle)
+		if i < 0 {
+			return false
+		}
+		p := from + i
+		if p == 0 || !isIdentByte(body[p-1]) {
+			return true
+		}
+		from = p + 1
+	}
+}
+
+func isIdentByte(b byte) bool {
+	// '.' is included so a qualified field access (e.g. "foo.json.") is not
+	// mistaken for a package selector use; a real package reference is never
+	// preceded by '.'.
+	return b == '_' || b == '.' || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
 }
 
 func (g *Generator) genRuntime() {
