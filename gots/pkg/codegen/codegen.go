@@ -2156,6 +2156,9 @@ func (g *Generator) genForStmt(stmt *typed.ForStmt) {
 
 	if stmt.Init != nil {
 		init = fmt.Sprintf("%s := %s", goName(stmt.Init.Name), g.genExpr(stmt.Init.Init))
+	} else if stmt.InitExpr != nil {
+		// Bare-expression init: i = 0
+		init = g.genExpr(stmt.InitExpr)
 	}
 	if stmt.Condition != nil {
 		cond = g.genExpr(stmt.Condition)
@@ -3951,9 +3954,9 @@ func (g *Generator) genRegexLit(e *typed.RegexLit) string {
 			goFlags += "m"
 		case 's':
 			goFlags += "s"
-		// 'g' (global) is handled at match time in Go, not in pattern
-		// 'u' (unicode) is default in Go RE2
-		// 'y' (sticky) has no direct equivalent
+			// 'g' (global) is handled at match time in Go, not in pattern
+			// 'u' (unicode) is default in Go RE2
+			// 'y' (sticky) has no direct equivalent
 		}
 	}
 

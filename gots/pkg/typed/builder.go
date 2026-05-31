@@ -10,26 +10,26 @@ import (
 
 // Builder transforms an AST into a TypedAST while performing type checking.
 type Builder struct {
-	errors          []*Error
-	scope           *Scope
-	typeAliases     map[string]types.Type
-	classes         map[string]*types.Class
+	errors            []*Error
+	scope             *Scope
+	typeAliases       map[string]types.Type
+	classes           map[string]*types.Class
 	genericClasses    map[string]*types.GenericClass
 	genericAliases    map[string]*types.GenericAlias
 	genericInterfaces map[string]*types.GenericInterface
-	interfaces      map[string]*types.Interface
-	enums           map[string]*types.Enum
-	goImports       []*GoImportDecl
-	moduleImports   []*ModuleImportDecl
-	exports         []string
-	currentFunc     *types.Function
-	currentClass    *types.Class
-	narrowing       map[string]types.Type
-	loopDepth       int
-	scopeDepth      int
-	constVars       map[string]bool                 // Track which variables are const (scoped)
-	typeParamScope  map[string]*types.TypeParameter // Type parameters currently in scope
-	inAsyncFunc     bool                            // Track if we're inside an async function
+	interfaces        map[string]*types.Interface
+	enums             map[string]*types.Enum
+	goImports         []*GoImportDecl
+	moduleImports     []*ModuleImportDecl
+	exports           []string
+	currentFunc       *types.Function
+	currentClass      *types.Class
+	narrowing         map[string]types.Type
+	loopDepth         int
+	scopeDepth        int
+	constVars         map[string]bool                 // Track which variables are const (scoped)
+	typeParamScope    map[string]*types.TypeParameter // Type parameters currently in scope
+	inAsyncFunc       bool                            // Track if we're inside an async function
 }
 
 // Error represents a type checking error.
@@ -90,18 +90,18 @@ func (s *Scope) lookup(name string) (types.Type, bool) {
 // NewBuilder creates a new typed AST builder.
 func NewBuilder() *Builder {
 	b := &Builder{
-		errors:         []*Error{},
-		scope:          newScope(nil),
-		typeAliases:    make(map[string]types.Type),
-		classes:        make(map[string]*types.Class),
+		errors:            []*Error{},
+		scope:             newScope(nil),
+		typeAliases:       make(map[string]types.Type),
+		classes:           make(map[string]*types.Class),
 		genericClasses:    make(map[string]*types.GenericClass),
 		genericAliases:    make(map[string]*types.GenericAlias),
 		genericInterfaces: make(map[string]*types.GenericInterface),
-		interfaces:     make(map[string]*types.Interface),
-		enums:          make(map[string]*types.Enum),
-		narrowing:      make(map[string]types.Type),
-		constVars:      make(map[string]bool),
-		typeParamScope: make(map[string]*types.TypeParameter),
+		interfaces:        make(map[string]*types.Interface),
+		enums:             make(map[string]*types.Enum),
+		narrowing:         make(map[string]types.Type),
+		constVars:         make(map[string]bool),
+		typeParamScope:    make(map[string]*types.TypeParameter),
 	}
 
 	// Pre-define built-in type aliases
@@ -1452,6 +1452,11 @@ func (b *Builder) buildForStmt(stmt *ast.ForStmt) *ForStmt {
 		init = b.buildVarDecl(stmt.Init)
 	}
 
+	var initExpr Expr
+	if stmt.InitExpr != nil {
+		initExpr = b.buildExpr(stmt.InitExpr)
+	}
+
 	var cond Expr
 	if stmt.Condition != nil {
 		cond = b.buildExpr(stmt.Condition)
@@ -1474,6 +1479,7 @@ func (b *Builder) buildForStmt(stmt *ast.ForStmt) *ForStmt {
 
 	return &ForStmt{
 		Init:      init,
+		InitExpr:  initExpr,
 		Condition: cond,
 		Update:    update,
 		Body:      body,
@@ -2286,20 +2292,20 @@ func (b *Builder) buildSpreadExpr(expr *ast.SpreadExpr) Expr {
 
 // isBuiltin checks if a name is a built-in function.
 var builtins = map[string]types.Type{
-	"println":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.VoidType},
-	"print":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.VoidType},
-	"len":        &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
-	"push":       &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "val", Type: types.AnyType}}, ReturnType: types.VoidType},
-	"pop":        &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}}, ReturnType: types.AnyType},
-	"typeof":     &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
-	"tostring":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
-	"toint":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
-	"tofloat":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.FloatType},
-	"parseInt":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
-	"sqrt":       &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
-	"floor":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
-	"ceil":       &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
-	"abs":        &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	"println":  &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.VoidType},
+	"print":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.VoidType},
+	"len":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
+	"push":     &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}, {Name: "val", Type: types.AnyType}}, ReturnType: types.VoidType},
+	"pop":      &types.Function{Params: []*types.Param{{Name: "arr", Type: types.AnyType}}, ReturnType: types.AnyType},
+	"typeof":   &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
+	"tostring": &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.StringType},
+	"toint":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
+	"tofloat":  &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.FloatType},
+	"parseInt": &types.Function{Params: []*types.Param{{Name: "x", Type: types.AnyType}}, ReturnType: types.IntType},
+	"sqrt":     &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	"floor":    &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	"ceil":     &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
+	"abs":      &types.Function{Params: []*types.Param{{Name: "x", Type: types.FloatType}}, ReturnType: types.FloatType},
 	// String methods
 	"split":      &types.Function{Params: []*types.Param{{Name: "str", Type: types.StringType}, {Name: "sep", Type: types.StringType}}, ReturnType: &types.Array{Element: types.StringType}},
 	"join":       &types.Function{Params: []*types.Param{{Name: "arr", Type: &types.Array{Element: types.StringType}}, {Name: "sep", Type: types.StringType}}, ReturnType: types.StringType},

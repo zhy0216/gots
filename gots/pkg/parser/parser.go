@@ -15,18 +15,18 @@ import (
 const (
 	_ int = iota
 	LOWEST
-	ASSIGN          // =
-	TERNARY         // ?:
-	NULLISH         // ??
-	OR              // ||
-	AND             // &&
-	EQUALS          // == !=
-	LESSGREATER     // > < >= <=
-	SUM             // + -
-	PRODUCT         // * / %
-	PREFIX          // -x !x ++x --x
-	POSTFIX         // x++ x--
-	CALL            // function() array[index] obj.property
+	ASSIGN      // =
+	TERNARY     // ?:
+	NULLISH     // ??
+	OR          // ||
+	AND         // &&
+	EQUALS      // == !=
+	LESSGREATER // > < >= <=
+	SUM         // + -
+	PRODUCT     // * / %
+	PREFIX      // -x !x ++x --x
+	POSTFIX     // x++ x--
+	CALL        // function() array[index] obj.property
 )
 
 // precedences maps token types to their precedence levels
@@ -1286,12 +1286,21 @@ func (p *Parser) parseForStatement() ast.Statement {
 		return stmt
 	}
 
-	// Fallback for other for loop patterns
+	// Fallback: C-style for with a bare-expression init, e.g.
+	// for (i = 0; i < 3; i = i + 1)
 	stmt := &ast.ForStmt{Token: forToken}
 
-	p.nextToken()
-	stmt.Init = p.parseVarDeclaration(false)
+	// Init clause: an expression statement (e.g. an assignment), or empty.
+	if !p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+		stmt.InitExpr = p.parseExpression(LOWEST)
+	}
 
+	if !p.expectPeek(token.SEMICOLON) {
+		return nil
+	}
+
+	p.nextToken()
 	stmt.Condition = p.parseExpression(LOWEST)
 
 	if !p.expectPeek(token.SEMICOLON) {

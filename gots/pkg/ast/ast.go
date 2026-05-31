@@ -115,7 +115,7 @@ type TaggedTemplateLiteral struct {
 }
 
 func (t *TaggedTemplateLiteral) expressionNode()      {}
-func (t *TaggedTemplateLiteral) TokenLiteral() string  { return t.Token.Literal }
+func (t *TaggedTemplateLiteral) TokenLiteral() string { return t.Token.Literal }
 func (t *TaggedTemplateLiteral) String() string {
 	return "TaggedTemplate(" + t.Tag.String() + ")"
 }
@@ -207,7 +207,7 @@ func (c *ConditionalExpr) String() string {
 type CallExpr struct {
 	Token     token.Token // The '(' token
 	Function  Expression  // Identifier or PropertyExpr
-	TypeArgs  []Type       // Explicit type arguments (e.g., <number> in identity<number>(42))
+	TypeArgs  []Type      // Explicit type arguments (e.g., <number> in identity<number>(42))
 	Arguments []Expression
 	Optional  bool // true for optional chaining ?.()
 }
@@ -622,7 +622,8 @@ func (w *WhileStmt) String() string {
 // ForStmt represents a for statement.
 type ForStmt struct {
 	Token     token.Token // The 'for' token
-	Init      *VarDecl
+	Init      *VarDecl    // let/const declaration init; nil for a bare-expression init
+	InitExpr  Expression  // bare-expression init, e.g. for (i = 0; ...); nil if Init is set
 	Condition Expression
 	Update    Expression
 	Body      *Block
@@ -631,8 +632,14 @@ type ForStmt struct {
 func (f *ForStmt) statementNode()       {}
 func (f *ForStmt) TokenLiteral() string { return f.Token.Literal }
 func (f *ForStmt) String() string {
+	initStr := ""
+	if f.Init != nil {
+		initStr = f.Init.String()
+	} else if f.InitExpr != nil {
+		initStr = f.InitExpr.String()
+	}
 	return fmt.Sprintf("for (%s; %s; %s) %s",
-		f.Init.String(), f.Condition.String(), f.Update.String(), f.Body.String())
+		initStr, f.Condition.String(), f.Update.String(), f.Body.String())
 }
 
 // ForOfStmt represents a for-of statement.
@@ -939,7 +946,7 @@ type PrimitiveType struct {
 	Kind PrimitiveKind
 }
 
-func (p *PrimitiveType) typeNode()          {}
+func (p *PrimitiveType) typeNode()            {}
 func (p *PrimitiveType) TokenLiteral() string { return p.String() }
 func (p *PrimitiveType) String() string {
 	switch p.Kind {
@@ -974,8 +981,8 @@ func (a *ArrayType) String() string {
 
 // ObjectTypeProperty represents a property in an object type.
 type ObjectTypeProperty struct {
-	Name      string
-	PropType  Type
+	Name     string
+	PropType Type
 }
 
 // ObjectType represents an object type (e.g., { x: number, y: number }).
@@ -1244,9 +1251,9 @@ func (g *GoImportDecl) String() string {
 // ModuleImportDecl represents an import from a local module.
 // e.g., import { add, Vector } from "./math"
 type ModuleImportDecl struct {
-	Token  token.Token // The 'import' token
-	Names  []string    // The names being imported
-	Path   string      // The module path (e.g., "./math")
+	Token token.Token // The 'import' token
+	Names []string    // The names being imported
+	Path  string      // The module path (e.g., "./math")
 }
 
 func (m *ModuleImportDecl) statementNode()       {}
@@ -1258,8 +1265,8 @@ func (m *ModuleImportDecl) String() string {
 // ExportModifier is a marker that a declaration is exported.
 // It wraps another statement (FuncDecl, ClassDecl, VarDecl, TypeAliasDecl).
 type ExportModifier struct {
-	Token   token.Token
-	Decl    Statement // The declaration being exported
+	Token token.Token
+	Decl  Statement // The declaration being exported
 }
 
 func (e *ExportModifier) statementNode()       {}

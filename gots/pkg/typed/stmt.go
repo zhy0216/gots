@@ -43,8 +43,8 @@ type ArrayPattern struct {
 	PatternType types.Type // The type of the array being destructured
 }
 
-func (a *ArrayPattern) patternNode()        {}
-func (a *ArrayPattern) Type() types.Type   { return a.PatternType }
+func (a *ArrayPattern) patternNode()     {}
+func (a *ArrayPattern) Type() types.Type { return a.PatternType }
 
 // ObjectPattern represents object destructuring: {x, y}
 type ObjectPattern struct {
@@ -52,8 +52,8 @@ type ObjectPattern struct {
 	PatternType types.Type // The type of the object being destructured
 }
 
-func (o *ObjectPattern) patternNode()       {}
-func (o *ObjectPattern) Type() types.Type  { return o.PatternType }
+func (o *ObjectPattern) patternNode()     {}
+func (o *ObjectPattern) Type() types.Type { return o.PatternType }
 
 // PropertyPattern represents a property in object destructuring.
 type PropertyPattern struct {
@@ -67,8 +67,8 @@ type IdentPattern struct {
 	PatternType types.Type // The type of the bound variable
 }
 
-func (i *IdentPattern) patternNode()       {}
-func (i *IdentPattern) Type() types.Type  { return i.PatternType }
+func (i *IdentPattern) patternNode()     {}
+func (i *IdentPattern) Type() types.Type { return i.PatternType }
 
 // BlockStmt represents a block of statements.
 type BlockStmt struct {
@@ -96,7 +96,8 @@ func (w *WhileStmt) stmtNode() {}
 
 // ForStmt represents a for loop.
 type ForStmt struct {
-	Init      *VarDecl // nil if no init
+	Init      *VarDecl // declaration init; nil if no init or if a bare-expression init is used
+	InitExpr  Expr     // bare-expression init, e.g. for (i = 0; ...); nil if Init is set
 	Condition Expr     // nil if no condition (infinite loop)
 	Update    Expr     // nil if no update
 	Body      *BlockStmt
@@ -179,8 +180,8 @@ type FuncDecl struct {
 	Params     []*Param
 	ReturnType types.Type
 	Body       *BlockStmt
-	Captures   []*Capture // For closures
-	IsAsync    bool       // true if declared with 'async' keyword
+	Captures   []*Capture   // For closures
+	IsAsync    bool         // true if declared with 'async' keyword
 	Decorators []*Decorator // Function decorators
 }
 
