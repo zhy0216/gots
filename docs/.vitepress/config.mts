@@ -5,6 +5,7 @@ export default defineConfig({
   title: 'goTS',
   description: 'A TypeScript-like language that compiles to Go',
   lang: 'en-US',
+  base: '/gots/',
   cleanUrls: true,
   lastUpdated: true,
   srcExclude: ['**/CLAUDE.md'],
