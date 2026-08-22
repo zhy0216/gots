@@ -1,1407 +1,2027 @@
-# goTS Built-in Functions and Objects Reference
+## String Methods
 
-**Version 2.0**
-**January 2026**
+String values in goTS have built-in methods for common string operations.
 
-This document describes the built-in functions and objects available in goTS, designed to closely mirror JavaScript's standard library while being adapted for the goTS type system and compilation to Go.
+### split
 
----
-
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Console I/O](#console-io)
-3. [Array](#array)
-4. [Map](#map)
-5. [Set](#set)
-6. [String Functions](#string-functions)
-7. [Type Utilities](#type-utilities)
-8. [Math Functions](#math-functions)
-9. [Comparison with JavaScript](#comparison-with-javascript)
-
----
-
-## Overview
-
-goTS provides built-in objects and functions that closely follow JavaScript conventions:
-
-- **Console I/O**: Print output to the console
-- **Array**: Full-featured array object with methods like JavaScript
-- **Map**: Key-value collection with any key type
-- **Set**: Collection of unique values
-- **Type conversion**: Convert between types
-- **Type introspection**: Check runtime types
-- **Math operations**: Common mathematical functions
-
----
-
-## Console I/O
-
-### println
-
-Prints a value to the console followed by a newline.
+Splits a string into an array of substrings using a delimiter.
 
 **Signature:**
 ```typescript
-println(value: any): void
+str.split(separator: string): string[]
 ```
 
 **Parameters:**
-- `value`: The value to print (can be of any type)
+- `separator` - The delimiter to split on
 
-**Return Value:**
-- `void`
+**Returns:** string[] - Array of substrings
 
 **Examples:**
 ```typescript
-println("Hello, World!")           // Prints: Hello, World!
-println(42)                        // Prints: 42
-println(3.14)                      // Prints: 3.14
-println(true)                      // Prints: true
-println([1, 2, 3])                 // Prints: [1, 2, 3]
+let str: string = "a,b,c"
+let parts: string[] = str.split(",")
+println(len(parts))  // 3
+
+let path = "folder/subfolder/file.txt"
+let segments = path.split("/")
+println(segments[0])  // "folder"
 ```
 
-**Notes:**
-- Automatically converts values to string representation
-- Adds a newline character after the output
-- Similar to JavaScript's `console.log()`
+**Go Mapping:** `strings.Split()`
 
 ---
 
-### print
+### replace
 
-Prints a value to the console without a newline.
+Replaces all occurrences of a substring with another string.
 
 **Signature:**
 ```typescript
-print(value: any): void
+str.replace(old: string, new: string): string
 ```
 
 **Parameters:**
-- `value`: The value to print (can be of any type)
+- `old` - The substring to replace
+- `new` - The replacement string
 
-**Return Value:**
-- `void`
+**Returns:** string - The string with replacements made
 
 **Examples:**
 ```typescript
-print("Hello")
-print(" ")
-print("World")
-println("!")
-// Output: Hello World!
+let str: string = "hello world"
+let newStr: string = str.replace("world", "goTS")
+println(newStr)  // "hello goTS"
+
+let text = "I like apples and apples"
+println(text.replace("apples", "oranges"))  // "I like oranges and oranges"
 ```
+
+**Go Mapping:** `strings.Replace()`
 
 ---
 
-## Array
+### trim
 
-Arrays in goTS are objects with methods, similar to JavaScript arrays. They are generic and type-safe.
+Removes leading and trailing whitespace from a string.
 
-### Creating Arrays
-
+**Signature:**
 ```typescript
-// Array literal
-let numbers: int[] = [1, 2, 3, 4, 5]
-let names: string[] = ["Alice", "Bob", "Charlie"]
-let empty: int[] = []
-
-// Mixed initialization
-let items: int[] = [1, 2]
-items.push(3)
+str.trim(): string
 ```
 
-### Properties
+**Returns:** string - The trimmed string
 
-#### length
+**Examples:**
+```typescript
+let str: string = "  hello  "
+let trimmed: string = str.trim()
+println(trimmed)  // "hello"
 
-Returns the number of elements in the array.
+let input = "\n\ttext\t\n"
+println(input.trim())  // "text"
+```
 
-**Type:** `int` (read-only)
+**Go Mapping:** `strings.TrimSpace()`
+
+---
+
+### startsWith
+
+Checks if a string starts with a given prefix.
+
+**Signature:**
+```typescript
+str.startsWith(prefix: string): boolean
+```
+
+**Parameters:**
+- `prefix` - The prefix to look for
+
+**Returns:** boolean - true if the string starts with the prefix
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let starts: boolean = str.startsWith("hello")
+println(starts)  // true
+
+if (filename.startsWith("test_")) {
+    println("Test file detected")
+}
+```
+
+**Go Mapping:** `strings.HasPrefix()`
+
+---
+
+### endsWith
+
+Checks if a string ends with a given suffix.
+
+**Signature:**
+```typescript
+str.endsWith(suffix: string): boolean
+```
+
+**Parameters:**
+- `suffix` - The suffix to look for
+
+**Returns:** boolean - true if the string ends with the suffix
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let ends: boolean = str.endsWith("world")
+println(ends)  // true
+
+if (filename.endsWith(".gts")) {
+    println("goTS source file")
+}
+```
+
+**Go Mapping:** `strings.HasSuffix()`
+
+---
+
+### includes
+
+Checks if a string contains a substring.
+
+**Signature:**
+```typescript
+str.includes(substr: string): boolean
+```
+
+**Parameters:**
+- `substr` - The substring to search for
+
+**Returns:** boolean - true if the substring is found
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let has: boolean = str.includes("world")
+println(has)  // true
+
+if (email.includes("@")) {
+    println("Valid email format")
+}
+```
+
+**Go Mapping:** `strings.Contains()`
+
+---
+
+### toLowerCase
+
+Converts a string to lowercase.
+
+**Signature:**
+```typescript
+str.toLowerCase(): string
+```
+
+**Returns:** string - The lowercase string
+
+**Examples:**
+```typescript
+let str: string = "HELLO WORLD"
+let lower: string = str.toLowerCase()
+println(lower)  // "hello world"
+```
+
+**Go Mapping:** `strings.ToLower()`
+
+---
+
+### toUpperCase
+
+Converts a string to uppercase.
+
+**Signature:**
+```typescript
+str.toUpperCase(): string
+```
+
+**Returns:** string - The uppercase string
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let upper: string = str.toUpperCase()
+println(upper)  // "HELLO WORLD"
+```
+
+**Go Mapping:** `strings.ToUpper()`
+
+---
+
+### indexOf
+
+Finds the index of the first occurrence of a substring.
+
+**Signature:**
+```typescript
+str.indexOf(substring: string): int
+```
+
+**Parameters:**
+- `substring` - The substring to search for
+
+**Returns:** int - Index of first occurrence, or -1 if not found
+
+**Examples:**
+```typescript
+let str: string = "hello world"
+let idx: int = str.indexOf("world")
+println(idx)  // 6
+```
+
+**Go Mapping:** `strings.Index()`
+
+---
+
+### charCodeAt
+
+Returns the Unicode code point of the character at the specified index.
+
+**Signature:**
+```typescript
+str.charCodeAt(index: int): int
+```
+
+**Examples:**
+```typescript
+"Hello".charCodeAt(0)  // 72 (H)
+"Hello".charCodeAt(1)  // 101 (e)
+```
+
+**Go Mapping:** `int(str[index])`
+
+---
+
+### at
+
+Returns the character at the specified index, supporting negative indices.
+
+**Signature:**
+```typescript
+str.at(index: int): string
+```
+
+**Examples:**
+```typescript
+"Hello".at(0)   // "H"
+"Hello".at(-1)  // "o" (last char)
+"Hello".at(-2)  // "l"
+```
+
+**Go Mapping:** Index with negative support
+
+---
+
+### slice
+
+Extracts a section of a string, supporting negative indices.
+
+**Signature:**
+```typescript
+str.slice(start: int, end?: int): string
+```
+
+**Examples:**
+```typescript
+"Hello".slice(0, 2)   // "He"
+"Hello".slice(1, 4)   // "ell"
+"Hello".slice(-2)     // "lo"
+```
+
+**Go Mapping:** Slice with negative index handling
+
+---
+
+### repeat
+
+Returns a string consisting of the string repeated the specified number of times.
+
+**Signature:**
+```typescript
+str.repeat(count: int): string
+```
+
+**Examples:**
+```typescript
+"ab".repeat(3)  // "ababab"
+"ab".repeat(1)  // "ab"
+"ab".repeat(0)  // ""
+```
+
+**Go Mapping:** `strings.Repeat()`
+
+---
+
+### padStart
+
+Pads the current string with another string until the resulting string reaches the given length.
+
+**Signature:**
+```typescript
+str.padStart(targetLength: int, padString: string): string
+```
+
+**Examples:**
+```typescript
+"5".padStart(3, "0")   // "005"
+"5".padStart(5, "0")   // "00005"
+```
+
+**Go Mapping:** Loop prepending pad string
+
+---
+
+### padEnd
+
+Pads the current string with another string at the end until the resulting string reaches the given length.
+
+**Signature:**
+```typescript
+str.padEnd(targetLength: int, padString: string): string
+```
+
+**Examples:**
+```typescript
+"5".padEnd(3, "0")   // "500"
+"5".padEnd(5, "0")   // "50000"
+```
+
+**Go Mapping:** Loop appending pad string
+
+---
+
+### trimStart
+
+Removes leading whitespace from a string.
+
+**Signature:**
+```typescript
+str.trimStart(): string
+```
+
+**Examples:**
+```typescript
+"  hello  ".trimStart()  // "hello  "
+```
+
+**Go Mapping:** `strings.TrimLeft()`
+
+---
+
+### trimEnd
+
+Removes trailing whitespace from a string.
+
+**Signature:**
+```typescript
+str.trimEnd(): string
+```
+
+**Examples:**
+```typescript
+"  hello  ".trimEnd()  // "  hello"
+```
+
+**Go Mapping:** `strings.TrimRight()`
+
+---
+
+### replaceAll
+
+Returns a new string with all matches of a pattern replaced by a replacement.
+
+**Signature:**
+```typescript
+str.replaceAll(searchValue: string, replaceValue: string): string
+```
+
+**Examples:**
+```typescript
+"foo bar foo".replaceAll("foo", "x")  // "x bar x"
+```
+
+**Go Mapping:** `strings.ReplaceAll()`
+
+---
+## Array Methods
+
+Array values in goTS have built-in methods for functional programming operations.
+
+### map
+
+Transforms each element of an array using a callback function.
+
+**Signature:**
+```typescript
+arr.map<T, U>(fn: (x: T) => U): U[]
+```
+
+**Parameters:**
+- `fn` - Function to apply to each element
+
+**Returns:** Array of transformed elements
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3]
+let doubled: int[] = arr.map((x: int): int => x * 2)
+println(doubled)  // [2, 4, 6]
+
+let nums = [1, 2, 3, 4, 5]
+let squares = nums.map((n: int): int => n * n)
+```
+
+**Go Mapping:** Inline loop with result array
+
+---
+
+### filter
+
+Filters array elements based on a predicate function.
+
+**Signature:**
+```typescript
+arr.filter<T>(fn: (x: T) => boolean): T[]
+```
+
+**Parameters:**
+- `fn` - Predicate function returning true to keep element
+
+**Returns:** Array containing only elements that pass the test
 
 **Examples:**
 ```typescript
 let arr: int[] = [1, 2, 3, 4, 5]
-println(arr.length)                // Prints: 5
+let evens: int[] = arr.filter((x: int): boolean => x % 2 == 0)
+println(evens)  // [2, 4]
 
-let empty: string[] = []
-println(empty.length)              // Prints: 0
+let names = ["Alice", "Bob", "Anna"]
+let aNames = names.filter((n: string): boolean => n.startsWith("A"))
 ```
+
+**Go Mapping:** Inline loop with conditional append
 
 ---
 
-### Methods
+### reduce
 
-#### push
-
-Appends one or more elements to the end of the array and returns the new length.
+Reduces an array to a single value using an accumulator function.
 
 **Signature:**
 ```typescript
-arr.push(value: T): int
-arr.push(value1: T, value2: T, ...): int
+arr.reduce<T, U>(fn: (acc: U, x: T) => U, initial: U): U
 ```
 
 **Parameters:**
-- `value`: The value(s) to append
+- `fn` - Reducer function taking accumulator and current element
+- `initial` - Initial accumulator value
 
-**Return Value:**
-- `int`: The new length of the array
-
-**Examples:**
-```typescript
-let numbers: int[] = [1, 2, 3]
-let newLen: int = numbers.push(4)
-println(newLen)                    // Prints: 4
-println(numbers)                   // Prints: [1, 2, 3, 4]
-
-numbers.push(5, 6, 7)
-println(numbers)                   // Prints: [1, 2, 3, 4, 5, 6, 7]
-```
-
----
-
-#### pop
-
-Removes the last element from the array and returns it.
-
-**Signature:**
-```typescript
-arr.pop(): T | null
-```
-
-**Return Value:**
-- `T | null`: The removed element, or `null` if the array is empty
-
-**Examples:**
-```typescript
-let numbers: int[] = [1, 2, 3, 4, 5]
-let last: int | null = numbers.pop()
-println(last)                      // Prints: 5
-println(numbers)                   // Prints: [1, 2, 3, 4]
-
-let empty: int[] = []
-let result: int | null = empty.pop()
-println(result)                    // Prints: null
-```
-
----
-
-#### shift
-
-Removes the first element from the array and returns it.
-
-**Signature:**
-```typescript
-arr.shift(): T | null
-```
-
-**Return Value:**
-- `T | null`: The removed element, or `null` if the array is empty
-
-**Examples:**
-```typescript
-let numbers: int[] = [1, 2, 3, 4, 5]
-let first: int | null = numbers.shift()
-println(first)                     // Prints: 1
-println(numbers)                   // Prints: [2, 3, 4, 5]
-```
-
----
-
-#### unshift
-
-Adds one or more elements to the beginning of the array and returns the new length.
-
-**Signature:**
-```typescript
-arr.unshift(value: T): int
-arr.unshift(value1: T, value2: T, ...): int
-```
-
-**Return Value:**
-- `int`: The new length of the array
-
-**Examples:**
-```typescript
-let numbers: int[] = [3, 4, 5]
-let newLen: int = numbers.unshift(1, 2)
-println(newLen)                    // Prints: 5
-println(numbers)                   // Prints: [1, 2, 3, 4, 5]
-```
-
----
-
-#### slice
-
-Returns a shallow copy of a portion of the array.
-
-**Signature:**
-```typescript
-arr.slice(): T[]
-arr.slice(start: int): T[]
-arr.slice(start: int, end: int): T[]
-```
-
-**Parameters:**
-- `start`: Starting index (inclusive). If negative, counts from end. Defaults to 0.
-- `end`: Ending index (exclusive). If negative, counts from end. Defaults to array length.
-
-**Return Value:**
-- `T[]`: A new array containing the extracted elements
+**Returns:** Final accumulated value
 
 **Examples:**
 ```typescript
 let arr: int[] = [1, 2, 3, 4, 5]
-println(arr.slice(1, 4))           // Prints: [2, 3, 4]
-println(arr.slice(2))              // Prints: [3, 4, 5]
-println(arr.slice(-2))             // Prints: [4, 5]
-println(arr.slice())               // Prints: [1, 2, 3, 4, 5] (copy)
+let sum: int = arr.reduce((acc: int, x: int): int => acc + x, 0)
+println(sum)  // 15
+
+let product = [1, 2, 3, 4].reduce((acc: int, x: int): int => acc * x, 1)
+println(product)  // 24
 ```
+
+**Go Mapping:** Inline loop with accumulator
 
 ---
 
-#### splice
+### find
 
-Changes the contents of an array by removing or replacing existing elements and/or adding new elements.
+Finds the first element that satisfies a predicate.
 
 **Signature:**
 ```typescript
-arr.splice(start: int): T[]
-arr.splice(start: int, deleteCount: int): T[]
-arr.splice(start: int, deleteCount: int, item1: T, item2: T, ...): T[]
+arr.find<T>(fn: (x: T) => boolean): T | null
 ```
 
 **Parameters:**
-- `start`: The index at which to start changing the array
-- `deleteCount`: The number of elements to remove (defaults to all remaining)
-- `items`: Elements to add to the array
+- `fn` - Predicate function
 
-**Return Value:**
-- `T[]`: An array containing the deleted elements
+**Returns:** First element that matches, or null if none found
 
 **Examples:**
 ```typescript
 let arr: int[] = [1, 2, 3, 4, 5]
-let removed: int[] = arr.splice(2, 2)
-println(removed)                   // Prints: [3, 4]
-println(arr)                       // Prints: [1, 2, 5]
+let found: int | null = arr.find((x: int): boolean => x > 3)
+println(found)  // 4
 
-arr.splice(1, 0, 10, 20)           // Insert without removing
-println(arr)                       // Prints: [1, 10, 20, 2, 5]
+let names = ["Alice", "Bob", "Charlie"]
+let longName = names.find((n: string): boolean => len(n) > 5)
 ```
+
+**Go Mapping:** Inline loop with early return
 
 ---
 
-#### concat
+### findIndex
 
-Merges two or more arrays into a new array.
-
-**Signature:**
-```typescript
-arr.concat(arr2: T[]): T[]
-arr.concat(arr2: T[], arr3: T[], ...): T[]
-```
-
-**Return Value:**
-- `T[]`: A new array with all elements combined
-
-**Examples:**
-```typescript
-let a: int[] = [1, 2]
-let b: int[] = [3, 4]
-let c: int[] = [5, 6]
-let combined: int[] = a.concat(b, c)
-println(combined)                  // Prints: [1, 2, 3, 4, 5, 6]
-```
-
----
-
-#### indexOf
-
-Returns the first index at which a given element is found.
+Finds the index of the first element that satisfies a predicate.
 
 **Signature:**
 ```typescript
-arr.indexOf(value: T): int
-arr.indexOf(value: T, fromIndex: int): int
+arr.findIndex<T>(fn: (x: T) => boolean): int
 ```
 
 **Parameters:**
-- `value`: The element to search for
-- `fromIndex`: The index to start searching from (defaults to 0)
+- `fn` - Predicate function
 
-**Return Value:**
-- `int`: The index of the element, or `-1` if not found
-
-**Examples:**
-```typescript
-let arr: string[] = ["apple", "banana", "cherry", "banana"]
-println(arr.indexOf("banana"))     // Prints: 1
-println(arr.indexOf("banana", 2))  // Prints: 3
-println(arr.indexOf("grape"))      // Prints: -1
-```
-
----
-
-#### includes
-
-Determines whether the array includes a certain element.
-
-**Signature:**
-```typescript
-arr.includes(value: T): boolean
-arr.includes(value: T, fromIndex: int): boolean
-```
-
-**Return Value:**
-- `boolean`: `true` if the element is found, `false` otherwise
+**Returns:** Index of first matching element, or -1 if none found
 
 **Examples:**
 ```typescript
 let arr: int[] = [1, 2, 3, 4, 5]
-println(arr.includes(3))           // Prints: true
-println(arr.includes(6))           // Prints: false
+let idx: int = arr.findIndex((x: int): boolean => x > 3)
+println(idx)  // 3
+
+if (arr.findIndex((x: int): boolean => x < 0) == -1) {
+    println("No negative numbers")
+}
 ```
+
+**Go Mapping:** Inline loop with index tracking
 
 ---
 
-#### join
+### some
 
-Creates a string by concatenating all elements with a separator.
+Tests whether at least one element passes the predicate.
 
 **Signature:**
 ```typescript
-arr.join(): string
+arr.some<T>(fn: (x: T) => boolean): boolean
+```
+
+**Parameters:**
+- `fn` - Predicate function
+
+**Returns:** true if any element passes the test
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+let hasEven: boolean = arr.some((x: int): boolean => x % 2 == 0)
+println(hasEven)  // true
+
+if (scores.some((s: int): boolean => s < 60)) {
+    println("Some students failed")
+}
+```
+
+**Go Mapping:** Inline loop with early return
+
+---
+
+### every
+
+Tests whether all elements pass the predicate.
+
+**Signature:**
+```typescript
+arr.every<T>(fn: (x: T) => boolean): boolean
+```
+
+**Parameters:**
+- `fn` - Predicate function
+
+**Returns:** true if all elements pass the test
+
+**Examples:**
+```typescript
+let arr: int[] = [2, 4, 6, 8]
+let allEven: boolean = arr.every((x: int): boolean => x % 2 == 0)
+println(allEven)  // true
+
+if (ages.every((a: int): boolean => a >= 18)) {
+    println("All adults")
+}
+```
+
+**Go Mapping:** Inline loop with early return
+
+---
+
+### join
+
+Joins an array of strings into a single string using a separator.
+
+**Signature:**
+```typescript
 arr.join(separator: string): string
 ```
 
 **Parameters:**
-- `separator`: The string to separate elements (defaults to `","`)
+- `separator` - The string to insert between elements
 
-**Return Value:**
-- `string`: The joined string
+**Returns:** string - The joined string
 
 **Examples:**
 ```typescript
-let words: string[] = ["Hello", "World"]
-println(words.join(" "))           // Prints: Hello World
-println(words.join("-"))           // Prints: Hello-World
-println(words.join())              // Prints: Hello,World
+let parts: string[] = ["a", "b", "c"]
+let str: string = parts.join(",")
+println(str)  // "a,b,c"
 
-let nums: int[] = [1, 2, 3]
-println(nums.join(" + "))          // Prints: 1 + 2 + 3
+let words = ["Hello", "World"]
+println(words.join(" "))  // "Hello World"
 ```
+
+**Go Mapping:** `strings.Join()`
 
 ---
 
-#### reverse
+### at
 
-Reverses the array in place and returns it.
+Returns the element at the specified index, supporting negative indices.
 
 **Signature:**
 ```typescript
-arr.reverse(): T[]
+arr.at(index: int): T
 ```
 
-**Return Value:**
-- `T[]`: The reversed array (same reference)
+**Examples:**
+```typescript
+let arr: int[] = [10, 20, 30, 40, 50]
+arr.at(0)   // 10
+arr.at(-1)  // 50 (last element)
+arr.at(-2)  // 40
+```
+
+**Go Mapping:** Index with negative support
+
+---
+
+### lastIndexOf
+
+Returns the last index of a value in the array, or -1 if not found.
+
+**Signature:**
+```typescript
+arr.lastIndexOf(value: T): int
+```
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 2, 1]
+arr.lastIndexOf(2)  // 3
+arr.lastIndexOf(5)  // -1
+```
+
+**Go Mapping:** Reverse loop search
+
+---
+
+### fill
+
+Fills array elements with a value, optionally within a range.
+
+**Signature:**
+```typescript
+arr.fill(value: T, start?: int, end?: int): T[]
+```
 
 **Examples:**
 ```typescript
 let arr: int[] = [1, 2, 3, 4, 5]
-arr.reverse()
-println(arr)                       // Prints: [5, 4, 3, 2, 1]
+arr.fill(0)         // [0, 0, 0, 0, 0]
+arr.fill(9, 1, 4)   // [1, 9, 9, 9, 5]
+```
+
+**Go Mapping:** Loop assignment
+
+---
+
+### copyWithin
+
+Copies part of the array to another location within the same array.
+
+**Signature:**
+```typescript
+arr.copyWithin(target: int, start: int, end?: int): T[]
+```
+
+**Examples:**
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+arr.copyWithin(0, 3)  // [4, 5, 3, 4, 5]
+```
+
+**Go Mapping:** Go's `copy()` function
+
+---
+
+### Array.isArray (Static)
+
+Determines whether the passed value is an array.
+
+**Signature:**
+```typescript
+Array.isArray(value: any): boolean
+```
+
+**Examples:**
+```typescript
+Array.isArray([1, 2, 3])  // true
+Array.isArray("hello")    // false
+```
+
+**Go Mapping:** `reflect.TypeOf().Kind() == reflect.Slice`
+
+---
+
+## Date Object
+
+The `Date` object provides methods for working with dates and times, similar to JavaScript's Date object.
+
+### Constructor
+
+```typescript
+new Date()              // Current date/time
+new Date(timestamp)     // From Unix timestamp (milliseconds)
+```
+
+**Go Mapping:** `time.Now()` or `time.UnixMilli()`
+
+---
+
+### Date.now (Static)
+
+Returns the current timestamp in milliseconds since Unix epoch.
+
+**Signature:**
+```typescript
+Date.now(): number
+```
+
+**Go Mapping:** `time.Now().UnixMilli()`
+
+---
+
+### Getter Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `getTime()` | number | Unix timestamp (ms) |
+| `getFullYear()` | int | 4-digit year |
+| `getMonth()` | int | Month (0-11) |
+| `getDate()` | int | Day of month (1-31) |
+| `getDay()` | int | Day of week (0-6) |
+| `getHours()` | int | Hours (0-23) |
+| `getMinutes()` | int | Minutes (0-59) |
+| `getSeconds()` | int | Seconds (0-59) |
+| `getMilliseconds()` | int | Milliseconds (0-999) |
+
+**Note:** `getMonth()` returns 0 for January (JavaScript convention).
+
+---
+
+### Setter Methods
+
+| Method | Description |
+|--------|-------------|
+| `setFullYear(year)` | Set the year |
+| `setMonth(month)` | Set the month (0-11) |
+| `setDate(day)` | Set the day of month |
+| `setHours(hours)` | Set the hours |
+| `setMinutes(minutes)` | Set the minutes |
+| `setSeconds(seconds)` | Set the seconds |
+| `setMilliseconds(ms)` | Set the milliseconds |
+
+**Note:** Setter methods return the new timestamp.
+
+---
+
+### String Methods
+
+| Method | Format |
+|--------|--------|
+| `toISOString()` | ISO 8601 format |
+| `toDateString()` | "Mon Jan 02 2006" |
+| `toTimeString()` | "15:04:05 MST" |
+| `toString()` | Full date/time string |
+| `toJSON()` | ISO 8601 (for JSON) |
+
+**Examples:**
+```typescript
+let now: Date = new Date()
+println(now.getFullYear())     // Current year
+println(now.toISOString())     // "2024-01-15T14:30:45.000Z"
+
+let date: Date = new Date(1704067200000)
+println(date.getFullYear())    // 2024
+date.setFullYear(2025)
+println(date.getFullYear())    // 2025
 ```
 
 ---
 
-#### sort
+## Math Object
 
-Sorts the array in place and returns it.
+The `Math` object provides mathematical constants and functions, similar to JavaScript's Math object.
+
+### Constants
+
+#### Math.PI
+
+The ratio of a circle's circumference to its diameter (approximately 3.14159).
+
+```typescript
+let pi: number = Math.PI
+println(pi)  // 3.141592653589793
+```
+
+**Go Mapping:** `math.Pi`
+
+---
+
+#### Math.E
+
+Euler's number, the base of natural logarithms (approximately 2.71828).
+
+```typescript
+let e: number = Math.E
+println(e)  // 2.718281828459045
+```
+
+**Go Mapping:** `math.E`
+
+---
+
+### Rounding Methods
+
+#### Math.round
+
+Rounds a number to the nearest integer.
 
 **Signature:**
 ```typescript
-arr.sort(): T[]
-arr.sort(compareFn: (a: T, b: T) => int): T[]
+Math.round(x: number): number
+```
+
+**Note:** For half values, Go rounds away from zero while JavaScript rounds toward positive infinity.
+- `Math.round(4.5)` returns `5`
+- `Math.round(-4.5)` returns `-5` (in goTS/Go) vs `-4` (in JavaScript)
+
+**Go Mapping:** `math.Round()`
+
+---
+
+#### Math.floor
+
+Returns the largest integer less than or equal to a number.
+
+**Signature:**
+```typescript
+Math.floor(x: number): number
+```
+
+**Examples:**
+```typescript
+Math.floor(4.7)   // 4
+Math.floor(-4.7)  // -5
+```
+
+**Go Mapping:** `math.Floor()`
+
+---
+
+#### Math.ceil
+
+Returns the smallest integer greater than or equal to a number.
+
+**Signature:**
+```typescript
+Math.ceil(x: number): number
+```
+
+**Examples:**
+```typescript
+Math.ceil(4.3)   // 5
+Math.ceil(-4.3)  // -4
+```
+
+**Go Mapping:** `math.Ceil()`
+
+---
+
+#### Math.trunc
+
+Returns the integer part of a number (truncates toward zero).
+
+**Signature:**
+```typescript
+Math.trunc(x: number): number
+```
+
+**Examples:**
+```typescript
+Math.trunc(4.7)   // 4
+Math.trunc(-4.7)  // -4
+```
+
+**Go Mapping:** `math.Trunc()`
+
+---
+
+### Power and Root Methods
+
+#### Math.pow
+
+Returns the base raised to the exponent power.
+
+**Signature:**
+```typescript
+Math.pow(base: number, exponent: number): number
+```
+
+**Examples:**
+```typescript
+Math.pow(2, 3)    // 8
+Math.pow(2, 0.5)  // 1.41421... (square root of 2)
+```
+
+**Go Mapping:** `math.Pow()`
+
+---
+
+#### Math.sqrt
+
+Returns the square root of a number.
+
+**Signature:**
+```typescript
+Math.sqrt(x: number): number
+```
+
+**Go Mapping:** `math.Sqrt()`
+
+---
+
+#### Math.cbrt
+
+Returns the cube root of a number.
+
+**Signature:**
+```typescript
+Math.cbrt(x: number): number
+```
+
+**Go Mapping:** `math.Cbrt()`
+
+---
+
+#### Math.exp
+
+Returns e raised to the power of x.
+
+**Signature:**
+```typescript
+Math.exp(x: number): number
+```
+
+**Go Mapping:** `math.Exp()`
+
+---
+
+### Logarithmic Methods
+
+#### Math.log
+
+Returns the natural logarithm (base e) of a number.
+
+**Signature:**
+```typescript
+Math.log(x: number): number
+```
+
+**Go Mapping:** `math.Log()`
+
+---
+
+#### Math.log10
+
+Returns the base-10 logarithm of a number.
+
+**Signature:**
+```typescript
+Math.log10(x: number): number
+```
+
+**Go Mapping:** `math.Log10()`
+
+---
+
+#### Math.log2
+
+Returns the base-2 logarithm of a number.
+
+**Signature:**
+```typescript
+Math.log2(x: number): number
+```
+
+**Go Mapping:** `math.Log2()`
+
+---
+
+### Absolute Value and Sign
+
+#### Math.abs
+
+Returns the absolute value of a number.
+
+**Signature:**
+```typescript
+Math.abs(x: number): number
+```
+
+**Go Mapping:** `math.Abs()`
+
+---
+
+#### Math.sign
+
+Returns the sign of a number (-1, 0, or 1).
+
+**Signature:**
+```typescript
+Math.sign(x: number): number
+```
+
+**Examples:**
+```typescript
+Math.sign(5)   // 1
+Math.sign(-5)  // -1
+Math.sign(0)   // 0
+```
+
+**Go Mapping:** Inline function (Go doesn't have `math.Sign`)
+
+---
+
+### Min/Max (Variadic)
+
+#### Math.min
+
+Returns the smallest of the given numbers.
+
+**Signature:**
+```typescript
+Math.min(...values: number[]): number
+```
+
+**Examples:**
+```typescript
+Math.min(1, 2)        // 1
+Math.min(5, 3, 8)     // 3
+Math.min(-1, -5)      // -5
+```
+
+**Go Mapping:** Chained `math.Min()` calls
+
+---
+
+#### Math.max
+
+Returns the largest of the given numbers.
+
+**Signature:**
+```typescript
+Math.max(...values: number[]): number
+```
+
+**Examples:**
+```typescript
+Math.max(1, 2)        // 2
+Math.max(5, 3, 8)     // 8
+Math.max(-1, -5)      // -1
+```
+
+**Go Mapping:** Chained `math.Max()` calls
+
+---
+
+### Trigonometric Methods
+
+#### Math.sin
+
+Returns the sine of an angle (in radians).
+
+**Signature:**
+```typescript
+Math.sin(x: number): number
+```
+
+**Go Mapping:** `math.Sin()`
+
+---
+
+#### Math.cos
+
+Returns the cosine of an angle (in radians).
+
+**Signature:**
+```typescript
+Math.cos(x: number): number
+```
+
+**Go Mapping:** `math.Cos()`
+
+---
+
+#### Math.tan
+
+Returns the tangent of an angle (in radians).
+
+**Signature:**
+```typescript
+Math.tan(x: number): number
+```
+
+**Go Mapping:** `math.Tan()`
+
+---
+
+#### Math.asin
+
+Returns the arcsine of a number (result in radians).
+
+**Signature:**
+```typescript
+Math.asin(x: number): number
+```
+
+**Go Mapping:** `math.Asin()`
+
+---
+
+#### Math.acos
+
+Returns the arccosine of a number (result in radians).
+
+**Signature:**
+```typescript
+Math.acos(x: number): number
+```
+
+**Go Mapping:** `math.Acos()`
+
+---
+
+#### Math.atan
+
+Returns the arctangent of a number (result in radians).
+
+**Signature:**
+```typescript
+Math.atan(x: number): number
+```
+
+**Go Mapping:** `math.Atan()`
+
+---
+
+#### Math.atan2
+
+Returns the arctangent of the quotient of its arguments.
+
+**Signature:**
+```typescript
+Math.atan2(y: number, x: number): number
+```
+
+**Go Mapping:** `math.Atan2()`
+
+---
+
+### Random
+
+#### Math.random
+
+Returns a pseudo-random number between 0 (inclusive) and 1 (exclusive).
+
+**Signature:**
+```typescript
+Math.random(): number
+```
+
+**Examples:**
+```typescript
+let r: number = Math.random()
+// r is between 0.0 and 0.999...
+
+// Generate random integer between 0 and 9
+let n: int = toint(Math.random() * 10)
+```
+
+**Go Mapping:** `rand.Float64()`
+
+---
+
+## Number Object
+
+The `Number` object provides methods for working with numbers, similar to JavaScript's Number object.
+
+### Constants
+
+#### Number.MAX_SAFE_INTEGER
+
+The maximum safe integer in JavaScript (2^53 - 1).
+
+```typescript
+let max: number = Number.MAX_SAFE_INTEGER  // 9007199254740991
+```
+
+**Go Mapping:** `float64(9007199254740991)`
+
+---
+
+#### Number.MIN_SAFE_INTEGER
+
+The minimum safe integer in JavaScript (-(2^53 - 1)).
+
+```typescript
+let min: number = Number.MIN_SAFE_INTEGER  // -9007199254740991
+```
+
+**Go Mapping:** `float64(-9007199254740991)`
+
+---
+
+#### Number.MAX_VALUE
+
+The largest positive representable number.
+
+```typescript
+let maxVal: number = Number.MAX_VALUE
+```
+
+**Go Mapping:** `math.MaxFloat64`
+
+---
+
+#### Number.MIN_VALUE
+
+The smallest positive representable number (closest to zero).
+
+```typescript
+let minVal: number = Number.MIN_VALUE
+```
+
+**Go Mapping:** `math.SmallestNonzeroFloat64`
+
+---
+
+#### Number.POSITIVE_INFINITY
+
+Positive infinity.
+
+```typescript
+let inf: number = Number.POSITIVE_INFINITY
+```
+
+**Go Mapping:** `math.Inf(1)`
+
+---
+
+#### Number.NEGATIVE_INFINITY
+
+Negative infinity.
+
+```typescript
+let negInf: number = Number.NEGATIVE_INFINITY
+```
+
+**Go Mapping:** `math.Inf(-1)`
+
+---
+
+#### Number.NaN
+
+Not-a-Number value.
+
+```typescript
+let nan: number = Number.NaN
+```
+
+**Go Mapping:** `math.NaN()`
+
+---
+
+### Static Methods
+
+#### Number.isFinite
+
+Determines whether the passed value is a finite number.
+
+**Signature:**
+```typescript
+Number.isFinite(x: number): boolean
+```
+
+**Examples:**
+```typescript
+Number.isFinite(42)        // true
+Number.isFinite(3.14)      // true
+Number.isFinite(Infinity)  // false
+```
+
+**Go Mapping:** `!math.IsInf(x, 0) && !math.IsNaN(x)`
+
+---
+
+#### Number.isNaN
+
+Determines whether the passed value is NaN.
+
+**Signature:**
+```typescript
+Number.isNaN(x: number): boolean
+```
+
+**Examples:**
+```typescript
+Number.isNaN(NaN)   // true
+Number.isNaN(42)    // false
+```
+
+**Go Mapping:** `math.IsNaN()`
+
+---
+
+#### Number.isInteger
+
+Determines whether the passed value is an integer.
+
+**Signature:**
+```typescript
+Number.isInteger(x: number): boolean
+```
+
+**Examples:**
+```typescript
+Number.isInteger(42)     // true
+Number.isInteger(42.0)   // true
+Number.isInteger(3.14)   // false
+```
+
+**Go Mapping:** `math.Trunc(x) == x && !math.IsInf(x, 0)`
+
+---
+
+#### Number.isSafeInteger
+
+Determines whether the passed value is a safe integer.
+
+**Signature:**
+```typescript
+Number.isSafeInteger(x: number): boolean
+```
+
+**Examples:**
+```typescript
+Number.isSafeInteger(42)                     // true
+Number.isSafeInteger(9007199254740992)       // false (too large)
+```
+
+**Go Mapping:** `math.Trunc(x) == x && math.Abs(x) <= 9007199254740991`
+
+---
+
+#### Number.parseFloat
+
+Parses a string argument and returns a floating point number.
+
+**Signature:**
+```typescript
+Number.parseFloat(s: string): number
+```
+
+**Examples:**
+```typescript
+Number.parseFloat("3.14")   // 3.14
+Number.parseFloat("-5.5")   // -5.5
+```
+
+**Go Mapping:** `strconv.ParseFloat(s, 64)`
+
+---
+
+#### Number.parseInt
+
+Parses a string argument and returns an integer of the specified radix.
+
+**Signature:**
+```typescript
+Number.parseInt(s: string, radix?: int): int
 ```
 
 **Parameters:**
-- `compareFn`: Optional comparison function. Should return:
-  - Negative number if `a` should come before `b`
-  - Positive number if `a` should come after `b`
-  - Zero if they are equal
-
-**Return Value:**
-- `T[]`: The sorted array (same reference)
+- `s` - The string to parse
+- `radix` - (Optional) The base for conversion, defaults to 10
 
 **Examples:**
 ```typescript
-let nums: int[] = [3, 1, 4, 1, 5, 9, 2, 6]
-nums.sort()
-println(nums)                      // Prints: [1, 1, 2, 3, 4, 5, 6, 9]
-
-// Custom comparator (descending)
-nums.sort(function(a: int, b: int): int {
-    return b - a
-})
-println(nums)                      // Prints: [9, 6, 5, 4, 3, 2, 1, 1]
+Number.parseInt("42")         // 42
+Number.parseInt("ff", 16)     // 255
+Number.parseInt("1010", 2)    // 10
 ```
+
+**Go Mapping:** `strconv.ParseInt(s, radix, 64)`
 
 ---
 
-#### map
+## Global Number Functions
 
-Creates a new array with the results of calling a function on every element.
+### isNaN
+
+Global function to check if a value is NaN.
 
 **Signature:**
 ```typescript
-arr.map(callback: (value: T, index: int) => U): U[]
-arr.map(callback: (value: T) => U): U[]
+isNaN(x: number): boolean
+```
+
+**Go Mapping:** `math.IsNaN()`
+
+---
+
+### isFinite
+
+Global function to check if a value is finite.
+
+**Signature:**
+```typescript
+isFinite(x: number): boolean
+```
+
+**Go Mapping:** `!math.IsInf(x, 0) && !math.IsNaN(x)`
+
+---
+
+### parseFloat
+
+Global function to parse a string as a floating-point number.
+
+**Signature:**
+```typescript
+parseFloat(s: string): number
+```
+
+**Go Mapping:** `strconv.ParseFloat(s, 64)`
+
+---
+
+## JSON Object
+
+The `JSON` object provides methods for parsing and stringifying JSON data.
+
+### JSON.stringify
+
+Converts a JavaScript value to a JSON string.
+
+**Signature:**
+```typescript
+JSON.stringify(value: any): string
 ```
 
 **Parameters:**
-- `callback`: Function that produces an element of the new array
+- `value` - The value to convert to JSON
 
-**Return Value:**
-- `U[]`: A new array with transformed elements
+**Returns:** string - The JSON string representation
 
 **Examples:**
 ```typescript
-let nums: int[] = [1, 2, 3, 4, 5]
-let doubled: int[] = nums.map(function(x: int): int {
-    return x * 2
-})
-println(doubled)                   // Prints: [2, 4, 6, 8, 10]
-
-let strs: string[] = nums.map(function(x: int): string {
-    return "num:" + tostring(x)
-})
-println(strs)                      // Prints: [num:1, num:2, num:3, num:4, num:5]
+JSON.stringify(42)           // "42"
+JSON.stringify(true)         // "true"
+JSON.stringify("hello")      // "\"hello\""
+JSON.stringify([1, 2, 3])    // "[1,2,3]"
 ```
+
+**Go Mapping:** `json.Marshal()`
 
 ---
 
-#### filter
+### JSON.parse
 
-Creates a new array with all elements that pass the test.
+Parses a JSON string and returns the corresponding value.
 
 **Signature:**
 ```typescript
-arr.filter(callback: (value: T, index: int) => boolean): T[]
-arr.filter(callback: (value: T) => boolean): T[]
+JSON.parse(text: string): any
 ```
 
 **Parameters:**
-- `callback`: Function that tests each element
+- `text` - The JSON string to parse
 
-**Return Value:**
-- `T[]`: A new array with elements that pass the test
+**Returns:** The parsed value (type depends on JSON content)
 
 **Examples:**
 ```typescript
-let nums: int[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-let evens: int[] = nums.filter(function(x: int): boolean {
-    return x % 2 == 0
-})
-println(evens)                     // Prints: [2, 4, 6, 8, 10]
+let num: number = JSON.parse("42")      // 42
+let bool: boolean = JSON.parse("true")  // true
+let str: string = JSON.parse("\"hi\"")  // "hi"
+let nothing: null = JSON.parse("null")  // null
 ```
+
+**Go Mapping:** `json.Unmarshal()`
+
+**Note:** When using `JSON.parse`, you should provide a type annotation to ensure proper type checking.
 
 ---
 
-#### reduce
+## Object Static Methods
 
-Executes a reducer function on each element, resulting in a single value.
+The `Object` object provides static methods for working with objects and maps.
+
+### Object.keys
+
+Returns an array of a given object's own enumerable property names.
 
 **Signature:**
 ```typescript
-arr.reduce(callback: (accumulator: U, value: T, index: int) => U, initialValue: U): U
-arr.reduce(callback: (accumulator: U, value: T) => U, initialValue: U): U
+Object.keys(obj: Map<string, T>): string[]
 ```
-
-**Parameters:**
-- `callback`: Function that combines accumulator and current value
-- `initialValue`: Initial value for the accumulator
-
-**Return Value:**
-- `U`: The final accumulated value
-
-**Examples:**
-```typescript
-let nums: int[] = [1, 2, 3, 4, 5]
-let sum: int = nums.reduce(function(acc: int, x: int): int {
-    return acc + x
-}, 0)
-println(sum)                       // Prints: 15
-
-let product: int = nums.reduce(function(acc: int, x: int): int {
-    return acc * x
-}, 1)
-println(product)                   // Prints: 120
-```
-
----
-
-#### forEach
-
-Executes a function for each array element.
-
-**Signature:**
-```typescript
-arr.forEach(callback: (value: T, index: int) => void): void
-arr.forEach(callback: (value: T) => void): void
-```
-
-**Parameters:**
-- `callback`: Function to execute for each element
-
-**Examples:**
-```typescript
-let names: string[] = ["Alice", "Bob", "Charlie"]
-names.forEach(function(name: string, i: int): void {
-    println(tostring(i) + ": " + name)
-})
-// Output:
-// 0: Alice
-// 1: Bob
-// 2: Charlie
-```
-
----
-
-#### find
-
-Returns the first element that satisfies the testing function.
-
-**Signature:**
-```typescript
-arr.find(callback: (value: T, index: int) => boolean): T | null
-arr.find(callback: (value: T) => boolean): T | null
-```
-
-**Return Value:**
-- `T | null`: The first matching element, or `null` if not found
-
-**Examples:**
-```typescript
-let nums: int[] = [1, 5, 10, 15, 20]
-let found: int | null = nums.find(function(x: int): boolean {
-    return x > 8
-})
-println(found)                     // Prints: 10
-```
-
----
-
-#### findIndex
-
-Returns the index of the first element that satisfies the testing function.
-
-**Signature:**
-```typescript
-arr.findIndex(callback: (value: T, index: int) => boolean): int
-arr.findIndex(callback: (value: T) => boolean): int
-```
-
-**Return Value:**
-- `int`: The index of the first matching element, or `-1` if not found
-
-**Examples:**
-```typescript
-let nums: int[] = [1, 5, 10, 15, 20]
-let idx: int = nums.findIndex(function(x: int): boolean {
-    return x > 8
-})
-println(idx)                       // Prints: 2
-```
-
----
-
-#### some
-
-Tests whether at least one element passes the test.
-
-**Signature:**
-```typescript
-arr.some(callback: (value: T, index: int) => boolean): boolean
-arr.some(callback: (value: T) => boolean): boolean
-```
-
-**Return Value:**
-- `boolean`: `true` if at least one element passes, `false` otherwise
-
-**Examples:**
-```typescript
-let nums: int[] = [1, 2, 3, 4, 5]
-let hasEven: boolean = nums.some(function(x: int): boolean {
-    return x % 2 == 0
-})
-println(hasEven)                   // Prints: true
-```
-
----
-
-#### every
-
-Tests whether all elements pass the test.
-
-**Signature:**
-```typescript
-arr.every(callback: (value: T, index: int) => boolean): boolean
-arr.every(callback: (value: T) => boolean): boolean
-```
-
-**Return Value:**
-- `boolean`: `true` if all elements pass, `false` otherwise
-
-**Examples:**
-```typescript
-let nums: int[] = [2, 4, 6, 8, 10]
-let allEven: boolean = nums.every(function(x: int): boolean {
-    return x % 2 == 0
-})
-println(allEven)                   // Prints: true
-```
-
----
-
-## Map
-
-Map is a collection of key-value pairs where keys can be of any type. It maintains insertion order.
-
-### Creating Maps
-
-```typescript
-// Empty map
-let scores: Map<string, int> = new Map<string, int>()
-
-// Map with initial values
-let ages: Map<string, int> = new Map<string, int>([
-    ["Alice", 30],
-    ["Bob", 25]
-])
-```
-
-### Properties
-
-#### size
-
-Returns the number of key-value pairs in the map.
-
-**Type:** `int` (read-only)
 
 **Examples:**
 ```typescript
 let map: Map<string, int> = new Map<string, int>()
 map.set("a", 1)
 map.set("b", 2)
-println(map.size)                  // Prints: 2
+let keys: string[] = Object.keys(map)  // ["a", "b"]
 ```
+
+**Go Mapping:** Range over map keys
 
 ---
 
-### Methods
+### Object.values
 
-#### set
-
-Adds or updates a key-value pair and returns the map.
+Returns an array of a given object's own enumerable property values.
 
 **Signature:**
 ```typescript
-map.set(key: K, value: V): Map<K, V>
-```
-
-**Return Value:**
-- `Map<K, V>`: The map itself (for chaining)
-
-**Examples:**
-```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-       .set("Bob", 95)
-       .set("Charlie", 88)
-
-println(scores.size)               // Prints: 3
-```
-
----
-
-#### get
-
-Returns the value associated with a key.
-
-**Signature:**
-```typescript
-map.get(key: K): V | null
-```
-
-**Return Value:**
-- `V | null`: The value if found, or `null` if the key doesn't exist
-
-**Examples:**
-```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-
-let score: int | null = scores.get("Alice")
-println(score)                     // Prints: 100
-
-let missing: int | null = scores.get("Dave")
-println(missing)                   // Prints: null
-```
-
----
-
-#### has
-
-Returns whether a key exists in the map.
-
-**Signature:**
-```typescript
-map.has(key: K): boolean
-```
-
-**Return Value:**
-- `boolean`: `true` if the key exists, `false` otherwise
-
-**Examples:**
-```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-
-println(scores.has("Alice"))       // Prints: true
-println(scores.has("Bob"))         // Prints: false
-```
-
----
-
-#### delete
-
-Removes a key-value pair from the map.
-
-**Signature:**
-```typescript
-map.delete(key: K): boolean
-```
-
-**Return Value:**
-- `boolean`: `true` if the key was found and removed, `false` otherwise
-
-**Examples:**
-```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-
-let deleted: boolean = scores.delete("Alice")
-println(deleted)                   // Prints: true
-println(scores.has("Alice"))       // Prints: false
-
-let notFound: boolean = scores.delete("Bob")
-println(notFound)                  // Prints: false
-```
-
----
-
-#### clear
-
-Removes all key-value pairs from the map.
-
-**Signature:**
-```typescript
-map.clear(): void
+Object.values(obj: Map<string, T>): T[]
 ```
 
 **Examples:**
 ```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-scores.set("Bob", 95)
-
-scores.clear()
-println(scores.size)               // Prints: 0
+let map: Map<string, int> = new Map<string, int>()
+map.set("a", 1)
+map.set("b", 2)
+let values: int[] = Object.values(map)  // [1, 2]
 ```
+
+**Go Mapping:** Range over map values
 
 ---
 
-#### keys
+### Object.assign
 
-Returns an array of all keys in the map.
+Copies all enumerable own properties from source to target.
 
 **Signature:**
 ```typescript
-map.keys(): K[]
+Object.assign(target: Map<K, V>, source: Map<K, V>): Map<K, V>
 ```
-
-**Return Value:**
-- `K[]`: An array containing all keys
 
 **Examples:**
 ```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-scores.set("Bob", 95)
-
-let names: string[] = scores.keys()
-println(names)                     // Prints: [Alice, Bob]
+let target: Map<string, int> = new Map<string, int>()
+target.set("x", 10)
+let source: Map<string, int> = new Map<string, int>()
+source.set("y", 20)
+let result: Map<string, int> = Object.assign(target, source)
+// result has both "x" and "y"
 ```
+
+**Go Mapping:** Range over source and assign to target
 
 ---
 
-#### values
+### Object.hasOwn
 
-Returns an array of all values in the map.
+Returns a boolean indicating whether the object has the specified property.
 
 **Signature:**
 ```typescript
-map.values(): V[]
+Object.hasOwn(obj: Map<string, T>, prop: string): boolean
 ```
-
-**Return Value:**
-- `V[]`: An array containing all values
 
 **Examples:**
 ```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-scores.set("Bob", 95)
-
-let allScores: int[] = scores.values()
-println(allScores)                 // Prints: [100, 95]
+let map: Map<string, string> = new Map<string, string>()
+map.set("name", "Alice")
+Object.hasOwn(map, "name")  // true
+Object.hasOwn(map, "age")   // false
 ```
+
+**Go Mapping:** Map key existence check
+
+---
+## RegExp
+
+Regex literals use TypeScript-style syntax: `/pattern/flags`. Compiled to Go's `regexp` package.
+
+```typescript
+let re: RegExp = /hello/i
+re.test("Hello World")        // boolean - tests if pattern matches
+re.exec("Hello World")        // string[] | null - returns match array
+```
+
+**Supported flags:** `i` (case-insensitive), `m` (multiline), `s` (dotall), `g` (global — not used in pattern, affects method behavior).
+
+**Go Mapping:** `*regexp.Regexp`. Note: advanced regex features may not be supported due to Go's RE2 limitations (no backreferences, no lookahead/lookbehind).
 
 ---
 
-#### entries
+### String.match
 
-Returns an array of all key-value pairs as tuples.
+Matches a string against a regular expression and returns captured groups.
 
 **Signature:**
 ```typescript
-map.entries(): [K, V][]
+str.match(re: RegExp): string[] | null
 ```
-
-**Return Value:**
-- `[K, V][]`: An array of key-value tuples
 
 **Examples:**
 ```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-scores.set("Bob", 95)
-
-let pairs: [string, int][] = scores.entries()
-for (let pair of pairs) {
-    println(pair[0] + ": " + tostring(pair[1]))
+let result: string[] | null = "abc123def".match(/\d+/)
+if (result != null) {
+    println(result[0])  // "123"
 }
-// Output:
-// Alice: 100
-// Bob: 95
 ```
+
+**Go Mapping:** `re.FindStringSubmatch()`
 
 ---
 
-#### forEach
+### String.search
 
-Executes a function for each key-value pair.
+Returns the index of the first match of a regular expression, or -1.
 
 **Signature:**
 ```typescript
-map.forEach(callback: (value: V, key: K) => void): void
+str.search(re: RegExp): int
 ```
 
 **Examples:**
 ```typescript
-let scores: Map<string, int> = new Map<string, int>()
-scores.set("Alice", 100)
-scores.set("Bob", 95)
+"abc123def".search(/\d+/)  // 3
+"abc".search(/\d+/)        // -1
+```
 
-scores.forEach(function(value: int, key: string): void {
-    println(key + " scored " + tostring(value))
+**Go Mapping:** `re.FindStringIndex()`
+
+---
+
+## Number Prototype Methods
+
+### toFixed
+
+Formats a number with a fixed number of decimals.
+
+**Signature:**
+```typescript
+num.toFixed(digits: int): string
+```
+
+**Examples:**
+```typescript
+(3.14159).toFixed(2)  // "3.14"
+(42).toFixed(0)       // "42"
+```
+
+**Go Mapping:** `strconv.FormatFloat(x, 'f', digits, 64)`
+
+---
+
+### toPrecision
+
+Formats a number with a given precision (significant digits).
+
+**Signature:**
+```typescript
+num.toPrecision(p: int): string
+```
+
+**Go Mapping:** `strconv.FormatFloat(x, 'g', p, 64)`
+
+---
+
+### toExponential
+
+Formats a number in exponential notation.
+
+**Signature:**
+```typescript
+num.toExponential(d: int): string
+```
+
+**Go Mapping:** `strconv.FormatFloat(x, 'e', d, 64)`
+
+---
+
+## Additional Array Methods
+
+### shift / unshift
+
+Remove from / add to the front of an array.
+
+```typescript
+let arr: int[] = [1, 2, 3]
+let first: int = arr.shift()   // 1, arr is now [2, 3]
+arr.unshift(0)                 // [0, 2, 3]
+```
+
+### slice
+
+Extracts a section of an array (supports negative indices).
+
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+arr.slice(1, 3)    // [2, 3]
+arr.slice(-2)      // [4, 5]
+```
+
+### splice
+
+Removes/replaces elements in place.
+
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+arr.splice(1, 2)   // removes 2 elements at index 1 -> [1, 4, 5]
+```
+
+### concat
+
+Merges arrays.
+
+```typescript
+let a: int[] = [1, 2]
+let b: int[] = [3, 4]
+let c: int[] = a.concat(b)  // [1, 2, 3, 4]
+```
+
+### reverse / sort
+
+```typescript
+let arr: int[] = [3, 1, 2]
+arr.reverse()   // [2, 1, 3]
+arr.sort()      // [1, 2, 3]
+```
+
+### forEach
+
+Iterates over elements.
+
+```typescript
+let arr: int[] = [1, 2, 3]
+arr.forEach(function(v: int, i: int): void {
+    println(i + ": " + tostring(v))
 })
-// Output:
-// Alice scored 100
-// Bob scored 95
+```
+
+### indexOf / includes
+
+```typescript
+let arr: int[] = [1, 2, 3]
+arr.indexOf(2)    // 1
+arr.includes(3)   // true
+arr.includes(9)   // false
+```
+
+### flat / flatMap
+
+```typescript
+let nested: int[][] = [[1, 2], [3, 4]]
+let flat: int[] = nested.flat()                      // [1, 2, 3, 4]
+
+let pairs: int[][] = [[1, 2], [3, 4]]
+let flatMapped: int[] = pairs.flatMap((p: int[]): int[] => p)  // [1, 2, 3, 4]
+```
+
+### Immutable variants (ES2023)
+
+```typescript
+let arr: int[] = [3, 1, 2]
+let reversed: int[] = arr.toReversed()   // [2, 1, 3], arr unchanged
+let sorted: int[] = arr.toSorted()       // [1, 2, 3], arr unchanged
+let replaced: int[] = arr.with(1, 99)    // [3, 99, 2], arr unchanged
 ```
 
 ---
 
-## Set
+## Map Object
 
-Set is a collection of unique values of any type. It maintains insertion order.
+`Map<K, V>` compiles to a Go map. Create with `new Map<K, V>()` or `{}`.
 
-### Creating Sets
+### Constructor
 
 ```typescript
-// Empty set
-let numbers: Set<int> = new Set<int>()
-
-// Set with initial values
-let names: Set<string> = new Set<string>(["Alice", "Bob", "Charlie"])
-
-// Duplicates are automatically removed
-let unique: Set<int> = new Set<int>([1, 2, 2, 3, 3, 3])
-println(unique.size)               // Prints: 3
+let m: Map<string, int> = new Map<string, int>()
+// or
+let m2: Map<string, int> = {}
 ```
-
-### Properties
-
-#### size
-
-Returns the number of values in the set.
-
-**Type:** `int` (read-only)
-
-**Examples:**
-```typescript
-let set: Set<int> = new Set<int>([1, 2, 3])
-println(set.size)                  // Prints: 3
-```
-
----
 
 ### Methods
 
-#### add
+| Method | Description |
+|--------|-------------|
+| `set(key, value)` | Insert or update entry |
+| `get(key)` | Get value (zero value if missing) |
+| `has(key)` | Check key existence |
+| `delete(key)` | Remove entry |
+| `clear()` | Remove all entries |
+| `keys()` | Get all keys (`K[]`) |
+| `values()` | Get all values (`V[]`) |
+| `entries()` | Get `[K, V]` pairs |
+| `forEach(fn)` | Iterate `(value, key)` pairs |
+| `size` | Number of entries |
 
-Adds a value to the set and returns the set.
-
-**Signature:**
-```typescript
-set.add(value: T): Set<T>
-```
-
-**Return Value:**
-- `Set<T>`: The set itself (for chaining)
-
-**Examples:**
-```typescript
-let numbers: Set<int> = new Set<int>()
-numbers.add(1)
-       .add(2)
-       .add(3)
-       .add(2)  // Duplicate, ignored
-
-println(numbers.size)              // Prints: 3
-```
+**Go Mapping:** `map[K]V`
 
 ---
 
-#### has
+## Set Object
 
-Returns whether a value exists in the set.
+`Set<T>` compiles to a Go map of empty structs.
 
-**Signature:**
+### Constructor
+
 ```typescript
-set.has(value: T): boolean
+let s: Set<int> = new Set<int>()
 ```
 
-**Return Value:**
-- `boolean`: `true` if the value exists, `false` otherwise
+### Methods
 
-**Examples:**
-```typescript
-let numbers: Set<int> = new Set<int>([1, 2, 3])
-println(numbers.has(2))            // Prints: true
-println(numbers.has(4))            // Prints: false
-```
+| Method | Description |
+|--------|-------------|
+| `add(value)` | Add a value |
+| `has(value)` | Check membership |
+| `delete(value)` | Remove a value |
+| `clear()` | Remove all values |
+| `values()` | Get all values (`T[]`) |
+| `forEach(fn)` | Iterate values |
+| `size` | Number of values |
+
+**Go Mapping:** `map[T]struct{}`
 
 ---
 
-#### delete
+## Promise, Async/Await, and the Event Loop
 
-Removes a value from the set.
+goTS compiles `async` functions to `Promise<T>` values, driven by an event loop on top of the Go scheduler.
 
-**Signature:**
+### async / await
+
 ```typescript
-set.delete(value: T): boolean
+async function fetchNumber(): Promise<int> {
+    return 42
+}
+
+async function run(): Promise<int> {
+    let num: int = await fetchNumber()
+    return num * 2
+}
+
+run()  // The Promise executes asynchronously
 ```
 
-**Return Value:**
-- `boolean`: `true` if the value was found and removed, `false` otherwise
+### Promise API
 
-**Examples:**
 ```typescript
-let numbers: Set<int> = new Set<int>([1, 2, 3])
-let deleted: boolean = numbers.delete(2)
-println(deleted)                   // Prints: true
-println(numbers.has(2))            // Prints: false
+Promise.resolve(value)                 // Resolved promise
+Promise.reject(reason)                 // Rejected promise
+
+promise.then(onFulfilled, onRejected)  // Chain callbacks
+promise.catch(onRejected)              // Handle rejection
+promise.finally(onFinally)             // Always runs
 ```
 
----
+### Timers
 
-#### clear
-
-Removes all values from the set.
-
-**Signature:**
+**Signatures:**
 ```typescript
-set.clear(): void
+setTimeout(callback: Function, delay: int): int   // Returns timer id
+setInterval(callback: Function, delay: int): int  // Returns timer id
+clearTimeout(id: int): void
+clearInterval(id: int): void
+queueMicrotask(callback: Function): void
 ```
 
-**Examples:**
+**Example:**
 ```typescript
-let numbers: Set<int> = new Set<int>([1, 2, 3])
-numbers.clear()
-println(numbers.size)              // Prints: 0
-```
+println("1. sync")
 
----
+setTimeout(function(): void {
+    println("4. macrotask")
+}, 10)
 
-#### values
-
-Returns an array of all values in the set.
-
-**Signature:**
-```typescript
-set.values(): T[]
-```
-
-**Return Value:**
-- `T[]`: An array containing all values
-
-**Examples:**
-```typescript
-let numbers: Set<int> = new Set<int>([3, 1, 2])
-let arr: int[] = numbers.values()
-println(arr)                       // Prints: [3, 1, 2] (insertion order)
-```
-
----
-
-#### forEach
-
-Executes a function for each value.
-
-**Signature:**
-```typescript
-set.forEach(callback: (value: T) => void): void
-```
-
-**Examples:**
-```typescript
-let names: Set<string> = new Set<string>(["Alice", "Bob", "Charlie"])
-names.forEach(function(name: string): void {
-    println("Hello, " + name + "!")
+queueMicrotask(function(): void {
+    println("3. microtask")
 })
-// Output:
-// Hello, Alice!
-// Hello, Bob!
-// Hello, Charlie!
+
+println("2. sync")
+// Output order: 1, 2, 3, 4
 ```
+
+**Go Mapping:** `GTS_Promise[T]` struct + goroutine-scheduled timers (`time.AfterFunc`), microtask queue, and an event-loop driver in `main()`.
 
 ---
 
-### Set Operations
+## SQL Database (connect)
 
-#### Union (combining sets)
+goTS embeds SQLite via `connect()`. SQL is written as tagged template literals with `${...}` interpolation, and queries are typed through generics.
 
-```typescript
-let a: Set<int> = new Set<int>([1, 2, 3])
-let b: Set<int> = new Set<int>([3, 4, 5])
-
-let union: Set<int> = new Set<int>(a.values().concat(b.values()))
-println(union.values())            // Prints: [1, 2, 3, 4, 5]
-```
-
-#### Intersection (common elements)
-
-```typescript
-let a: Set<int> = new Set<int>([1, 2, 3, 4])
-let b: Set<int> = new Set<int>([3, 4, 5, 6])
-
-let intersection: Set<int> = new Set<int>(
-    a.values().filter(function(x: int): boolean {
-        return b.has(x)
-    })
-)
-println(intersection.values())     // Prints: [3, 4]
-```
-
-#### Difference (elements in A but not in B)
-
-```typescript
-let a: Set<int> = new Set<int>([1, 2, 3, 4])
-let b: Set<int> = new Set<int>([3, 4, 5, 6])
-
-let difference: Set<int> = new Set<int>(
-    a.values().filter(function(x: int): boolean {
-        return !b.has(x)
-    })
-)
-println(difference.values())       // Prints: [1, 2]
-```
-
----
-
-## String Functions
-
-### len (for strings)
-
-Returns the number of bytes in a string.
+### connect
 
 **Signature:**
 ```typescript
-len(str: string): int
+connect(path: string): DB
 ```
 
-**Examples:**
+**Example:**
 ```typescript
-println(len("hello"))              // Prints: 5
-println(len(""))                   // Prints: 0
+interface User {
+    id: int
+    name: string
+}
+
+const db = connect("./test.db")
+
+// DDL / DML (no return value needed)
+db.sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`
+db.sql`INSERT INTO users (name) VALUES (${"Alice"})`
+
+// Queries are generic: db.sql<T>(...) where T is the row/rows type
+const users = db.sql<User[]>`SELECT id, name FROM users`
+println("Users: " + tostring(len(users)))
+
+const alice = db.sql<User>`SELECT id, name FROM users WHERE name = ${"Alice"}`
+if (alice != null) {
+    println("Found: " + alice.name)
+}
+
+// Transactions: db.begin(callback) with a Transaction object
+db.begin(function(tx: Transaction): void {
+    tx.sql`INSERT INTO users (name) VALUES (${"Alice"})`
+    tx.sql`INSERT INTO users (name) VALUES (${"Bob"})`
+})
+
+db.close()
 ```
 
 **Notes:**
-- Returns byte count, not character count
-- For UTF-8 strings with multi-byte characters, byte count may be larger
+- Backed by SQLite via `modernc.org/sqlite` (pure Go, no cgo)
+- A single-row query returns `T | null`; a multi-row query returns `T[]`
+- Transactions use `db.begin(function(tx: Transaction): void { ... })` — the transaction commits when the callback returns
+- Statement results expose `rowsAffected` and `lastInsertId`
 
 ---
 
-### String Concatenation
+## Go Package Imports
 
-Strings can be concatenated using the `+` operator.
+Import exported Go functions from the standard library with the `go:` prefix.
 
-**Examples:**
 ```typescript
-let greeting: string = "Hello, " + "World!"
-println(greeting)                  // Prints: Hello, World!
+import { ToUpper, ToLower, Contains, Split, Join } from "go:strings"
+import { Sqrt, Pow, Max, Min } from "go:math"
 
-let name: string = "Alice"
-let message: string = "Hello, " + name + "!"
-println(message)                   // Prints: Hello, Alice!
+let upper: string = ToUpper("hello world")
+let parts: string[] = Split("a,b,c,d", ",")
+let joined: string = Join(parts, "-")
+let v: float = Sqrt(16.0)
 ```
 
----
+Available declarations in `pkg/declaration/stdlib/`:
 
-### String Indexing
-
-Access individual characters using bracket notation.
-
-**Examples:**
-```typescript
-let text: string = "hello"
-println(text[0])                   // Prints: h
-println(text[4])                   // Prints: o
-```
-
----
-
-## Type Utilities
-
-### typeof
-
-Returns the runtime type of a value as a string.
-
-**Signature:**
-```typescript
-typeof(value: any): string
-```
-
-**Return Values:**
-| Value Type | Result |
-|------------|--------|
-| Integer | `"int"` |
-| Float | `"float"` |
-| String | `"string"` |
-| Boolean | `"boolean"` |
-| `null` | `"null"` |
-| Array | `"array"` |
-| Map | `"map"` |
-| Set | `"set"` |
-| Object | `"object"` |
-| Function | `"function"` |
-
-**Examples:**
-```typescript
-println(typeof(42))                // Prints: int
-println(typeof(3.14))              // Prints: float
-println(typeof("hello"))           // Prints: string
-println(typeof([1, 2, 3]))         // Prints: array
-println(typeof(new Map<string, int>())) // Prints: map
-println(typeof(new Set<int>()))    // Prints: set
-```
-
----
-
-### tostring
-
-Converts a value to its string representation.
-
-**Signature:**
-```typescript
-tostring(value: any): string
-```
-
-**Examples:**
-```typescript
-println(tostring(42))              // Prints: 42
-println(tostring(3.14))            // Prints: 3.14
-println(tostring(true))            // Prints: true
-```
-
----
-
-### toint
-
-Converts a value to an integer.
-
-**Signature:**
-```typescript
-toint(value: any): int
-```
-
-**Examples:**
-```typescript
-println(toint(3.14))               // Prints: 3
-println(toint("42"))               // Prints: 42
-println(toint(true))               // Prints: 1
-```
-
----
-
-### tofloat
-
-Converts a value to a floating-point number.
-
-**Signature:**
-```typescript
-tofloat(value: any): float
-```
-
-**Examples:**
-```typescript
-println(tofloat(42))               // Prints: 42.0
-println(tofloat("3.14"))           // Prints: 3.14
-```
-
----
-
-## Math Functions
-
-### sqrt
-
-Returns the square root of a number.
-
-**Signature:**
-```typescript
-sqrt(x: float): float
-```
-
-**Examples:**
-```typescript
-println(sqrt(16.0))                // Prints: 4
-println(sqrt(2.0))                 // Prints: 1.4142135623730951
-```
-
----
-
-### floor
-
-Returns the largest integer less than or equal to a number.
-
-**Signature:**
-```typescript
-floor(x: float): float
-```
-
-**Examples:**
-```typescript
-println(floor(3.7))                // Prints: 3
-println(floor(-2.3))               // Prints: -3
-```
-
----
-
-### ceil
-
-Returns the smallest integer greater than or equal to a number.
-
-**Signature:**
-```typescript
-ceil(x: float): float
-```
-
-**Examples:**
-```typescript
-println(ceil(3.2))                 // Prints: 4
-println(ceil(-2.7))                // Prints: -2
-```
-
----
-
-### abs
-
-Returns the absolute value of a number.
-
-**Signature:**
-```typescript
-abs(x: float): float
-```
-
-**Examples:**
-```typescript
-println(abs(-5.0))                 // Prints: 5
-println(abs(3.14))                 // Prints: 3.14
-```
-
----
-
-## Comparison with JavaScript
-
-### Available in goTS
-
-| goTS | JavaScript Equivalent |
-|------|----------------------|
-| `arr.length` | `arr.length` |
-| `arr.push(x)` | `arr.push(x)` |
-| `arr.pop()` | `arr.pop()` |
-| `arr.shift()` | `arr.shift()` |
-| `arr.unshift(x)` | `arr.unshift(x)` |
-| `arr.slice()` | `arr.slice()` |
-| `arr.splice()` | `arr.splice()` |
-| `arr.concat()` | `arr.concat()` |
-| `arr.indexOf(x)` | `arr.indexOf(x)` |
-| `arr.includes(x)` | `arr.includes(x)` |
-| `arr.join()` | `arr.join()` |
-| `arr.reverse()` | `arr.reverse()` |
-| `arr.sort()` | `arr.sort()` |
-| `arr.map(fn)` | `arr.map(fn)` |
-| `arr.filter(fn)` | `arr.filter(fn)` |
-| `arr.reduce(fn, init)` | `arr.reduce(fn, init)` |
-| `arr.forEach(fn)` | `arr.forEach(fn)` |
-| `arr.find(fn)` | `arr.find(fn)` |
-| `arr.findIndex(fn)` | `arr.findIndex(fn)` |
-| `arr.some(fn)` | `arr.some(fn)` |
-| `arr.every(fn)` | `arr.every(fn)` |
-| `new Map<K,V>()` | `new Map()` |
-| `map.set(k, v)` | `map.set(k, v)` |
-| `map.get(k)` | `map.get(k)` |
-| `map.has(k)` | `map.has(k)` |
-| `map.delete(k)` | `map.delete(k)` |
-| `map.clear()` | `map.clear()` |
-| `map.keys()` | `[...map.keys()]` |
-| `map.values()` | `[...map.values()]` |
-| `map.entries()` | `[...map.entries()]` |
-| `new Set<T>()` | `new Set()` |
-| `set.add(v)` | `set.add(v)` |
-| `set.has(v)` | `set.has(v)` |
-| `set.delete(v)` | `set.delete(v)` |
-| `set.clear()` | `set.clear()` |
-| `set.values()` | `[...set.values()]` |
-
-### Not Available in goTS
-
-- `Array.from()`, `Array.isArray()`
-- `arr.flat()`, `arr.flatMap()`
-- `arr.reduceRight()`
-- `arr.fill()`, `arr.copyWithin()`
-- `arr.lastIndexOf()`
-- String methods (`.split()`, `.replace()`, etc.)
-- `Object.keys()`, `Object.values()`, `Object.entries()`
-- `JSON.parse()`, `JSON.stringify()`
-- `Promise`, `async/await`
-- `RegExp`
-
----
-
-**goTS Built-in Reference v2.0**
-**© 2026**
+| Package | `.d.gts` file | Example functions |
+|---------|---------------|-------------------|
+| `go:strings` | `go_strings.d.gts` | ToUpper, ToLower, Contains, Split, Join, Replace, Trim, Index, HasPrefix, HasSuffix |
+| `go:math` | `go_math.d.gts` | Sqrt, Pow, Max, Min, Sin, Cos, Tan, Abs, Floor, Ceil, Round |
+| `go:fmt` | `go_fmt.d.gts` | Sprintf, Sprint, Fprintf, Println |
+| `go:os` | `go_os.d.gts` | Getenv, Open, ReadFile, WriteFile, Mkdir, Remove |
+| `go:time` | `go_time.d.gts` | Now, Sleep, Since, Until, Parse |
+| `go:encoding/json` | `go_encoding_json.d.gts` | Marshal, Unmarshal |
+| `go:net/http` | `go_net_http.d.gts` | Get, Post, NewRequest, ListenAndServe |
+| `go:regexp` | `go_regexp.d.gts` | Compile, MatchString, QuoteMeta |
+| `go:sort` | `go_sort.d.gts` | Ints, Strings, Float64s, Sort, Search |
+| `go:strconv` | `go_strconv.d.gts` | Atoi, Itoa, ParseInt, ParseFloat, FormatFloat |
+| `go:bufio` | `go_bufio.d.gts` | NewReader, NewWriter, NewScanner |
+| `go:bytes` | `go_bytes.d.gts` | Contains, Equal, Index, Split, Join, Trim |
+| `go:io` | `go_io.d.gts` | ReadAll, WriteString, Copy, NopCloser |
+| `go:path/filepath` | `go_path_filepath.d.gts` | Join, Dir, Base, Ext, Abs, Glob |

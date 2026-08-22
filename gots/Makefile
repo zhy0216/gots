@@ -82,18 +82,18 @@ fmt:
 vet:
 	go vet ./...
 
-# Documentation (VitePress)
+# Documentation (VitePress, lives in ../docs)
 # Install docs dependencies (once)
 docs-install:
-	cd docs && npm install
+	cd ../docs && npm install
 
 # Start docs dev server at http://localhost:5173
 docs-serve:
-	cd docs && npm run dev
+	cd ../docs && npm run dev
 
-# Build static docs site to docs/.vitepress/dist
+# Build static docs site to ../docs/.vitepress/dist
 docs-build:
-	cd docs && npm run build
+	cd ../docs && npm run build
 
 # Run all checks (fmt, vet, test)
 check: fmt vet test

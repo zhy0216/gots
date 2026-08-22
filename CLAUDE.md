@@ -14,6 +14,8 @@ goTS implements a complete compilation pipeline: lexer → parser → type check
 
 Do not modify files in scaffold/. Use them only as reference for understanding how language features should be implemented.
 
+**Documentation lives in `./docs/` (workspace root), NOT in `gots/docs/`.** It is a VitePress site (`cd docs && npm run dev` to preview). The compiler source is in `gots/`.
+
 ## Architecture
 
 ```

@@ -2,7 +2,7 @@
 
 A TypeScript-like language that compiles to Go. Write TypeScript-flavored code, get a native Go binary.
 
-> Full documentation: [docs/](./docs/) — rendered site available via `make docs-serve` (VitePress).
+> Full documentation: [docs/](../docs/) — rendered site available via `make docs-serve` (VitePress).
 
 ## Quick Start
 
@@ -140,7 +140,7 @@ println(name ?? "default")
 | `queueMicrotask(fn)` | Microtask queue |
 | `connect(path)` | Open SQLite database |
 
-See [docs/built-in-reference.md](./docs/built-in-reference.md) for the full reference (`Math`, `Number`, `JSON`, `Date`, `Object`, `String`, `Array`, `Map`, `Set`, `RegExp`).
+See [docs/built-in-reference.md](../docs/built-in-reference.md) for the full reference (`Math`, `Number`, `JSON`, `Date`, `Object`, `String`, `Array`, `Map`, `Set`, `RegExp`).
 
 ## Type Mapping to Go
 
@@ -183,12 +183,12 @@ Source (.gts) → Lexer → Parser → TypedAST Builder → Go Code Generator �
 
 ## Documentation
 
-The full documentation lives in [docs/](./docs/) and is rendered with VitePress:
+The full documentation lives in [docs/](../docs/) and is rendered with VitePress:
 
 ```bash
 make docs-install   # npm install (once)
 make docs-serve     # start dev server at http://localhost:5173
-make docs-build     # build static site to docs/.vitepress/dist
+make docs-build     # build static site to ../docs/.vitepress/dist
 ```
 
 ## Development
