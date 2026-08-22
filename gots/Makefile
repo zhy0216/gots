@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration test-test262 clean run emit-go install help
+.PHONY: build test test-unit test-integration test-test262 clean run emit-go install help docs-install docs-serve docs-build
 
 # Binary name
 BINARY := gots
@@ -82,6 +82,19 @@ fmt:
 vet:
 	go vet ./...
 
+# Documentation (VitePress)
+# Install docs dependencies (once)
+docs-install:
+	cd docs && npm install
+
+# Start docs dev server at http://localhost:5173
+docs-serve:
+	cd docs && npm run dev
+
+# Build static docs site to docs/.vitepress/dist
+docs-build:
+	cd docs && npm run build
+
 # Run all checks (fmt, vet, test)
 check: fmt vet test
 
@@ -105,3 +118,6 @@ help:
 	@echo "  make fmt             Format Go code"
 	@echo "  make vet             Run go vet"
 	@echo "  make check           Run fmt, vet, and tests"
+	@echo "  make docs-install    Install docs dependencies (npm)"
+	@echo "  make docs-serve      Start VitePress docs dev server"
+	@echo "  make docs-build      Build static docs site"

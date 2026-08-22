@@ -28,13 +28,17 @@ name123
 ### 2.3 Keywords
 
 ```
-break      case       class      const      continue
+as         async      await      break      case
+catch      class      const      continue   declare
 default    else       enum       export     extends
-false      for        function   if         import
-let        new        null       return     super
-switch     this       true       type       typeof
-void       while
+false      finally    for        from       function
+if         import     interface  let        module
+new        null       return     super      switch
+this       throw      true       try        type
+typeof     void       while
 ```
+
+Also reserved as type names: `Map`, `Set`, `Date`, `RegExp`, `Promise`, `Function`, `any`, `number`, `int`, `float`, `string`, `boolean`.
 
 ### 2.4 Literals
 
@@ -70,6 +74,7 @@ null
 | `boolean` | Boolean value | `bool` |
 | `void` | No value (function returns) | (no return) |
 | `null` | Null value | `nil` |
+| `any` | Dynamic type (bypasses checking) | `interface{}` |
 
 **Note:** Numeric literals default to `number` type. Use `int` or `float` for explicit Go type mapping.
 
@@ -330,6 +335,11 @@ function add(a: int, b: int) {
 | `"literal"` | `string` |
 | `42` | `int` |
 | `class C` | `*C` (struct pointer) |
+| `Map<K, V>` | `map[K]V` |
+| `Set<T>` | `map[T]struct{}` |
+| `Date` | `time.Time` |
+| `Promise<T>` | `GTS_Promise[T]` (generated) |
+| `interface I` | `*I` (generated struct) |
 
 ## 4. Variables and Constants
 
@@ -475,7 +485,7 @@ switch (s) {
 }
 ```
 
-**Note:** Unlike JavaScript, goTS follows Go semantics where each case block is independent. Fallthrough is not automatic. Always use `break` or the case will fall through to the next.
+**Note:** Unlike JavaScript, goTS follows Go semantics: `break` is implicit at the end of each case — there is no fallthrough.
 
 ### 6.5 Break and Continue
 
@@ -820,9 +830,346 @@ export { foo, bar } from "./module"
 export * from "./module"
 ```
 
-## 14. Type System Features
+## 14. Generics
 
-### 14.1 Type Checking
+Generic functions and classes allow writing code that works over multiple types.
+
+### 14.1 Generic Functions
+
+```typescript
+function identity<T>(x: T): T {
+    return x
+}
+
+function pair<A, B>(a: A, b: B): A {
+    println(a)
+    println(b)
+    return a
+}
+
+// Type inference from arguments
+let num: int = identity(42)
+let str: string = identity("hello")
+
+// Explicit type arguments
+let x: number = identity<number>(99)
+```
+
+### 14.2 Default Type Parameters
+
+```typescript
+function makeValue<T = number>(x: T): T {
+    return x
+}
+
+let v: int = makeValue(42)  // T inferred as int
+```
+
+### 14.3 Generic Classes
+
+```typescript
+class Box<T> {
+    value: T
+
+    constructor(v: T) {
+        this.value = v
+    }
+
+    get(): T {
+        return this.value
+    }
+
+    set(v: T): void {
+        this.value = v
+    }
+}
+
+let intBox: Box<int> = new Box(10)
+intBox.set(20)
+println(intBox.get())  // 20
+
+let strBox: Box<string> = new Box("world")
+println(strBox.get())  // "world"
+```
+
+## 15. Interfaces
+
+Interfaces use structural typing: any class (or object) whose shape satisfies the interface is assignable to it — no `implements` declaration needed.
+
+### 15.1 Interface Declarations
+
+```typescript
+interface Drawable {
+    draw(): void
+    getArea(): float
+}
+
+interface Named {
+    name: string
+}
+```
+
+### 15.2 Structural Assignment
+
+```typescript
+class Circle {
+    radius: float
+
+    constructor(radius: float) {
+        this.radius = radius
+    }
+
+    draw(): void {
+        println("Drawing circle")
+    }
+
+    getArea(): float {
+        return 3.14159 * this.radius * this.radius
+    }
+}
+
+let circle: Circle = new Circle(5.0)
+let shape: Drawable = circle   // Circle satisfies Drawable structurally
+
+shape.draw()
+println(shape.getArea())
+```
+
+### 15.3 Generic Interfaces
+
+```typescript
+interface Container<T> {
+    get(): T
+    set(v: T): void
+}
+
+class Box<T> {
+    value: T
+    constructor(v: T) { this.value = v }
+    get(): T { return this.value }
+    set(v: T): void { this.value = v }
+}
+
+let c: Container<int> = new Box(0)
+```
+
+## 16. Map and Set
+
+### 16.1 Map
+
+`Map<K, V>` compiles to a Go map. It can be created with `new Map<K, V>()` or an empty object literal `{}`.
+
+```typescript
+let m: Map<string, int> = {}
+m.set("one", 1)
+m.set("two", 2)
+
+let val: int = m.get("one")
+
+if (m.has("two")) {
+    println("has two")
+}
+
+m.delete("one")
+
+let keys: string[] = m.keys()
+let values: int[] = m.values()
+println(m.size)
+
+for (let k of keys) {
+    println(k)
+}
+```
+
+### 16.2 Set
+
+```typescript
+let s: Set<int> = new Set<int>()
+s.add(1)
+s.add(2)
+s.add(2)       // duplicate ignored
+
+println(s.size)   // 2
+println(s.has(2)) // true
+s.delete(1)
+```
+
+## 17. Optional Chaining and Nullish Coalescing
+
+### 17.1 Optional Chaining (`?.`)
+
+Safe navigation on nullable values:
+
+```typescript
+let maybePerson: Person | null = null
+
+if (maybePerson?.name != null) {
+    println(maybePerson.name)
+} else {
+    println("No name (null)")
+}
+```
+
+### 17.2 Nullish Coalescing (`??`)
+
+Falls back to a default only when the value is `null`:
+
+```typescript
+let name: string | null = null
+let result: string = name ?? "Default"
+println(result)  // "Default"
+
+// Chained
+let a: string | null = null
+let b: string | null = "Bob"
+println(a ?? b ?? "None")  // "Bob"
+
+// With objects
+let person: Person | null = null
+let fallback: Person = person ?? new Person("Default")
+```
+
+## 18. Async/Await and the Event Loop
+
+goTS implements an event loop on top of the Go scheduler, with `async` functions compiling to `Promise<T>` values.
+
+### 18.1 Async Functions
+
+```typescript
+async function fetchNumber(): Promise<int> {
+    return 42
+}
+
+async function computeSum(a: int, b: int): Promise<int> {
+    return a + b
+}
+
+async function run(): Promise<int> {
+    let num: int = await fetchNumber()
+    return num * 2
+}
+```
+
+An `async` function returns a `Promise<T>`. Calling it starts execution in the background; use `await` inside another `async` function to get the value.
+
+### 18.2 Promises
+
+```typescript
+Promise.resolve(value)   // Resolved promise
+Promise.reject(reason)   // Rejected promise
+
+promise.then(onFulfilled, onRejected)
+promise.catch(onRejected)
+promise.finally(onFinally)
+```
+
+### 18.3 Timers and Microtasks
+
+```typescript
+setTimeout(function(): void {
+    println("macrotask")
+}, 10)
+
+setInterval(function(): void {
+    println("tick")
+}, 1000)
+
+queueMicrotask(function(): void {
+    println("microtask")
+})
+
+let id: int = setTimeout(function(): void {}, 100)
+clearTimeout(id)
+clearInterval(id)
+```
+
+**Execution order:** synchronous code runs first, then microtasks (`await` continuations, `queueMicrotask`, promise callbacks), then macrotasks (`setTimeout`, `setInterval`) in delay order.
+
+## 19. Error Handling
+
+### 19.1 try / catch / finally
+
+```typescript
+try {
+    throw "something went wrong"
+} catch (e) {
+    println("Caught: " + tostring(e))
+} finally {
+    println("Always runs")
+}
+```
+
+`throw` accepts any value. `finally` always executes.
+
+## 20. Go Interop
+
+### 20.1 Importing Go Packages
+
+Import functions from the Go standard library using the `go:` prefix:
+
+```typescript
+import { ToUpper, ToLower, Contains, Split, Join } from "go:strings"
+import { Sqrt, Pow, Max, Min } from "go:math"
+
+let upper: string = ToUpper("hello world")
+let parts: string[] = Split("a,b,c,d", ",")
+let joined: string = Join(parts, "-")
+
+let v: float = Sqrt(16.0)     // 4.0
+let p: float = Pow(2.0, 10.0) // 1024.0
+```
+
+Exported Go functions become available under their Go names. Declarations for supported packages live in `pkg/declaration/stdlib/` as `.d.gts` files (e.g., `go_strings.d.gts`, `go_math.d.gts`, `go_net_http.d.gts`, `go_time.d.gts`, `go_encoding_json.d.gts`, `go_fmt.d.gts`, `go_os.d.gts`, `go_regexp.d.gts`, `go_sort.d.gts`, `go_strconv.d.gts`, `go_bufio.d.gts`, `go_bytes.d.gts`, `go_io.d.gts`, `go_path_filepath.d.gts`).
+
+### 20.2 SQL via `connect()`
+
+```typescript
+interface User {
+    id: int
+    name: string
+}
+
+const db = connect("./test.db")
+
+db.sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`
+db.sql`INSERT INTO users (name) VALUES (${"Alice"})`
+
+const users = db.sql<User[]>`SELECT id, name FROM users`
+println("Users: " + tostring(len(users)))
+
+const alice = db.sql<User>`SELECT id, name FROM users WHERE name = ${"Alice"}`
+if (alice != null) {
+    println("Found: " + alice.name)
+}
+
+db.close()
+```
+
+SQL is written as tagged template literals with `${...}` interpolation. Backed by SQLite (`modernc.org/sqlite`); results are typed via generics (`db.sql<T>`).
+
+## 21. Decorators
+
+Decorators wrap function declarations at compile time:
+
+```typescript
+function logged(fn: Function): Function {
+    return function(...args: any[]): any {
+        println("calling")
+        return fn(...args)
+    }
+}
+
+@logged
+function greet(name: string): void {
+    println("Hello " + name)
+}
+```
+
+Forms: `@name`, `@name(args)`, `@obj.method(args)`. Multiple decorators chain bottom-up: `@d1 @d2 f` → `d1(d2(f))`.
+
+## 22. Type System Features
+
+### 22.1 Type Checking
 
 goTS performs static type checking at compile time:
 
@@ -834,14 +1181,14 @@ function f(n: int): void {}
 f("text")  // Error: argument type mismatch
 ```
 
-### 14.2 Type Assertions
+### 22.2 Type Assertions
 
 ```typescript
 let value: any = "hello"
 let length: int = (value as string).length
 ```
 
-### 14.3 Null Safety
+### 22.3 Null Safety
 
 ```typescript
 let name: string | null = null
@@ -852,7 +1199,7 @@ if (name != null) {
 }
 ```
 
-## 15. Operator Precedence
+## 23. Operator Precedence
 
 From highest to lowest:
 
@@ -866,23 +1213,23 @@ From highest to lowest:
 8. Logical OR (`||`)
 9. Assignment (`=`, `+=`, `-=`, etc.)
 
-## 16. Reserved Words and Naming
+## 24. Reserved Words and Naming
 
-### 16.1 Go Reserved Words
+### 24.1 Go Reserved Words
 
 When compiling to Go, these identifiers get a `_` suffix:
 - Go keywords: `chan`, `defer`, `fallthrough`, `go`, `interface`, `map`, `package`, `range`, `select`, `struct`, `var`
 - Go built-ins: `append`, `cap`, `close`, `complex`, `copy`, `delete`, `imag`, `make`, `panic`, `real`, `recover`
 
-### 16.2 Naming Conventions
+### 24.2 Naming Conventions
 
 - Exported names (public) are capitalized in generated Go code
 - Constructor functions become `NewClassName`
 - Method receivers use `this` pointer
 
-## 17. Built-in Objects
+## 25. Built-in Objects
 
-### 17.1 Math Object
+### 25.1 Math Object
 
 The `Math` object provides mathematical constants and functions.
 
@@ -937,7 +1284,7 @@ let randomInt: int = toint(Math.random() * 100)  // 0-99
 
 **Note:** `Math.round()` uses Go's rounding semantics (round half away from zero), which differs from JavaScript's (round half toward positive infinity) for negative half values.
 
-### 17.2 Number Object
+### 25.2 Number Object
 
 The `Number` object provides constants and methods for working with numbers.
 
@@ -972,7 +1319,7 @@ println(Number.parseInt("ff", 16)) // 255
 println(isFinite(42))              // true
 ```
 
-### 17.3 JSON Object
+### 25.3 JSON Object
 
 The `JSON` object provides methods for parsing and serializing JSON data.
 
@@ -993,7 +1340,7 @@ let arr: number[] = JSON.parse("[1,2,3]")
 
 **Note:** `JSON.parse` returns `any` type. Provide type annotations for proper type checking.
 
-### 17.4 Object Static Methods
+### 25.4 Object Static Methods
 
 The `Object` object provides static methods for working with maps and objects.
 
@@ -1015,7 +1362,7 @@ println(Object.hasOwn(map, "a"))          // true
 
 **Note:** Object methods work with Map types in goTS.
 
-### 17.5 Date Object
+### 25.5 Date Object
 
 The `Date` object provides date/time functionality.
 
@@ -1049,28 +1396,28 @@ println(date.toISOString())     // ISO format string
 
 **Note:** `getMonth()` returns 0-11 (JavaScript convention). Go's `time.Time` is used internally.
 
-## 18. Unsupported Features
+## 26. Unsupported Features
 
 The following JavaScript/TypeScript features are **not supported** in goTS:
 
-| Feature | Reason |
-|---------|--------|
+| Feature | Status / Reason |
+|---------|-----------------|
 | `do-while` loops | Not implemented |
-| `async/await` | No async support |
-| Generators | No generator functions |
-| Promises | No Promise API |
-| Symbols | No Symbol type |
-| Proxy/Reflect | No metaprogramming |
-| WeakMap/WeakSet | No weak references |
-| `eval()` | No runtime eval |
-| `with` statement | Not supported |
-| Destructuring | Not yet implemented |
-| Spread operator | Not yet implemented |
-| Optional chaining (`?.`) | Not yet implemented |
-| Nullish coalescing (`??`) | Not yet implemented |
+| Generators (`function*`, `yield`) | Not implemented |
+| Symbols | Go has no symbol primitive |
+| Proxy/Reflect | Go has no metaprogramming |
+| WeakMap/WeakSet | Go GC has no weak references |
 | BigInt | Not supported |
+| Typed arrays (`Uint8Array`, ...) | Not implemented |
+| `eval()` | No runtime eval (compiles to Go) |
+| `with` statement | Not supported |
+| `Array.from` / `Array.of` | Not implemented |
+| `str.matchAll` | Not implemented |
+| Accessor properties (getters/setters) | Not implemented |
+| `private` / `public` / `static` class members | Not implemented |
+| Abstract classes / class `implements` | Not implemented |
 
-### 18.1 Differences from JavaScript
+### 26.1 Differences from JavaScript
 
 1. **Switch fallthrough**: Unlike JavaScript, switch cases don't automatically fall through. Use explicit `break` statements.
 
@@ -1079,3 +1426,11 @@ The following JavaScript/TypeScript features are **not supported** in goTS:
 3. **Strict typing**: goTS enforces static types at compile time. Dynamic typing patterns common in JavaScript may not work.
 
 4. **No hoisting**: Variables must be declared before use. Function hoisting is not supported.
+
+5. **Math.round**: Uses Go's rounding semantics (round half away from zero), which differs from JavaScript's (round half toward positive infinity) for negative half values.
+
+6. **Numeric literals**: Default to `number` (`float64`) instead of JavaScript's `number`. Use `int` explicitly for integer arithmetic.
+
+7. **Division**: `/` always returns `float`; modulo `%` requires `int` operands.
+
+8. **getMonth()**: Returns 0-11 (JavaScript convention), while the underlying Go `time.Time` uses 1-12.

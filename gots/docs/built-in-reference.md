@@ -1632,3 +1632,396 @@ Object.hasOwn(map, "age")   // false
 **Go Mapping:** Map key existence check
 
 ---
+## RegExp
+
+Regex literals use TypeScript-style syntax: `/pattern/flags`. Compiled to Go's `regexp` package.
+
+```typescript
+let re: RegExp = /hello/i
+re.test("Hello World")        // boolean - tests if pattern matches
+re.exec("Hello World")        // string[] | null - returns match array
+```
+
+**Supported flags:** `i` (case-insensitive), `m` (multiline), `s` (dotall), `g` (global — not used in pattern, affects method behavior).
+
+**Go Mapping:** `*regexp.Regexp`. Note: advanced regex features may not be supported due to Go's RE2 limitations (no backreferences, no lookahead/lookbehind).
+
+---
+
+### String.match
+
+Matches a string against a regular expression and returns captured groups.
+
+**Signature:**
+```typescript
+str.match(re: RegExp): string[] | null
+```
+
+**Examples:**
+```typescript
+let result: string[] | null = "abc123def".match(/\d+/)
+if (result != null) {
+    println(result[0])  // "123"
+}
+```
+
+**Go Mapping:** `re.FindStringSubmatch()`
+
+---
+
+### String.search
+
+Returns the index of the first match of a regular expression, or -1.
+
+**Signature:**
+```typescript
+str.search(re: RegExp): int
+```
+
+**Examples:**
+```typescript
+"abc123def".search(/\d+/)  // 3
+"abc".search(/\d+/)        // -1
+```
+
+**Go Mapping:** `re.FindStringIndex()`
+
+---
+
+## Number Prototype Methods
+
+### toFixed
+
+Formats a number with a fixed number of decimals.
+
+**Signature:**
+```typescript
+num.toFixed(digits: int): string
+```
+
+**Examples:**
+```typescript
+(3.14159).toFixed(2)  // "3.14"
+(42).toFixed(0)       // "42"
+```
+
+**Go Mapping:** `strconv.FormatFloat(x, 'f', digits, 64)`
+
+---
+
+### toPrecision
+
+Formats a number with a given precision (significant digits).
+
+**Signature:**
+```typescript
+num.toPrecision(p: int): string
+```
+
+**Go Mapping:** `strconv.FormatFloat(x, 'g', p, 64)`
+
+---
+
+### toExponential
+
+Formats a number in exponential notation.
+
+**Signature:**
+```typescript
+num.toExponential(d: int): string
+```
+
+**Go Mapping:** `strconv.FormatFloat(x, 'e', d, 64)`
+
+---
+
+## Additional Array Methods
+
+### shift / unshift
+
+Remove from / add to the front of an array.
+
+```typescript
+let arr: int[] = [1, 2, 3]
+let first: int = arr.shift()   // 1, arr is now [2, 3]
+arr.unshift(0)                 // [0, 2, 3]
+```
+
+### slice
+
+Extracts a section of an array (supports negative indices).
+
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+arr.slice(1, 3)    // [2, 3]
+arr.slice(-2)      // [4, 5]
+```
+
+### splice
+
+Removes/replaces elements in place.
+
+```typescript
+let arr: int[] = [1, 2, 3, 4, 5]
+arr.splice(1, 2)   // removes 2 elements at index 1 -> [1, 4, 5]
+```
+
+### concat
+
+Merges arrays.
+
+```typescript
+let a: int[] = [1, 2]
+let b: int[] = [3, 4]
+let c: int[] = a.concat(b)  // [1, 2, 3, 4]
+```
+
+### reverse / sort
+
+```typescript
+let arr: int[] = [3, 1, 2]
+arr.reverse()   // [2, 1, 3]
+arr.sort()      // [1, 2, 3]
+```
+
+### forEach
+
+Iterates over elements.
+
+```typescript
+let arr: int[] = [1, 2, 3]
+arr.forEach(function(v: int, i: int): void {
+    println(i + ": " + tostring(v))
+})
+```
+
+### indexOf / includes
+
+```typescript
+let arr: int[] = [1, 2, 3]
+arr.indexOf(2)    // 1
+arr.includes(3)   // true
+arr.includes(9)   // false
+```
+
+### flat / flatMap
+
+```typescript
+let nested: int[][] = [[1, 2], [3, 4]]
+let flat: int[] = nested.flat()                      // [1, 2, 3, 4]
+
+let pairs: int[][] = [[1, 2], [3, 4]]
+let flatMapped: int[] = pairs.flatMap((p: int[]): int[] => p)  // [1, 2, 3, 4]
+```
+
+### Immutable variants (ES2023)
+
+```typescript
+let arr: int[] = [3, 1, 2]
+let reversed: int[] = arr.toReversed()   // [2, 1, 3], arr unchanged
+let sorted: int[] = arr.toSorted()       // [1, 2, 3], arr unchanged
+let replaced: int[] = arr.with(1, 99)    // [3, 99, 2], arr unchanged
+```
+
+---
+
+## Map Object
+
+`Map<K, V>` compiles to a Go map. Create with `new Map<K, V>()` or `{}`.
+
+### Constructor
+
+```typescript
+let m: Map<string, int> = new Map<string, int>()
+// or
+let m2: Map<string, int> = {}
+```
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `set(key, value)` | Insert or update entry |
+| `get(key)` | Get value (zero value if missing) |
+| `has(key)` | Check key existence |
+| `delete(key)` | Remove entry |
+| `clear()` | Remove all entries |
+| `keys()` | Get all keys (`K[]`) |
+| `values()` | Get all values (`V[]`) |
+| `entries()` | Get `[K, V]` pairs |
+| `forEach(fn)` | Iterate `(value, key)` pairs |
+| `size` | Number of entries |
+
+**Go Mapping:** `map[K]V`
+
+---
+
+## Set Object
+
+`Set<T>` compiles to a Go map of empty structs.
+
+### Constructor
+
+```typescript
+let s: Set<int> = new Set<int>()
+```
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `add(value)` | Add a value |
+| `has(value)` | Check membership |
+| `delete(value)` | Remove a value |
+| `clear()` | Remove all values |
+| `values()` | Get all values (`T[]`) |
+| `forEach(fn)` | Iterate values |
+| `size` | Number of values |
+
+**Go Mapping:** `map[T]struct{}`
+
+---
+
+## Promise, Async/Await, and the Event Loop
+
+goTS compiles `async` functions to `Promise<T>` values, driven by an event loop on top of the Go scheduler.
+
+### async / await
+
+```typescript
+async function fetchNumber(): Promise<int> {
+    return 42
+}
+
+async function run(): Promise<int> {
+    let num: int = await fetchNumber()
+    return num * 2
+}
+
+run()  // The Promise executes asynchronously
+```
+
+### Promise API
+
+```typescript
+Promise.resolve(value)                 // Resolved promise
+Promise.reject(reason)                 // Rejected promise
+
+promise.then(onFulfilled, onRejected)  // Chain callbacks
+promise.catch(onRejected)              // Handle rejection
+promise.finally(onFinally)             // Always runs
+```
+
+### Timers
+
+**Signatures:**
+```typescript
+setTimeout(callback: Function, delay: int): int   // Returns timer id
+setInterval(callback: Function, delay: int): int  // Returns timer id
+clearTimeout(id: int): void
+clearInterval(id: int): void
+queueMicrotask(callback: Function): void
+```
+
+**Example:**
+```typescript
+println("1. sync")
+
+setTimeout(function(): void {
+    println("4. macrotask")
+}, 10)
+
+queueMicrotask(function(): void {
+    println("3. microtask")
+})
+
+println("2. sync")
+// Output order: 1, 2, 3, 4
+```
+
+**Go Mapping:** `GTS_Promise[T]` struct + goroutine-scheduled timers (`time.AfterFunc`), microtask queue, and an event-loop driver in `main()`.
+
+---
+
+## SQL Database (connect)
+
+goTS embeds SQLite via `connect()`. SQL is written as tagged template literals with `${...}` interpolation, and queries are typed through generics.
+
+### connect
+
+**Signature:**
+```typescript
+connect(path: string): DB
+```
+
+**Example:**
+```typescript
+interface User {
+    id: int
+    name: string
+}
+
+const db = connect("./test.db")
+
+// DDL / DML (no return value needed)
+db.sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`
+db.sql`INSERT INTO users (name) VALUES (${"Alice"})`
+
+// Queries are generic: db.sql<T>(...) where T is the row/rows type
+const users = db.sql<User[]>`SELECT id, name FROM users`
+println("Users: " + tostring(len(users)))
+
+const alice = db.sql<User>`SELECT id, name FROM users WHERE name = ${"Alice"}`
+if (alice != null) {
+    println("Found: " + alice.name)
+}
+
+// Transactions: db.begin(callback) with a Transaction object
+db.begin(function(tx: Transaction): void {
+    tx.sql`INSERT INTO users (name) VALUES (${"Alice"})`
+    tx.sql`INSERT INTO users (name) VALUES (${"Bob"})`
+})
+
+db.close()
+```
+
+**Notes:**
+- Backed by SQLite via `modernc.org/sqlite` (pure Go, no cgo)
+- A single-row query returns `T | null`; a multi-row query returns `T[]`
+- Transactions use `db.begin(function(tx: Transaction): void { ... })` — the transaction commits when the callback returns
+- Statement results expose `rowsAffected` and `lastInsertId`
+
+---
+
+## Go Package Imports
+
+Import exported Go functions from the standard library with the `go:` prefix.
+
+```typescript
+import { ToUpper, ToLower, Contains, Split, Join } from "go:strings"
+import { Sqrt, Pow, Max, Min } from "go:math"
+
+let upper: string = ToUpper("hello world")
+let parts: string[] = Split("a,b,c,d", ",")
+let joined: string = Join(parts, "-")
+let v: float = Sqrt(16.0)
+```
+
+Available declarations in `pkg/declaration/stdlib/`:
+
+| Package | `.d.gts` file | Example functions |
+|---------|---------------|-------------------|
+| `go:strings` | `go_strings.d.gts` | ToUpper, ToLower, Contains, Split, Join, Replace, Trim, Index, HasPrefix, HasSuffix |
+| `go:math` | `go_math.d.gts` | Sqrt, Pow, Max, Min, Sin, Cos, Tan, Abs, Floor, Ceil, Round |
+| `go:fmt` | `go_fmt.d.gts` | Sprintf, Sprint, Fprintf, Println |
+| `go:os` | `go_os.d.gts` | Getenv, Open, ReadFile, WriteFile, Mkdir, Remove |
+| `go:time` | `go_time.d.gts` | Now, Sleep, Since, Until, Parse |
+| `go:encoding/json` | `go_encoding_json.d.gts` | Marshal, Unmarshal |
+| `go:net/http` | `go_net_http.d.gts` | Get, Post, NewRequest, ListenAndServe |
+| `go:regexp` | `go_regexp.d.gts` | Compile, MatchString, QuoteMeta |
+| `go:sort` | `go_sort.d.gts` | Ints, Strings, Float64s, Sort, Search |
+| `go:strconv` | `go_strconv.d.gts` | Atoi, Itoa, ParseInt, ParseFloat, FormatFloat |
+| `go:bufio` | `go_bufio.d.gts` | NewReader, NewWriter, NewScanner |
+| `go:bytes` | `go_bytes.d.gts` | Contains, Equal, Index, Split, Join, Trim |
+| `go:io` | `go_io.d.gts` | ReadAll, WriteString, Copy, NopCloser |
+| `go:path/filepath` | `go_path_filepath.d.gts` | Join, Dir, Base, Ext, Abs, Glob |
